@@ -404,6 +404,24 @@ public:
 		auto *painted = dynamic_cast<ICellPainted *>(o);
 		if (!painted) return false;
 
+		// BOUNDED BY WHAT IS VISIBLE, which it was not. The rect handed over
+		// is the widget's WHOLE rect, deliberately -- an implementation maps
+		// its own content from cells.top() and cells.left(), and a rect
+		// clipped to the viewport would put row 0 of that content wherever
+		// the viewport happened to start. So the information stays and the
+		// bound goes on the buffer instead, which is what CellClip and
+		// CellBuffer::set_clip exist for and what Channel B has done since
+		// the twelve-widget sweep in section 7.7.
+		//
+		// Measured before this, on a cell-painted widget 20 by 9 cells in a
+		// viewport 3 rows tall: it was handed 20x9+0+1 and filled all nine
+		// rows, over the label below the scroll area and every cell beside
+		// it. The widget had obeyed its contract exactly -- qtty/paint.h and
+		// the guide both say to draw inside the rect you are given -- so
+		// there was no way for an application to get this right, which is
+		// what makes it the library's fault and not a documentation gap.
+		const CellClip bound(dev, cells_of_rect(visible_rect(w), w,
+		                                        dev->origin));
 		painted->paint_cells(dev->buffer(), cells_of_rect(w->rect(), w, dev->origin));
 		return true;                               // consumed: no Channel B pass
 	}
@@ -476,6 +494,27 @@ private:
 
 	bool harvest(QWidget *w, CellPaintDevice *dev) {
 		if (w->width() <= 0 || w->height() <= 0) return true;
+		// CLIPPED BY ITS ANCESTORS, which no tier below can do for it. The
+		// backend crops every placement to the GRID (section 16.3), and that
+		// is the only bound a placement had: a surface 9 rows tall in a
+		// viewport 3 rows tall was placed at its full height, over the label
+		// below the scroll area and over whatever else was in those six rows.
+		// Measured, the same way the cell-painted arm above was -- a
+		// placement of 20x9+0+1 for a viewport of 20x3+0+1.
+		//
+		// The clipping information is the widget's ANCESTRY, so the producer
+		// is the only thing that holds it. Channel B has `CellClip` and the
+		// cell-painted path above now has one; a placement is not a write
+		// into the buffer, so it is cropped here instead.
+		const QRect vis = visible_rect(w);
+		// Defence in depth, and labelled as such: Qt sends no paint event to
+		// a widget that is wholly scrolled out, so this is not the reason
+		// such a widget makes no placement. What it stops is an empty
+		// rectangle reaching QImage::copy() below, which yields a null image
+		// and a placement carrying a picture of nothing. A sabotage entry
+		// disabling it left the check green, and was withdrawn rather than
+		// kept as a guard nothing defends.
+		if (vis.isEmpty()) return true;
 		QImage img(w->size(), QImage::Format_ARGB32_Premultiplied);
 		img.fill(Qt::transparent);
 		harvesting_ = true;
@@ -494,7 +533,28 @@ private:
 		w->setAttribute(Qt::WA_WState_InPaintEvent, painting);
 		harvesting_ = false;
 
-		const QRect cells = cells_of_rect(w->rect(), w, dev->origin);
+		QRect cells = cells_of_rect(w->rect(), w, dev->origin);
+		// THE IMAGE IS CROPPED WITH THE RECT, never one without the other:
+		// crop_placement() derives a source rectangle by assuming the image
+		// spans cell_rect, so shrinking the rect alone would squash the whole
+		// surface into the cells that remain rather than showing the part of
+		// it that is visible.
+		//
+		// Untouched where nothing clips -- the common case, a surface in an
+		// ordinary layout -- so the pixels, and therefore the content key
+		// below, are exactly what they were.
+		//
+		// The cost, so it is not discovered later: a CLIPPED surface is keyed
+		// on its visible pixels, so scrolling it re-uploads rather than
+		// re-placing a stored image with a new source rectangle. kitty can do
+		// the cheaper thing and would need the clip to reach it, which means
+		// a field in CellImage and therefore a public-header decision. The
+		// pixels change on every scroll step either way; what is lost is one
+		// upload per step for a surface that is partly out of view.
+		if (vis != w->rect()) {
+			img = img.copy(vis);
+			cells = cells_of_rect(vis, w, dev->origin);
+		}
 
 		// Content-addressed, because a surface is repainted rather than
 		// cached: a key taken from the widget would tell the kitty tier the

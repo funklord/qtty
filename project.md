@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2277 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2281 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,91 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.501 A widget drawing its own cells was bounded by itself (2026-10-22)
+
+**The lens, and it is 8.500's.** That entry found an application having to
+re-derive the library's measurement because it was internal. The question
+that follows is the other half of the same seam: what does the library ask
+an application to do that the application cannot do correctly? There are
+two interfaces for content the grid cannot infer -- `ICellPainted` for
+cells and `PixelSurface` for pixels -- and both were asked for something
+impossible.
+
+**`paint_cells()` had no bound.** Channel B has had one since the
+twelve-widget sweep in section 7.7: `CellClip` sets a clip on the buffer
+from the widget's rectangle intersected with every ancestor's, and a write
+outside it is dropped. The cell-painted path set none and handed over
+`cells_of_rect(w->rect(), ...)` -- the widget's whole rectangle.
+
+Measured, on a cell-painted widget 20 by 9 cells in a viewport 3 rows
+tall: handed `20x9+0+1`, it filled all nine rows, over the label below
+the scroll area and every cell beside it.
+
+**What makes it the library's fault is that the widget obeyed its
+contract.** `qtty/paint.h` and `doc/keyboard-first.md` both said to draw
+inside the rectangle you are given, and both said in as many words that
+nothing enforced it -- *"write outside it and you write over your
+neighbours, and nothing notices -- measured, not inferred"*. A widget
+staying inside its rect still corrupted the frame, so there was no
+correct implementation to write. Both documents are rewritten, and the
+guide's paragraph says plainly that it used to say the opposite and that
+clipping arithmetic written because of it can come out.
+
+**The rect stays whole and the bound goes on the buffer**, which is the
+decision in the fix rather than a detail of it. An implementation lays
+its own content out from `cells.top()`, so handing it a rectangle clipped
+to the viewport would put its first row wherever the viewport began.
+Measured after the fix: scrolled down four rows the widget is handed
+`20x9+0+-3` and rows 4, 5 and 6 of its content appear in the viewport's
+three rows.
+
+**The pixel arm had the same fault and needed a different fix.** The
+backend crops every placement to the GRID (section 16.3) and that was the
+only bound a placement had, so a `PixelSurface` 9 rows tall in a 3-row
+viewport was placed as `20x9+0+1`. A placement is not a write into the
+buffer, so no clip can catch it; and `crop_placement()` derives its
+source rectangle by assuming the image spans `cell_rect`, so shrinking
+the rect alone would squash the whole surface into the rows that remain.
+The image is therefore cropped with the rect, in `harvest()`.
+
+Proved against a surface whose top third and bottom two thirds are
+different colours, which is what tells a crop from a squash: at rest the
+placement is `20x3+0+1` and 11400 red pixels with no blue; scrolled to
+the bottom it is the same cells and 11400 blue with no red.
+
+**The cost, named rather than discovered later.** A clipped surface is
+keyed on its visible pixels, so scrolling it re-uploads where kitty could
+re-place a stored image with a new source rectangle. The pixels change on
+every scroll step either way; what is lost is one upload per step for a
+surface partly out of view. Doing the cheaper thing needs the clip to
+reach the backend, which means a field in `CellImage` -- a public header,
+so the holder's decision and not one to take while fixing this.
+
+**2277 checks to 2281, and one sabotage entry withdrawn.** The three
+existing configurations could not have caught either fault: each of their
+widgets FITS inside the thing that clips it, so "stay inside your rect"
+and "stay inside what is visible" are the same instruction and no fixture
+could separate them.
+
+**The scrolled check was green against the sabotage and had to be
+strengthened**, which is the part worth keeping. As first written it
+asked only which content rows reached the viewport -- and with the bound
+removed the rect is at -3, so the widget's nine rows land on -3 to 5 and
+rows 1 and 3 carry exactly what the check expected. It was a check about
+the mapping wearing a claim about the bound. Asserting that the rows
+BELOW the viewport are clear is the half that discriminates, and the
+sabotage reddens both checks now.
+
+**And the third entry is withdrawn rather than kept.** It disabled
+`harvest()`'s `vis.isEmpty()` guard and left *"one scrolled wholly out of
+view makes no placement"* green, because Qt sends no paint event to a
+widget that is entirely scrolled out: `harvest()` is never entered, so
+the guard is never the reason there is no placement. The guard stays as
+defence in depth against an empty rectangle reaching `QImage::copy()`,
+labelled as such in the code; the check stays because the observable is
+worth pinning; neither is evidence for the other.
 
 
 ### 8.500 Measuring text in cells, from outside the library (2026-10-22)

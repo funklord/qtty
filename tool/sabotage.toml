@@ -6790,6 +6790,36 @@ count = 1
 check = "eliding to 1 cell is the marker, never an empty string"
 
 [[sabotage]]
+# The cell-painted path bounded by its own rect rather than by what its
+# ancestors leave visible, which is how it was: a widget taller than the
+# viewport scrolling it filled every row it was given, over whatever sat
+# below the scroll area. 8.501.
+name = "a cell-painted widget is bounded by itself, not by its viewport"
+file = "src/render/cell_paint.cpp"
+find = "\t\tconst CellClip bound(dev, cells_of_rect(visible_rect(w), w,\n\t\t                                        dev->origin));"
+into = "\t\tconst CellClip bound(dev, cells_of_rect(w->rect(), w, dev->origin));"
+count = 1
+check = "a cell-painted widget taller than its viewport is handed its whole rect and writes only the rows the viewport shows"
+
+[[sabotage]]
+# A harvested placement taking the widget's whole rect, which is how it was:
+# the backend crops to the GRID and nothing cropped to the viewport, so a
+# pixel surface 9 rows tall was placed over 9 rows of a 3-row viewport. 8.501.
+name = "a harvested placement is not cropped to what is visible"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (vis != w->rect()) {\n\t\t\timg = img.copy(vis);\n\t\t\tcells = cells_of_rect(vis, w, dev->origin);\n\t\t}"
+into = "\t\tif (false) {\n\t\t\timg = img.copy(vis);\n\t\t\tcells = cells_of_rect(vis, w, dev->origin);\n\t\t}"
+count = 1
+check = "a pixel surface taller than its viewport is placed in the viewport's cells, carrying the slice that is visible rather than the whole thing squashed"
+
+# WITHDRAWN rather than written: an entry disabling the `vis.isEmpty()`
+# early return in harvest() left "and one scrolled wholly out of view makes
+# no placement" GREEN, because Qt does not send a paint event to a widget
+# that is wholly scrolled out -- so harvest() is never entered and the guard
+# is never the reason there is no placement. The check is true and the guard
+# is defence in depth; neither is evidence for the other. 8.501.
+
+[[sabotage]]
 # text_cells() counting code points rather than cells, which is the
 # implementation an application writes by mistake and the reason the call
 # is public at all. Every fixture the check names is one where the two

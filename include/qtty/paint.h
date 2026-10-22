@@ -32,12 +32,25 @@ class CellPaintEngine;
 // carries the compositor's origin, so an implementation draws at cells.left()
 // and cells.top() and maps nothing itself.
 //
-// The buffer handed over is the WHOLE frame, and `cells` is where the widget
-// is rather than a boundary anything enforces. An implementation that writes
-// outside it writes over its neighbours, and nothing here notices -- measured,
-// not inferred. Two things follow. Stay inside `cells`; and a cell outside the
-// buffer is dropped rather than wrapped, so a widget scrolled or positioned
-// partly off-screen may draw its whole rect and let the edges fall away.
+// The buffer handed over is the WHOLE frame, and the write is BOUNDED to what
+// is visible: the buffer carries a clip of the widget's rectangle intersected
+// with every ancestor's, so a write outside it is dropped rather than landing
+// on a neighbour. An implementation may therefore draw its whole rect and let
+// whatever is off screen or outside the viewport fall away, with no
+// arithmetic of its own.
+//
+// `cells` IS STILL THE WIDGET'S WHOLE RECTANGLE, which is the half that
+// matters for mapping content: an implementation lays its own rows out from
+// cells.top(), so a rect clipped to the viewport would put its first row
+// wherever the viewport began. Hence a widget scrolled half out gets a rect
+// whose top is negative and a clip that keeps the visible part.
+//
+// This used to say the opposite -- that nothing enforced the boundary and an
+// implementation writing outside it overwrote its neighbours. That was
+// measured and true: a widget 9 rows tall in a 3-row viewport was handed all
+// nine rows and wrote all nine, over everything below the scroll area, while
+// obeying this comment exactly. The bound is the one Channel B has had since
+// the twelve-widget sweep; this path was the one without it.
 //
 // A widget must not inherit both this and PixelSurface. It compiles, and the
 // pixel path wins: qtty tests for a surface first, so paint_cells() is never

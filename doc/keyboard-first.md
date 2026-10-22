@@ -2402,14 +2402,27 @@ Measured, and pinned by a check so the consequence cannot quietly
 change in either direction. The two interfaces answer opposite
 questions, and a class claiming both has answered neither.
 
-**`cells` is where you are, not a fence.** The buffer handed to
-`paint_cells()` is the whole frame; your rectangle already carries the
-compositor's origin, so draw at `cells.left()` and `cells.top()` and
-map nothing yourself. Write outside it and you write over your
-neighbours, and nothing notices -- measured, not inferred. A cell
-outside the buffer is dropped rather than wrapped, so a widget
-positioned partly off-screen may draw its whole rect and let the edges
-fall away.
+**`cells` is where you are, and the buffer is bounded for you.** The
+buffer handed to `paint_cells()` is the whole frame; your rectangle
+already carries the compositor's origin, so draw at `cells.left()` and
+`cells.top()` and map nothing yourself. **Write outside it and the write
+is dropped**, so you may draw your whole rect and let whatever is not on
+screen fall away -- a widget hanging off the edge of the window, or one
+taller than the viewport scrolling it, needs no arithmetic of its own.
+
+This paragraph used to say the opposite -- that writing outside your
+rect overwrote your neighbours and nothing noticed. It was true, and it
+was the library's fault rather than yours: the bound is what Qt's own
+widgets have had since the twelve-widget sweep, and `paint_cells()` was
+the one path without it. A widget 9 rows tall in a 3-row viewport was
+handed all nine and wrote all nine, over everything below the scroll
+area, while obeying this page to the letter. If you wrote clipping
+arithmetic of your own because of that sentence, you can take it out.
+
+The same bound now applies to a `PixelSurface`: a surface partly
+scrolled out is placed in the cells that are visible and carries the
+part of itself that is visible, rather than the whole image squeezed
+into the cells that remain.
 
 The fifth is the one that is a limitation rather than a price: a cell row
 is the unit, so a widget laying its own lines out in pixels can ask for the

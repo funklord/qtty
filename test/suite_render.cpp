@@ -39,6 +39,51 @@ bool buffer_has(const Qtty::CellBuffer &b, const QString &needle) {
 	return b.to_text().contains(needle);
 }
 
+// A cell-painted widget that fills every cell of the rect it is handed, and
+// numbers its own rows so a scrolled slice says WHICH rows reached the frame.
+// CellDrawn writes five cells at its top-left, which is enough to say the
+// interface was called and cannot say whether anything was bounded.
+class CellFilled : public QWidget, public Qtty::ICellPainted {
+public:
+	using QWidget::QWidget;
+	mutable QRect got;
+	void paint_cells(Qtty::CellBuffer &b, const QRect &cells) const override {
+		got = cells;
+		for (int i = 0; i < cells.height(); ++i)
+			b.text(cells.left(), cells.top() + i,
+			       QStringLiteral("row%1").arg(i));
+	}
+	void paintEvent(QPaintEvent *) override {}
+};
+
+// A pixel surface whose top third and bottom two thirds are different
+// colours, which is what tells a CROP from a SQUASH: the visible slice of a
+// surface scrolled to one end has to be one colour, where a whole surface
+// squeezed into the cells that remain would carry both.
+class Banded : public Qtty::PixelSurface {
+public:
+	using Qtty::PixelSurface::PixelSurface;
+	void paintEvent(QPaintEvent *) override {
+		QPainter p(this);
+		p.fillRect(QRect(0, 0, width(), height() / 3), Qt::red);
+		p.fillRect(QRect(0, height() / 3, width(), height() - height() / 3),
+		           Qt::blue);
+	}
+};
+
+// Which of the two bands a harvested placement carries, as a pair.
+static QPair<int, int> bands(const Qtty::CellImage &im) {
+	const QImage img = im.pixmap.toImage();
+	int red = 0, blue = 0;
+	for (int y = 0; y < img.height(); ++y)
+		for (int x = 0; x < img.width(); ++x) {
+			const QRgb c = img.pixel(x, y);
+			if (qRed(c) > 200 && qBlue(c) < 60) ++red;
+			else if (qBlue(c) > 200 && qRed(c) < 60) ++blue;
+		}
+	return { red, blue };
+}
+
 // A widget claiming both interfaces. PixelSurface is tested first in the
 // filter, so this is what says which one such a class actually gets --
 // qtty/paint.h tells applications not to write one, and this is what would
@@ -2103,6 +2148,205 @@ int suite_render(bool record) {
 			printf("FAIL: a widget claiming both interfaces takes the pixel path\n"
 			       "      condition: paint_cells called %d time(s), "
 			       "%d placement(s)\n", both->cell_calls, int(placements.size()));
+			++r;
+		}
+
+		// A WIDGET LARGER THAN THE VIEWPORT THAT SCROLLS IT, which is the
+		// configuration the three above do not reach: each of their widgets
+		// fits inside the thing that clips it, so "stay inside the rect you
+		// were given" and "stay inside what is visible" are the same
+		// instruction and no fixture could tell them apart.
+		//
+		// Measured before the fix, on a widget 20 by 9 cells in a viewport 3
+		// rows tall: handed 20x9+0+1, it filled all nine rows -- over the
+		// label below the scroll area and over every cell beside it. It had
+		// obeyed its contract exactly, qtty/paint.h and the guide both saying
+		// to draw inside the rect you are handed, so no application could
+		// have got this right.
+		//
+		// THE RECT STAYS WHOLE and the bound goes on the buffer. An
+		// implementation maps its own content from cells.top(), so a rect
+		// clipped to the viewport would put row 0 of that content wherever
+		// the viewport began -- which is why this asserts both halves: the
+		// full rect arrives, and only the visible rows are written.
+		QWidget tall;
+		tall.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tall_area = new QScrollArea(&tall);
+		tall_area->setGeometry(0, ch, cw * 20, ch * 3);
+		tall_area->setFrameShape(QFrame::NoFrame);
+		tall_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		tall_area->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		auto *tall_inner = new QWidget;
+		tall_inner->resize(cw * 20, ch * 9);
+		auto *filled = new CellFilled(tall_inner);
+		filled->setGeometry(0, 0, cw * 20, ch * 9);
+		tall_area->setWidget(tall_inner);
+		auto *neighbour = new QLabel(QStringLiteral("BELOW"), &tall);
+		neighbour->setGeometry(0, ch * 6, cw * 10, ch);
+		tall.resize(GridMetrics::cells(24, 10));
+		tall.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer tb(24, 10);
+		Qtty::render_once(tall, tb);
+		const QStringList trows = tb.to_text().split(QLatin1Char('\n'));
+		const auto row_of = [&trows](int i) {
+			return i < trows.size() ? trows[i] : QString();
+		};
+		if (filled->got == QRect(0, 1, 20, 9)
+		    && row_of(1).startsWith(QStringLiteral("row0"))
+		    && row_of(3).startsWith(QStringLiteral("row2"))
+		    && row_of(4).trimmed().isEmpty()
+		    && row_of(6).startsWith(QStringLiteral("BELOW")))
+			printf("PASS: a cell-painted widget taller than its viewport is"
+			       " handed its whole rect and writes only the rows the"
+			       " viewport shows\n");
+		else {
+			printf("FAIL: a cell-painted widget taller than its viewport is"
+			       " handed its whole rect and writes only the rows the"
+			       " viewport shows\n"
+			       "      condition: rect %dx%d+%d+%d, row 4 [%s], row 6"
+			       " [%s]\n", filled->got.width(), filled->got.height(),
+			       filled->got.x(), filled->got.y(),
+			       qPrintable(row_of(4)), qPrintable(row_of(6)));
+			++r;
+		}
+
+		// And the slice follows the scroll. Without this the check above is
+		// satisfied by a bound that always keeps the first three rows, which
+		// is the one wrong answer a clip can give that looks right at rest.
+		//
+		// IT ASSERTS THE ROWS BELOW THE VIEWPORT ARE CLEAR for a reason that
+		// was measured rather than assumed: the first version of this check
+		// asked only which content rows reached the viewport, and a sabotage
+		// removing the bound altogether left it GREEN. With the rect at -3
+		// the widget's nine rows land on -3 to 5, so rows 4 and 5 are written
+		// and rows 1 and 3 carry exactly what this expected -- the check was
+		// about the mapping and said it was about the bound. The empty row is
+		// the half that discriminates.
+		tall_area->verticalScrollBar()->setValue(ch * 4);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer tb2(24, 10);
+		Qtty::render_once(tall, tb2);
+		const QStringList srows = tb2.to_text().split(QLatin1Char('\n'));
+		const auto srow = [&srows](int i) {
+			return i < srows.size() ? srows[i] : QString();
+		};
+		if (filled->got == QRect(0, -3, 20, 9)
+		    && srow(1).startsWith(QStringLiteral("row4"))
+		    && srow(3).startsWith(QStringLiteral("row6"))
+		    && srow(4).trimmed().isEmpty() && srow(5).trimmed().isEmpty()
+		    && srow(6).startsWith(QStringLiteral("BELOW")))
+			printf("PASS: and scrolling it moves which rows are written,"
+			       " the rect going negative rather than the bound moving\n");
+		else {
+			printf("FAIL: and scrolling it moves which rows are written,"
+			       " the rect going negative rather than the bound moving\n"
+			       "      condition: rect y %d, rows [%s][%s], below the"
+			       " viewport [%s][%s]\n",
+			       filled->got.y(), qPrintable(srow(1)), qPrintable(srow(3)),
+			       qPrintable(srow(4)), qPrintable(srow(5)));
+			++r;
+		}
+
+		// THE PIXEL ARM OF THE SAME FAULT. The backend crops a placement to
+		// the GRID (section 16.3) and that was its only bound, so a surface
+		// 9 rows tall in a 3-row viewport was placed at its full height --
+		// measured as 20x9+0+1 for a viewport of 20x3+0+1.
+		//
+		// The image is cropped WITH the rect, because crop_placement()
+		// derives its source rectangle by assuming the image spans
+		// cell_rect: shrinking the rect alone would squash the whole surface
+		// into the rows that remain. That is what the bands are for -- a
+		// squash carries both colours and a crop carries one.
+		QWidget pix;
+		pix.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *pix_area = new QScrollArea(&pix);
+		pix_area->setGeometry(0, ch, cw * 20, ch * 3);
+		pix_area->setFrameShape(QFrame::NoFrame);
+		pix_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		pix_area->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		auto *pix_inner = new QWidget;
+		pix_inner->resize(cw * 20, ch * 9);
+		auto *banded = new Banded(pix_inner);
+		banded->setGeometry(0, 0, cw * 20, ch * 9);
+		pix_area->setWidget(pix_inner);
+		pix.resize(GridMetrics::cells(24, 10));
+		pix.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer pb(24, 10);
+		QVector<Qtty::CellImage> top;
+		Qtty::render_once(pix, pb, &top);
+		pix_area->verticalScrollBar()->setValue(ch * 6);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer pb2(24, 10);
+		QVector<Qtty::CellImage> bottom;
+		Qtty::render_once(pix, pb2, &bottom);
+		const QRect want(0, 1, 20, 3);
+		const QPair<int, int> at_top = top.size() == 1 ? bands(top[0])
+		                                              : QPair<int, int>(-1, -1);
+		const QPair<int, int> at_bottom = bottom.size() == 1
+		                                      ? bands(bottom[0])
+		                                      : QPair<int, int>(-1, -1);
+		if (top.size() == 1 && bottom.size() == 1
+		    && top[0].cell_rect == want && bottom[0].cell_rect == want
+		    && at_top.first > 0 && at_top.second == 0
+		    && at_bottom.second > 0 && at_bottom.first == 0)
+			printf("PASS: a pixel surface taller than its viewport is placed"
+			       " in the viewport's cells, carrying the slice that is"
+			       " visible rather than the whole thing squashed\n");
+		else {
+			printf("FAIL: a pixel surface taller than its viewport is placed"
+			       " in the viewport's cells, carrying the slice that is"
+			       " visible rather than the whole thing squashed\n"
+			       "      condition: %d/%d placement(s), rects %dx%d+%d+%d"
+			       " and %dx%d+%d+%d, bands %d/%d then %d/%d\n",
+			       int(top.size()), int(bottom.size()),
+			       top.isEmpty() ? 0 : top[0].cell_rect.width(),
+			       top.isEmpty() ? 0 : top[0].cell_rect.height(),
+			       top.isEmpty() ? 0 : top[0].cell_rect.x(),
+			       top.isEmpty() ? 0 : top[0].cell_rect.y(),
+			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.width(),
+			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.height(),
+			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.x(),
+			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.y(),
+			       at_top.first, at_top.second,
+			       at_bottom.first, at_bottom.second);
+			++r;
+		}
+
+		// And one scrolled WHOLLY out of view makes no placement at all.
+		//
+		// WHAT MAKES THIS TRUE IS QT, not the crop, and the distinction was
+		// measured rather than reasoned: a sabotage disabling harvest()'s
+		// `vis.isEmpty()` guard left this green, because Qt sends no paint
+		// event to a widget that is entirely scrolled out, so harvest() is
+		// never entered. The guard is defence in depth against an empty
+		// visible rectangle reaching QImage::copy(), and that sabotage entry
+		// is withdrawn rather than left passing over broken code.
+		//
+		// The check stays because the observable is worth pinning: a frame
+		// that carries a picture of nothing -- null pixmap, empty cell rect,
+		// keyed and diffed like any other -- is what a future change forcing
+		// repaints of hidden content would produce, and nothing else here
+		// would notice.
+		auto *gone = new Banded(pix_inner);
+		gone->setGeometry(0, ch * 30, cw * 20, ch * 2);
+		pix_inner->resize(cw * 20, ch * 40);
+		banded->hide();
+		pix_area->verticalScrollBar()->setValue(0);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer pb3(24, 10);
+		QVector<Qtty::CellImage> none;
+		Qtty::render_once(pix, pb3, &none);
+		if (none.isEmpty())
+			printf("PASS: and one scrolled wholly out of view makes no"
+			       " placement, Qt not painting it at all\n");
+		else {
+			printf("FAIL: and one scrolled wholly out of view makes no"
+			       " placement, Qt not painting it at all\n      condition: %d placement(s), first"
+			       " %dx%d+%d+%d\n", int(none.size()),
+			       none[0].cell_rect.width(), none[0].cell_rect.height(),
+			       none[0].cell_rect.x(), none[0].cell_rect.y());
 			++r;
 		}
 	}
