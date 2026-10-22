@@ -1257,9 +1257,70 @@ void Compositor::compose(CellBuffer &out) {
 			// same mistake in both axes; it was found in one of them
 			// first.
 			const QRect cr = v.toRect();
+			// AND CORRECTED BY WHAT THIS LIBRARY ACTUALLY DREW, because
+			// the rectangle is in PIXELS and the pixels are Qt's. Qt
+			// places the caret at the font's advance over the text before
+			// it, and this library draws a two-column cluster in two
+			// CELLS whatever the font says -- so on wide text the two
+			// part company and the terminal's cursor sits on the text
+			// rather than after it.
+			//
+			// Measured 2026-10-22 on a twenty-cell field, the caret at
+			// the end:
+			//
+			//     abcd        drawn to cell 4, caret cell 5   right
+			//     four CJK    drawn to cell 8, caret cell 7   two adrift
+			//     ab + four   drawn to cell 10, caret cell 9  two adrift
+			//
+			// The error is the difference between the two advances, so
+			// that is what is added back: ask the owner where the cursor
+			// is in its own text, measure the text before it both ways,
+			// and shift by the difference. It is zero for narrow text,
+			// the font's advance being a whole cell by the check
+			// grid_font_problem() makes at startup -- so nothing moves
+			// for ASCII, which the fixture asserts rather than assumes.
+			//
+			// Not a fix for the WIDGET being sized in Qt's pixels, which
+			// is section 0b's question about what a font's wide glyphs
+			// must advance by. This is the caret alone, and the caret is
+			// the thing a terminal user's eye follows.
+			//
+			// AND ONLY WHERE THE WHOLE PREFIX IS ON SCREEN, which the
+			// first version of this did not ask and which cost more than
+			// the fault it fixed. A field holding more text than it can
+			// show is scrolled, Qt's rectangle is already clamped to the
+			// visible part, and adding the difference over the WHOLE
+			// prefix then pushes the caret off the widget: measured on a
+			// twenty-cell field holding twenty wide characters, the
+			// correction was +10 cells, the result landed outside the
+			// buffer, and the bounds test below dropped the caret
+			// ENTIRELY -- no cursor at all, which is worse than one two
+			// cells out.
+			//
+			// The test is whether the text's own start is still inside
+			// the widget: Qt put the caret at the font's advance over the
+			// prefix, so subtracting that advance gives where the text
+			// begins, and a negative answer means it begins off the left
+			// edge. Where it does, Qt's reading is kept -- it is the only
+			// one with the scroll offset in it.
+			int adrift = 0;
+			{
+				const QVariant at =
+				    owner->inputMethodQuery(Qt::ImCursorPosition);
+				const QVariant around =
+				    owner->inputMethodQuery(Qt::ImSurroundingText);
+				if (at.isValid() && around.isValid()) {
+					const QString before =
+					    around.toString().left(qMax(0, at.toInt()));
+					const int qt_px = QFontMetrics(owner->font())
+					                      .horizontalAdvance(before);
+					if (cr.x() + cr.width() / 2 - qt_px >= 0)
+						adrift = text_cells(before) * cw - qt_px;
+				}
+			}
 			QPoint g = cursor_origin
 			           + owner->mapTo(cursor_layer,
-			                          QPoint(cr.x() + cr.width() / 2,
+			                          QPoint(cr.x() + cr.width() / 2 + adrift,
 			                                 cr.y() + cr.height() / 2));
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0

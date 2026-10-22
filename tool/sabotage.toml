@@ -7613,3 +7613,13 @@ find = "\t\t\treturn QSize(qMax(width,\n\t\t\t                  label_floor(hd->
 into = "\t\t\treturn QSize(width, ch);"
 count = 1
 check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
+
+[[sabotage]]
+# The caret goes back to Qt's pixel rectangle alone, so a field of wide
+# characters puts the terminal's cursor inside its own text. 8.488.
+name = "a caret is placed at the font's advance"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\t\t\tif (cr.x() + cr.width() / 2 - qt_px >= 0)\n\t\t\t\t\t\tadrift = text_cells(before) * cw - qt_px;"
+into = "\t\t\t\t\tadrift = 0;"
+count = 1
+check = "a caret sits one cell past the text before it, counted in cells, so a field of wide characters does not put the terminal's cursor inside its own text"

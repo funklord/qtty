@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2247 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2248 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1074,7 +1074,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
+| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item, and 8.488 correcting the CARET, which Qt also places at the font's advance. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2247 on Qt 6 with no failures,
-  and 2216 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2248 on Qt 6 with no failures,
+  and 2217 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,58 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.488 The cursor sat inside the text it was meant to follow (2026-10-22)
+
+**The wide-text lens, pointed at the one thing a terminal user's eye
+follows.** The caret's cell comes from Qt's `ImCursorRectangle`, which is in
+PIXELS at the font's advance over the text before it -- and this library
+draws a two-column cluster in two CELLS whatever the font says. Measured
+2026-10-22 on a twenty-cell field with the caret at the end:
+
+    abcd           drawn to cell 4, caret cell 5     right
+    four CJK       drawn to cell 8, caret cell 7     two adrift
+    ab + four CJK  drawn to cell 10, caret cell 9    two adrift
+
+The cursor sat ON the text rather than after it, and drifted further with
+every wide character. The compositor's own comment is the argument for why
+this matters: the caret "is the thing a terminal user's eye follows and it
+is not in the buffer".
+
+**Corrected by the difference between the two advances.** Ask the owner
+where the cursor is in its own text, measure the text before it both ways,
+and shift by the difference. It is zero for narrow text -- the font's advance
+being a whole cell by the check `grid_font_problem()` makes at startup -- so
+nothing moves for ASCII, which the fixture asserts rather than assumes.
+
+**The first version lost the caret entirely on a scrolled field, which is
+worse than the fault it fixed.** A field holding more text than it can show
+is scrolled, Qt's rectangle is already clamped to the visible part, and
+adding the difference over the WHOLE prefix pushed the answer off the
+widget: measured on a twenty-cell field holding twenty wide characters, the
+correction was **+10 cells**, the result landed outside the buffer, and the
+bounds test dropped the cursor -- no caret at all, where before there was
+one two cells out.
+
+**The guard is the text's own start.** Qt put the caret at the font's
+advance over the prefix, so subtracting that advance says where the text
+begins; a negative answer means it begins off the left edge, and there Qt's
+reading is kept because it is the only one with the scroll offset in it. The
+scrolled cases now behave exactly as they did before this change, which is
+the point of the guard rather than a happy accident.
+
+**ASSERTED AS THE RELATIONSHIP, read off the buffer.** The caret's cell is
+one past the last cell the text occupies, and the last cell is found by
+walking the row -- a wide cluster's CONTINUATION cell is what makes it two
+past the last glyph. Nothing in the check computes where the text should
+end, which is the mistake a fixture of this shape invites.
+
+**This is not a fix for the WIDGET being sized in Qt's pixels**, which is
+section 0b's question about what a font's wide glyphs must advance by. It is
+the caret alone.
+
+2248 checks on Qt 6, 2217 passing and 31 stepping over on Qt 5, 706 sabotage
+entries, every anchor matching.
 
 ### 8.487 Finishing the label floor: a menu bar, a heading, a menu item (2026-10-22)
 

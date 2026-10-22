@@ -9207,6 +9207,80 @@ int suite_widgets() {
 
 
 
+	// THE CARET GOES WHERE THE TEXT WAS DRAWN, which it did not for wide
+	// text. The caret's cell comes from Qt's ImCursorRectangle, which is in
+	// PIXELS at the font's advance over the text before it -- and this
+	// library draws a two-column cluster in two CELLS whatever the font
+	// says. Measured 2026-10-22 on a twenty-cell field with the caret at
+	// the end:
+	//
+	//     abcd           drawn to cell 4, caret cell 5    right
+	//     four CJK       drawn to cell 8, caret cell 7     two adrift
+	//     ab + four CJK  drawn to cell 10, caret cell 9    two adrift
+	//
+	// The cursor sat ON the text rather than after it, and drifted further
+	// with every wide character. The caret is the thing a terminal user's
+	// eye follows, which is the compositor's own argument for recording it
+	// in a snapshot at all.
+	//
+	// ASSERTED AS THE RELATIONSHIP: the caret's cell is one past the last
+	// cell the text occupies, read off the BUFFER rather than computed --
+	// a wide cluster's continuation cell is what makes the last cell two
+	// past the last glyph. The ASCII row is the control and it is the half
+	// that says the correction is zero where the font already agrees.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QString cjk;
+		for (int k = 0; k < 4; ++k) cjk += QChar(0x4fdd + k);
+		int adrift = 0, cases = 0;
+		for (const QString &text : { QStringLiteral("abcd"), cjk,
+		                             QStringLiteral("ab") + cjk }) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *ed = new QLineEdit(&host);
+			ed->setGeometry(0, 0, 20 * cw, ch);
+			ed->setText(text);
+			ed->setCursorPosition(text.size());
+			host.resize(GridMetrics::cells(20, 2));
+			host.show();
+			QCoreApplication::processEvents();
+			ed->setFocus();
+			QCoreApplication::processEvents();
+			set_focus_widget(ed);
+			InputRouter r(&host);
+			CellBuffer b(20, 2);
+			int at = -1;
+			{
+				Compositor c(&host, &r);
+				c.compose(b);
+				if (const std::optional<QPoint> p = c.cursor_cell())
+					at = p->x();
+			}
+			// The last cell the text occupies: the closing bracket is not
+			// text, and a wide cluster's continuation cell counts.
+			int last = -1;
+			for (int x = 0; x < b.cols(); ++x) {
+				const QString g = b.at(x, 0).ch;
+				if (!g.isEmpty() && g != QStringLiteral(" ")
+				    && g != QStringLiteral("]"))
+					last = b.at(x, 0).width == 2 ? x + 1 : x;
+			}
+			++cases;
+			if (at != last + 1) {
+				++adrift;
+				printf("info:   |%s|: the caret is at cell %d and the text"
+				       " ends at %d\n", qPrintable(text), at, last);
+			}
+			GridGuard::reset();
+		}
+		printf("info: %d of %d field(s) put the caret somewhere other than"
+		       " after their text\n", adrift, cases);
+		CHECK(cases == 3 && adrift == 0,
+		      "a caret sits one cell past the text before it, counted in"
+		      " cells, so a field of wide characters does not put the"
+		      " terminal's cursor inside its own text");
+	}
+
 	// A FRAMED EDITOR'S BORDER IS CONTINUOUS, which it was not: a spin box
 	// three rows tall drew its corners and its sides and almost none of its
 	// top or bottom, and the editable combo and the date-time edit shared
