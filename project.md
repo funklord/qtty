@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2244 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2245 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1074,6 +1074,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
+| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485; what is open is whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept that wide text is clipped by boxes Qt sized. The first is a new startup error on fonts that work today | 8.485, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
@@ -3150,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2244 on Qt 6 with no failures,
-  and 2213 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2245 on Qt 6 with no failures,
+  and 2214 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18391,62 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.485 A link the box exists to show, cut off by its own fold (2026-10-22)
+
+**The lens's fifth instance, and the one that cost a feature rather than a
+glyph.** `fold_to_columns()` breaks a message to the terminal's columns so
+that a link dialog does not come out wider than the screen -- the incident
+`message_columns()` records, where one 104-character line made a box 111
+cells wide. Its own comment says "in characters", and a character is a cell
+only while the text is ASCII.
+
+**`QUrl::toString()` answers PrettyDecoded**, so a path with CJK in it
+arrives as CJK rather than as percent-encoding. Measured 2026-10-22 on a
+link with a 150-character CJK path:
+
+    widest folded line   140 cells
+    the box              50 cells
+
+Ninety cells of the URL were cut off, and reading it is the whole purpose:
+the comment above the function says the clipboard "already holds the URL
+exactly -- what is on the screen is for reading, and all of it is readable
+folded." It was not.
+
+**The fold counts cells now**, and `elide_to_cells(word, width,
+Qt::ElideNone)` is the break-through-a-word cut: that mode truncates with no
+marker, which is what this wants, and it cuts at a cluster boundary -- so
+the `mid()` that resumes the word lands on one too, where `mid(width)` split
+a surrogate pair. The widest line is 70 cells for both links now, which is
+the budget.
+
+**ASSERTED AGAINST THE ASCII CASE rather than against a column count**,
+because the budget is `message_columns()`' and restating it in the check
+would be the test doing the library's arithmetic again. Both links go
+through the same budget, so a fold that counts cells gives them the same
+widest line and one that counts code units gives the CJK one twice as many:
+140 against 70.
+
+**What the fold cannot fix is recorded rather than asserted, and it is a
+question for section 0b.** The box is 50 cells on Qt 6 and 40 on Qt 5 while
+the folded line is 70, because `QMessageBox` sizes itself from Qt's font
+metrics and the font's advance for a wide glyph is not two cells.
+`grid_font_problem()` probes `MilW@#0oX|._`, which is all narrow Latin, and
+never asks what a WIDE glyph advances by -- so every widget Qt sizes from
+its own metrics is too narrow for text a terminal renders at two cells a
+character. The two Qt versions disagreeing about the same font is the
+measurement that makes it worth a row rather than a fix.
+
+**And the line-filling half of the fold is not defended by a sabotage, which
+is measured rather than assumed.** Breaking a word on code units reddens the
+check; filling a LINE on them does not, because the only caller's wide text
+is a URL and a URL is one word -- the sentence appended after it is this
+library's own English. The entry written for it was withdrawn rather than
+left passing, and the expression stays in cells because the function is
+general and its name says which unit it folds to.
+
+2245 checks on Qt 6, 2214 passing and 31 stepping over on Qt 5, 698 sabotage
+entries, every anchor matching.
 
 ### 8.484 A dialog's frame lost a corner to its own title (2026-10-22)
 

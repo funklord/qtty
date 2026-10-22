@@ -2,6 +2,7 @@
 // check (section 5.3, risk R3), and GridGuard (section 5.3, section 9).
 #include <qtty/qtty.h>
 #include "src/qt_compat.h"
+#include "src/cell_geometry.h"
 #include <qtty/null_backend.h>
 #include "src/runtime/title_keeper.h"
 // Internal, and included for one check: proving that an application's own
@@ -3497,11 +3498,63 @@ int suite_runtime() {
 		const QVector<QMessageBox *> wide = boxes();
 		const int box_cells = wide.isEmpty() ? -1
 		                      : (wide.first()->width() + cw - 1) / cw;
+		const auto widest_line = [](const QVector<QMessageBox *> &bs) {
+			int n = 0;
+			if (!bs.isEmpty())
+				for (const QString &ln :
+				     bs.first()->text().split(QLatin1Char('\n')))
+					n = qMax(n, text_cells(ln));
+			return n;
+		};
+		const int widest_ascii = widest_line(wide);
 		CHECK(board->text() == long_link && box_cells > 0 && box_cells <= 80,
 		      "a link longer than the terminal is copied whole and folded "
 		      "to fit the screen, rather than making a dialog wider than "
 		      "the terminal it is drawn on");
 		if (!wide.isEmpty()) wide.first()->close();
+		QCoreApplication::processEvents();
+
+		// AND A LINK THAT IS NOT ASCII, which the fold measured in code
+		// units. The comment on message_columns() says "in characters" and
+		// records the incident this is the other half of -- a box wider
+		// than the terminal it is drawn on -- and a character is a cell
+		// only while the text is ASCII. QUrl::toString() answers
+		// PrettyDecoded, so a path with CJK in it arrives here as CJK
+		// rather than as percent-encoding.
+		QString cjk_path;
+		for (int k = 0; k < 150; ++k) cjk_path += QChar(0x4fdd + (k % 8));
+		const QString wide_link = QStringLiteral("https://qtty.invalid/")
+		                        + cjk_path;
+		QDesktopServices::openUrl(QUrl(wide_link));
+		QCoreApplication::processEvents();
+		const QVector<QMessageBox *> cjk_box = boxes();
+		const int cjk_cells = cjk_box.isEmpty() ? -1
+		                      : (cjk_box.first()->width() + cw - 1) / cw;
+		const int widest_cjk = widest_line(cjk_box);
+		printf("info: the widest folded line is %d cell(s) for 300 ascii"
+		       " characters and %d for 150 CJK ones; the CJK box is %d"
+		       " cell(s) wide\n", widest_ascii, widest_cjk, cjk_cells);
+		// ASSERTED AGAINST THE ASCII CASE rather than against a column
+		// count, because the budget is message_columns()' and restating it
+		// here would be this check doing the library's arithmetic again.
+		// Both links go through the same budget, so a fold that counts
+		// cells gives them the same widest line and one that counts code
+		// units gives the CJK one twice as many -- measured, 140 against
+		// 70 before this was fixed.
+		CHECK(widest_ascii > 0 && widest_cjk == widest_ascii,
+		      "and a link whose characters are two cells wide folds to the"
+		      " same budget, the fold counting cells rather than code"
+		      " units");
+		// WHAT THE FOLD CANNOT FIX, recorded rather than asserted: the box
+		// is 50 cells and the folded line is 70, because QMessageBox sizes
+		// itself from Qt's font metrics and the font's advance for a wide
+		// glyph is not two cells. grid_font_problem() probes
+		// `MilW@#0oX|._`, which is all narrow Latin, and never asks what a
+		// wide glyph advances by -- so a box sized by Qt is too narrow for
+		// text a terminal renders at two cells a character. That is a
+		// question about what font the grid requires and is section 0b's,
+		// not this check's.
+		if (!cjk_box.isEmpty()) cjk_box.first()->close();
 		QCoreApplication::processEvents();
 
 		// THE ESCAPE HATCH, and it is checked DURING A RUN on purpose.

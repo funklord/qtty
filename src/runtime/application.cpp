@@ -570,15 +570,43 @@ QString fold_to_columns(const QString &text, int cols) {
 		const QStringList words =
 		    para.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 		if (words.isEmpty()) { out.append(QString()); continue; }
+		// IN CELLS, which this counted in code units -- and the comment on
+		// message_columns() above says "in characters", which is a cell
+		// only while the text is ASCII. QUrl::toString() answers
+		// PrettyDecoded, so a path with CJK in it arrives here as CJK
+		// rather than as percent-encoding, and a character of it is two
+		// cells.
+		//
+		// Measured 2026-10-22 on a link with a 150-character CJK path: the
+		// fold left a line of 140 CELLS in a box 50 cells wide, so ninety
+		// cells of the URL were cut off -- and the box exists to be READ,
+		// the clipboard already holding the link exactly.
+		//
+		// elide_to_cells with ElideNone is the break-through-a-word cut in
+		// cells: that mode truncates with no marker, which is what this
+		// wants, and it cuts at a cluster boundary -- so the mid() below
+		// resumes on one too, where mid(width) split a surrogate pair.
 		QString line;
 		for (QString word : words) {
-			while (word.size() > width) {
+			while (text_cells(word) > width) {
 				if (!line.isEmpty()) { out.append(line); line.clear(); }
-				out.append(word.left(width));
-				word = word.mid(width);
+				const QString head =
+				    elide_to_cells(word, width, Qt::ElideNone);
+				if (head.isEmpty()) break;         // no progress to be made
+				out.append(head);
+				word = word.mid(head.size());
 			}
+			// The line-filling half is correct and is NOT defended by a
+			// sabotage, which is measured rather than assumed: breaking a
+			// word on code units reddens the check that watches this, and
+			// filling a LINE on them does not, because the only caller's
+			// wide text is a URL and a URL is one word. The sentence
+			// appended after it is this library's own English. The entry
+			// written for it was withdrawn rather than left passing, and
+			// the expression stays in cells because the function is
+			// general and its name says what unit it folds to.
 			if (line.isEmpty()) line = word;
-			else if (line.size() + 1 + word.size() <= width)
+			else if (text_cells(line) + 1 + text_cells(word) <= width)
 				line += QLatin1Char(' ') + word;
 			else { out.append(line); line = word; }
 		}

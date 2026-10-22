@@ -7533,3 +7533,13 @@ find = "\tif (text_cells(label) > room) return;"
 into = "\tif (label.size() > room) return;"
 count = 1
 check = "a modal's ring keeps all four corners at every width, its title being dropped whole when the rule cannot hold it in CELLS rather than in code units"
+
+[[sabotage]]
+# The fold goes back to breaking a word on code units, so a CJK link's line
+# comes out twice the column budget and the box cuts it off. 8.485.
+name = "a folded line is broken on code units"
+file = "src/runtime/application.cpp"
+find = "\t\t\twhile (text_cells(word) > width) {"
+into = "\t\t\twhile (word.size() > width) {"
+count = 1
+check = "and a link whose characters are two cells wide folds to the same budget, the fold counting cells rather than code units"
