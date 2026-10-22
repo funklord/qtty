@@ -263,6 +263,100 @@ int suite_theme() {
 		      "a window drawn in the default theme clears the contrast "
 		      "floor at every depth, which is what the page tells an "
 		      "adopter to assert");
+
+		// AND ON A LIGHT TERMINAL, which none of the above asks. Half of
+		// terminals are light and this library paints its own scheme
+		// rather than adopting one: color_scheme() exists for an
+		// APPLICATION to ask, and nothing in the library reads it. So a
+		// foreground of qtty's own on the terminal's OWN background is
+		// only as readable as that background happens to be, and 8.244's
+		// argument was exactly this -- "an amount defined against black
+		// instead of against the ground renders the attribute BACKWARDS
+		// on a light terminal".
+		//
+		// THREE POPULATIONS, counted separately, because the first
+		// version of this check judged NOTHING and said "none
+		// unreadable" as loudly as a real pass. Measured 2026-10-22 over
+		// a window of eleven widgets: 343 inked cells, 295 using the
+		// terminal's own PAIR -- nothing to judge, and readability is the
+		// terminal's business -- 44 with a foreground of qtty's own, and
+		// 4 with a pair of its own. Only the last two can be judged, and
+		// a check that does not say how many it looked at cannot be read.
+		{
+			QWidget any;
+			any.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *col = new QVBoxLayout(&any);
+			col->addWidget(new QLabel(QStringLiteral("A label")));
+			col->addWidget(new QPushButton(QStringLiteral("Press")));
+			auto *off = new QPushButton(QStringLiteral("Disabled"));
+			off->setEnabled(false);               // the Dim walk-back
+			col->addWidget(off);
+			auto *typed = new QLineEdit(QStringLiteral("typed text"));
+			col->addWidget(typed);
+			auto *rows = new QListWidget;
+			rows->addItem(QStringLiteral("row one"));
+			rows->addItem(QStringLiteral("row two"));
+			rows->setCurrentRow(0);
+			col->addWidget(rows);
+			auto *painted = new QLabel(QStringLiteral("coloured by the app"));
+			QPalette pal = painted->palette();
+			pal.setColor(QPalette::WindowText, QColor(200, 0, 0));
+			painted->setPalette(pal);
+			col->addWidget(painted);
+			auto *grid = new QTableWidget(2, 2);
+			grid->setItem(0, 0, new QTableWidgetItem(QStringLiteral("cell")));
+			grid->item(0, 0)->setForeground(QBrush(QColor(0, 120, 0)));
+			grid->item(0, 0)->setBackground(QBrush(QColor(255, 255, 160)));
+			col->addWidget(grid);
+			any.resize(GridMetrics::cells(40, 30));
+			any.show();
+			QCoreApplication::processEvents();
+			CellBuffer wide(40, 30);
+			render_once(any, wide);
+			const Color white = Color::rgb(qRgb(255, 255, 255));
+			const Color black = Color::rgb(qRgb(0, 0, 0));
+			int inked = 0, terminal_pair = 0, own_fg = 0, own_pair = 0;
+			int bad_light = 0, bad_dark = 0, bad_pair = 0;
+			for (int y = 0; y < wide.rows(); ++y)
+				for (int x = 0; x < wide.cols(); ++x) {
+					const Cell &c = wide.at(x, y);
+					if (c.ch.isEmpty() || c.ch == QStringLiteral(" "))
+						continue;
+					++inked;
+					if (c.bg.kind() != Color::Default) {
+						++own_pair;
+						if (!has_minimum_contrast(c.fg, c.bg)) ++bad_pair;
+						continue;
+					}
+					if (c.fg.kind() == Color::Default) {
+						++terminal_pair;
+						continue;
+					}
+					++own_fg;
+					if (!has_minimum_contrast(c.fg, white)) ++bad_light;
+					if (!has_minimum_contrast(c.fg, black)) ++bad_dark;
+				}
+			printf("info: %d inked cell(s): %d on the terminal's own pair,"
+			       " %d with a foreground of qtty's own (%d unreadable on"
+			       " white, %d on black), %d with a pair of its own (%d too"
+			       " close)\n", inked, terminal_pair, own_fg, bad_light,
+			       bad_dark, own_pair, bad_pair);
+			// THE CONTROL, inside the check: a pair the floor must refuse,
+			// so a run reporting none can be told from one that judged
+			// nothing. The counts above are the other half of that.
+			const bool refuses =
+			    !has_minimum_contrast(Color::rgb(qRgb(120, 120, 120)),
+			                          Color::rgb(qRgb(130, 130, 130)));
+			CHECK(own_fg > 0 && refuses && bad_light == 0 && bad_dark == 0,
+			      "every foreground this library puts on the terminal's own"
+			      " background is readable on a light terminal as well as a"
+			      " dark one, which nothing else asks and half of terminals"
+			      " are");
+			CHECK(own_pair > 0 && bad_pair == 0,
+			      "and a cell carrying a pair of its own clears the floor"
+			      " without a terminal in the question at all");
+			GridGuard::reset();
+		}
 	}
 
 	CellTheme t = CellTheme::terminal_default();

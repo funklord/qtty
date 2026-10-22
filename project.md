@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2266 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2268 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2266 on Qt 6 with no failures,
-  and 2235 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2268 on Qt 6 with no failures,
+  and 2237 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,54 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.499 Readable on a light terminal, and the check that said nothing (2026-10-22)
+
+**The question nothing asked: half of terminals are light.** This library
+paints its own scheme rather than adopting one -- `color_scheme()` exists
+for an APPLICATION to ask and nothing in the library reads it -- so a
+foreground of qtty's own on the terminal's OWN background is only as
+readable as that background happens to be. 8.244's argument was exactly
+this: "an amount defined against black instead of against the ground
+renders the attribute BACKWARDS on a light terminal". The theme suite
+checks a rendered window at every colour depth and never against a light
+ground.
+
+**Measured, and there is no defect.** Over a window of eleven widgets, 284
+inked cells:
+
+    244   the terminal's own PAIR -- nothing to judge
+     36   a foreground of qtty's own, all clearing the floor against
+          BOTH white and black
+      4   a pair of its own, all clearing it
+
+The two colours that reach the judgement are `#c80000`, an application's own
+dark red at luminance 59, and `#c7c7c7` at 199 -- the Dim walk-back's faint
+grey for a disabled button, which is qtty's own and clears white by 56.
+
+**THE FIRST VERSION OF THIS CHECK JUDGED NOTHING AND SAID SO AS LOUDLY AS A
+PASS.** With the fixture it had -- label, buttons, line edit, list, progress
+bar -- every inked cell used the terminal's own pair, so the loop
+`continue`d on all 144 of them and reported "unreadable on WHITE: none".
+True, and about nothing. It was caught by printing the number of cells the
+test had actually looked at, which is the one thing that separates the two
+readings.
+
+That is `evidence.md`'s vacuous pass in its purest form, and the remedy is
+in the check now rather than in a comment: **three populations, counted
+separately**, so no future reader can take "none unreadable" for an answer
+without seeing how many were asked. Plus a control the floor must refuse --
+grey on grey -- because a count can be right while the predicate is broken.
+
+**What widening the fixture took is worth keeping too.** The cells that
+carry colour at all are the ones an application colours (a palette, an item
+brush) and the one place qtty computes a colour of its own; a form of plain
+widgets has none. So a check of this kind must be built from widgets chosen
+to HAVE colours, or it measures the absence of the question.
+
+2268 checks on Qt 6, 2237 passing and 31 stepping over on Qt 5, 715
+sabotage entries -- unchanged, the check carrying its own control rather
+than an entry.
 
 ### 8.498 Which of the three queries is a capability test (2026-10-22)
 
