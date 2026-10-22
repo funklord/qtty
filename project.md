@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2237 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2239 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2237 on Qt 6 with no failures,
-  and 2206 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2239 on Qt 6 with no failures,
+  and 2208 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.481 The surface every layout consumes, asked numerically (2026-10-22)
+
+**One defensive case was standing in for twenty-one.** `sizeFromContents()`
+had exactly one check: `CT_ToolButton` handed an option it cannot cast,
+which states the contract in as many words -- "the contract of every metric
+here is a cell-high answer whatever it was handed" -- and no other contents
+type was asked at all. It is the surface every LAYOUT consumes, so a pixel
+answer does not stay in the style: it becomes a widget geometry, and
+`GridSnap` then rounds that to the NEAREST cell, which is how a group box's
+children came to draw through its own border in 8.428.
+
+**Measured over 176 answers, 21 contents types at eight contents sizes: 0
+off the grid, 0 that shrink as the contents grow.** The surface is clean,
+and the gate is what keeps a twenty-second arm from arriving without the
+rounding.
+
+**The positive control is strong enough to be worth stating.** Asked the
+same 176 questions, the base style answers **147 of them off the grid**. So
+the first check is a comparison that can come out either way rather than a
+number that cannot move -- and it needs no sabotage to establish that,
+although it has two: removing the width rounding and removing the height
+rounding each redden it.
+
+**The third question is NOT an invariant, and is recorded so that nobody
+adds it.** 42 of the 176 answers are SMALLER than the contents they were
+handed, and every one is correct:
+
+    most of them     a control holding one line of text answers one cell
+                     tall whatever height it is given -- the first case in
+                     that switch, and deliberate
+    header, mdi      QCommonStyle ignores contentsSize for these entirely
+    toolbutton,      this style answers a width counted in CHARACTERS,
+    item view        which is the premise the whole file rests on
+    size grip        0x0 on purpose, since this style hands a grip no cells
+
+A gate asserting "never smaller than the contents" would have been written
+in good faith and would have been wrong about all five.
+
+**And the monotonicity check is not defended by a sabotage, which it says.**
+It is held jointly -- the base style's answers rise with the contents and
+the rounding is monotonic -- so both entries that break the rounding leave
+it green. Measured rather than assumed. It is kept because two arms compute
+their own width from a LABEL instead of through that rounding,
+`CT_TabBarTab` and `CT_ToolButton`, and a threshold rule in either would
+break it where nothing else would notice: that is exactly the shape 8.471
+found in the tool button's drawing, where three cells carried less than
+two.
+
+2239 checks on Qt 6, 2208 passing and 31 stepping over on Qt 5, 691
+sabotage entries, every anchor matching.
 
 ### 8.480 Rectangles naming cells the widget does not own (2026-10-22)
 
