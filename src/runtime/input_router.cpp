@@ -75,6 +75,7 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 		// separate rows all along.
 		{ QStringLiteral("Ctrl+W"),         QStringLiteral("rub out word in text, else close the tab or dock") },
 		{ QStringLiteral("Ctrl+D"),         QStringLiteral("delete, in text") },
+		{ QStringLiteral("Ctrl+F4"),        QStringLiteral("close the tab or dock, in text too") },
 		{ QStringLiteral("Ctrl+L"),         QStringLiteral("redraw") },
 		menu,
 	};
@@ -129,6 +130,7 @@ static const ConventionRow k_convention_rows[] = {
 	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },
 	{ "Ctrl+W",         Qt::CTRL,        { Qt::Key_W,        Qt::Key(0) },      false },
 	{ "Ctrl+D",         Qt::CTRL,        { Qt::Key_D,        Qt::Key(0) },      false },
+	{ "Ctrl+F4",        Qt::CTRL,        { Qt::Key_F4,       Qt::Key(0) },      false },
 	{ "Ctrl+L",         Qt::CTRL,        { Qt::Key_L,        Qt::Key(0) },      false },
 	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      true  },
 };
@@ -2333,12 +2335,23 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 		// a desktop is a mouse away and here is nothing away. 0b carried
 		// it as the holder's; taken on their instruction 2026-10-22.
 		//
-		// IN TEXT IT IS STILL THE READLINE RUB-OUT, and this needs no
-		// test of its own to be: readline_edit() is tried BEFORE
+		// AND Ctrl+F4 TOO, added on the holder's instruction
+		// 2026-10-22. ONE BODY FOR BOTH, which is the whole of how this
+		// avoids the fault this file warns about repeatedly -- two ways
+		// to say one thing drift. The keys differ in exactly one place
+		// and it is not in this code: see below.
+		//
+		// IN TEXT Ctrl+W IS STILL THE READLINE RUB-OUT, and this needs
+		// no test of its own to be: readline_edit() is tried BEFORE
 		// deliver_key(), which is where this arm lives, so a caret has
 		// already taken the chord by the time it could get here. A form
 		// is mostly buttons, lists and tables, and Ctrl+W closes from
 		// all of them; only a caret takes the key away.
+		//
+		// Ctrl+F4 HAS NOTHING TO TAKE IT, which makes it the better key
+		// for the job: readline claims it nowhere, so it closes from a
+		// text field as well, and the difference between the two rows is
+		// that one sentence rather than any difference here.
 		//
 		// THE FIRST VERSION TESTED IT AGAIN HERE and the sabotage
 		// harness found it: a copy of readline_edit()'s own predicate --
@@ -2382,7 +2395,7 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 			redraw();
 			return;
 		}
-		if (k.ctrl && k.qt_key == Qt::Key_W) {
+		if (k.ctrl && (k.qt_key == Qt::Key_W || k.qt_key == Qt::Key_F4)) {
 			for (QWidget *w = key_target(); w; w = w->parentWidget()) {
 				if (auto *dock = qobject_cast<QDockWidget *>(w)) {
 					if (!(dock->features()

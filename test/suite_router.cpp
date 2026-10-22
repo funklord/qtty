@@ -2448,12 +2448,13 @@ int suite_router() {
 			"`Ctrl+K`, `Ctrl+U`",
 			"`Ctrl+W`",
 			"`Ctrl+D`",
+			"`Ctrl+F4`",
 			"`Ctrl+L`",
 		};
 		int wrong = 0;
 		QString first_bad;
 		QStringList listed;
-		for (int i = 0; i < 11; ++i) {
+		for (int i = 0; i < 12; ++i) {
 			listed << QString::fromUtf8(published_rows[i]);
 			QString on_arm, off_arm;
 			for (int on = 1; on >= 0; --on) {
@@ -2685,6 +2686,42 @@ int suite_router() {
 						QCoreApplication::processEvents();
 						arm = QStringLiteral("[%1]").arg(field->text());
 					} else if (i == 10) {
+						// Ctrl+F4 CLOSES FROM INSIDE A TEXT FIELD, which
+						// is the one place it differs from Ctrl+W:
+						// readline claims Ctrl+W where a caret has it and
+						// claims Ctrl+F4 nowhere. The fixture is a
+						// closable tab with a focused QLineEdit in it, so
+						// both readings are available and this is the key
+						// that still closes.
+						QWidget tabbed;
+						tabbed.setAttribute(Qt::WA_DontShowOnScreen);
+						auto *tw = new QTabWidget(&tabbed);
+						tw->setTabsClosable(true);
+						auto *inner = new QWidget;
+						auto *iv = new QVBoxLayout(inner);
+						auto *typing = new QLineEdit(QStringLiteral("abc"),
+						                             inner);
+						iv->addWidget(typing);
+						tw->addTab(inner, QStringLiteral("Edit"));
+						tw->setGeometry(0, 0, cw * 20, ch * 4);
+						int wanted = -1;
+						QObject::connect(tw, &QTabWidget::tabCloseRequested,
+						                 [&wanted](int n) { wanted = n; });
+						tabbed.resize(GridMetrics::cells(20, 5));
+						tabbed.show();
+						QCoreApplication::processEvents();
+						typing->setFocus();
+						Qtty::set_focus_widget(tabbed.focusWidget());
+						QCoreApplication::processEvents();
+						InputRouter fr(&tabbed);
+						fr.on_key({Qt::Key_F4, QString(), true, false,
+						           false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("closed %1 from a field")
+						          .arg(wanted == 0 ? 1 : 0);
+						tabbed.hide();
+						QCoreApplication::processEvents();
+					} else if (i == 11) {
 						// Ctrl+L REDRAWS, and only a scheduler can say it
 						// happened: an unchanged tree presents nothing, so
 						// a frame appearing with nothing changed IS the
@@ -2777,6 +2814,7 @@ int suite_router() {
 				"K [hello ] U [brave world]",
 				"[hello world]",
 				"in text [abdef] close 0, on a button close 1",
+				"closed 1 from a field",
 				"frames 1",
 			};
 			// And with them off: whatever QT does, which is NOT a constant
@@ -2843,6 +2881,11 @@ int suite_router() {
 			case 9:
 				off_want = QStringLiteral("in text [abcdef] close 1, on a "
 				                          "button close 1");
+				break;
+			case 10:
+				// Qt binds nothing to Ctrl+F4 either, so with the bundle
+				// off the tab is not asked to close.
+				off_want = QStringLiteral("closed 0 from a field");
 				break;
 			default:
 				// Qt binds nothing to Ctrl+L, so the off arm is the
@@ -4473,6 +4516,60 @@ int suite_router() {
 		CHECK(quiet == 2,
 		      "and with the conventions off neither answers, this being an"
 		      " opt-in convention rather than a key the library takes");
+
+		// AND Ctrl+F4 DOES IT FROM A TEXT FIELD, which is the one place
+		// the two chords differ: readline claims Ctrl+W where a caret has
+		// it and claims Ctrl+F4 nowhere, so this is the key that still
+		// closes with the focus in an editor. Added on the copyright
+		// holder's instruction 2026-10-22, beside Ctrl+W rather than
+		// instead of it.
+		//
+		// THE SAME FIXTURE AS THE RUB-OUT CASE ABOVE, deliberately: that
+		// one proves Ctrl+W leaves the tab alone there, and this proves
+		// Ctrl+F4 does not. A pair over one arrangement says the
+		// difference is the chord and not the fixture.
+		int f4_closed = 0, f4_quiet = 0;
+		for (int conv = 0; conv < 2; ++conv) {
+			set_keyboard_conventions(conv != 0);
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *tabs = new QTabWidget(&host);
+			tabs->setTabsClosable(true);
+			auto *page = new QWidget;
+			auto *col = new QVBoxLayout(page);
+			auto *ed = new QLineEdit(QStringLiteral("one two"), page);
+			col->addWidget(ed);
+			tabs->addTab(page, QStringLiteral("Edit"));
+			tabs->setGeometry(0, 0, 30 * cw, 5 * ch);
+			int got = -1;
+			QObject::connect(tabs, &QTabWidget::tabCloseRequested,
+			                 [&got](int i) { got = i; });
+			host.resize(GridMetrics::cells(30, 6));
+			host.show();
+			QCoreApplication::processEvents();
+			ed->setFocus();
+			QCoreApplication::processEvents();
+			set_focus_widget(ed);
+			InputRouter f4r(&host);
+			f4r.on_key({Qt::Key_F4, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			if (conv) {
+				// The text is untouched as well: a close is not a rub-out
+				// by another name.
+				if (got == 0 && ed->text() == QStringLiteral("one two"))
+					++f4_closed;
+			} else if (got == -1) {
+				++f4_quiet;
+			}
+			GridGuard::reset();
+		}
+		set_keyboard_conventions(false);
+		printf("info: Ctrl+F4 from a field closed %d tab(s) with the"
+		       " conventions on and %d without\n", f4_closed,
+		       1 - f4_quiet);
+		CHECK(f4_closed == 1 && f4_quiet == 1,
+		      "and Ctrl+F4 closes from inside a text field, where Ctrl+W is"
+		      " the rub-out -- readline claiming the one and not the other");
 	}
 
 	// ---- a wheel notch moves a whole number of rows -----------------------
@@ -10470,6 +10567,7 @@ int suite_router() {
 			      && keys.contains(QStringLiteral("Ctrl+K/U"))
 			      && keys.contains(QStringLiteral("Ctrl+W"))
 			      && keys.contains(QStringLiteral("Ctrl+D"))
+			      && keys.contains(QStringLiteral("Ctrl+F4"))
 			      && keys.contains(QStringLiteral("Ctrl+L"))
 			      && keys.contains(QStringLiteral("Menu/Shift+F10")),
 			      "the conventions can list what they bind, so an "
@@ -10486,7 +10584,7 @@ int suite_router() {
 			// answers everywhere, differently. This number is what
 			// catches a row added without a line above saying what it
 			// is -- it did exactly that for the split.
-			CHECK(help.size() == 12,
+			CHECK(help.size() == 13,
 			      "and the list is exactly as long as this check knows about,"
 			      " which is what stands in for deriving it from the"
 			      " bindings");
@@ -10536,6 +10634,7 @@ int suite_router() {
 				{"Ctrl+K/U",       "`Ctrl+U`"},
 				{"Ctrl+W",         "`Ctrl+W`"},
 				{"Ctrl+D",         "`Ctrl+D`"},
+				{"Ctrl+F4",        "`Ctrl+F4`"},
 				{"Ctrl+L",         "`Ctrl+L`"},
 				{"Menu/Shift+F10", "`Menu`, `Shift+F10`"},
 			};
@@ -10733,6 +10832,7 @@ int suite_router() {
 			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_U,        nullptr },
 			{ "Ctrl+W",         int(Qt::CTRL),  Qt::Key_W,        nullptr },
 			{ "Ctrl+D",         int(Qt::CTRL),  Qt::Key_D,        nullptr },
+			{ "Ctrl+F4",        int(Qt::CTRL),  Qt::Key_F4,       nullptr },
 			{ "Ctrl+L",         int(Qt::CTRL),  Qt::Key_L,        nullptr },
 			{ "Menu/Shift+F10", int(Qt::SHIFT), Qt::Key_F10,      nullptr },
 			// THE ONE ROW THAT IS NOT A CHORD, and it is a family rather

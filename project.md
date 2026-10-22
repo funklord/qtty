@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2259 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2260 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1079,7 +1079,7 @@ Owned by the copyright holder:
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
-| **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` closes the tab or the dock the focus is in, under the conventions and outside a text widget -- see 8.492.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
+| **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` and `Ctrl+F4` close the tab or the dock the focus is in, under the conventions -- 8.492 and 8.494. Ctrl+W yields to a caret, where it is readline's rub-out; Ctrl+F4 is claimed by nothing and closes from a text field too.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | **~~Should there be a way to force a full repaint, and should `Ctrl+L` be it?~~ BOTH TAKEN** -- the mechanism in 8.318 and the binding in 8.493, on the holder's instruction 2026-10-22: `Ctrl+L` redraws under the conventions, and the row, the chord table, the help list and the guide moved with it. Original row: The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
 | **Which mark should a drop indicator carry?** A view draws `PE_IndicatorItemViewItemDrop` while something is dragged into it, and `Qtty::exec_drag()` makes that reachable -- its contract is to deliver the enter, move, leave and drop events. Measured: the between-rows form draws a ten-cell rule on BLANK cells and **nothing at all** over the items, and the on-item form touches nothing even on a clean buffer. The mechanism is not a bug -- `clear_run` in `cell_paint.cpp` refuses a horizontal rule into any run holding a non-blank cell, which exists because a rule landing on a label put a box-drawing glyph in place of every space. That rule is right for frames and rules, and a drop indicator is neither: it is feedback, and the cells it wants are the ones an item's name is in. **The remedy needs a MARK and the vocabulary has none free** -- reverse is selected, underline is current -- so which one a provisional drop carries is a visual convention. Related to the four-row mark cluster above and not the same question: that one asks what a drawn mark BECOMES, this asks which mark a state should be GIVEN. Asserted as it stands, so a producer added later reddens a check | 8.343 |
 | **Should every printable carry its `Qt::Key`, and should the router ask the focus widget for a `ShortcutOverride`?** The two are one question. A terminal sends a printable as text with no key code, so `Qt::Key_Space` was dead until 8.334 fixed it for Space alone -- and `*` and `+` in a tree are dead by the same mechanism, measured. Giving every printable its key passes the whole suite and breaks an assumption `match_shortcut()` states outright: a bare letter cannot match a shortcut, which is why it falls through to `QMenu::keyPressEvent`. Qt arbitrates with `QEvent::ShortcutOverride` -- measured, a focused `QLineEdit` CLAIMS a plain letter and a plain Space, lets `Ctrl+N` through and CLAIMS `Ctrl+A` -- and this router never asks, so a plain-letter shortcut would fire where a desktop types the letter. Asking it would also subsume the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which are that arbitration written out for two chords. The cost is a change to the most load-bearing rule in the input path | 8.334 |
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2259 on Qt 6 with no failures,
-  and 2228 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2260 on Qt 6 with no failures,
+  and 2229 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,41 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.494 Ctrl+F4 beside Ctrl+W, and the one place they differ (2026-10-22)
+
+**Added on the copyright holder's instruction 2026-10-22**, beside 8.492's
+Ctrl+W rather than instead of it.
+
+**ONE BODY FOR BOTH**, which is the whole of how this avoids the fault this
+file warns about repeatedly -- two ways to say one thing drift. The
+condition takes either key and the code after it is the same; the keys
+differ in exactly one place and it is not in this function.
+
+**Ctrl+F4 HAS NOTHING TO TAKE IT, which makes it the better key for the
+job.** `readline_edit()` claims Ctrl+W where a caret has it -- that is 8.492's
+yield, and it is why a tab holding an editor had no chord -- and it claims
+Ctrl+F4 nowhere. So Ctrl+F4 closes from inside a text field as well, and the
+difference between the two help rows is that one sentence.
+
+    Ctrl+W    rub out word in text, else close the tab or dock
+    Ctrl+F4   close the tab or dock, in text too
+
+**ASSERTED OVER ONE FIXTURE, as a pair.** The rub-out case already proves
+Ctrl+W leaves the tab alone with the focus in a field; this proves Ctrl+F4
+does not, in the same arrangement, so what the pair establishes is that the
+difference is the CHORD and not the fixture. The text is asserted unchanged
+too: a close is not a rub-out by another name.
+
+**Four lists moved with it and the gates named each one.** The help list,
+the chord table behind it, the guide's conventions table and the driver that
+exercises every row of that table by name -- the twelfth row needed its own
+case, and the help length check its number. That is the third time in two
+days those gates have caught a row added without its case, which is what
+they are for.
+
+2260 checks on Qt 6, 2229 passing and 31 stepping over on Qt 5, 713 sabotage
+entries, every anchor matching.
 
 ### 8.493 Two more conventions: a tab's mark and Ctrl+L (2026-10-22)
 

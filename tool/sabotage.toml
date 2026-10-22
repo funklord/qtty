@@ -7650,7 +7650,7 @@ check = "a scroll bar steps in whole cells, so a wheel notch leaves the content 
 # dock's close button with no keyboard route anywhere again. 8.492.
 name = "Ctrl+W closes neither a tab nor a dock"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (k.ctrl && k.qt_key == Qt::Key_W) {"
+find = "\t\tif (k.ctrl && (k.qt_key == Qt::Key_W || k.qt_key == Qt::Key_F4)) {"
 into = "\t\tif (false) {"
 count = 1
 check = "Ctrl+W asks a closable tab to close and closes a closable dock, which had no keyboard route anywhere before"
@@ -7684,3 +7684,13 @@ find = "\t\tif (k.ctrl && k.qt_key == Qt::Key_L) {\n\t\t\tredraw();"
 into = "\t\tif (false) {\n\t\t\tredraw();"
 count = 1
 check = "Ctrl+L redraws the screen under the conventions, which is the recourse a corrupted terminal has and had no key"
+
+[[sabotage]]
+# Ctrl+F4 stops closing, leaving only Ctrl+W -- which a caret takes away, so
+# a tab holding an editor has no chord again. 8.494.
+name = "only Ctrl+W closes a tab, never Ctrl+F4"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (k.ctrl && (k.qt_key == Qt::Key_W || k.qt_key == Qt::Key_F4)) {"
+into = "\t\tif (k.ctrl && k.qt_key == Qt::Key_W) {"
+count = 1
+check = "and Ctrl+F4 closes from inside a text field, where Ctrl+W is the rub-out -- readline claiming the one and not the other"

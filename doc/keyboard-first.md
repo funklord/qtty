@@ -508,6 +508,7 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
 | `Ctrl+W` | Rub out the word before the caret -- and **outside a text widget**, close the tab or the dock the focus is in |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
+| `Ctrl+F4` | Close the tab or the dock the focus is in -- **including from inside a text widget**, which `Ctrl+W` does not |
 | `Ctrl+L` | Redraw the screen, for when something outside the program has corrupted it |
 
 **These are the chords as written, `Shift` included.** Adding a shift to
@@ -875,10 +876,12 @@ the desktop either. Measured with plain Qt and no qtty in it: `Ctrl+W`,
 `Ctrl+F4` and `Delete` reach a closable `QTabWidget` and `tabCloseRequested`
 never fires; `Ctrl+W` and `Esc` reach a closable `QDockWidget` and it stays
 visible. On a desktop that is a mouse away. Here it may be nothing away at
-all, so **the conventions bind `Ctrl+W` to both**: with
-`set_keyboard_conventions(true)`, that chord closes the tab or the dock the
+all, so **the conventions bind `Ctrl+W` and `Ctrl+F4` to both**: with
+`set_keyboard_conventions(true)`, either chord closes the tab or the dock the
 focus is in -- the innermost of the two, walking out from the focused
-widget. A tab is *asked* rather than closed, `tabCloseRequested` being a
+widget. They differ in one place: `Ctrl+W` is readline's rub-out where a
+caret has it, so `Ctrl+F4` is the one that works from inside a text field as
+well. A tab is *asked* rather than closed, `tabCloseRequested` being a
 request the application answers, and a dock is closed through `close()`, so
 a `closeEvent()` that calls `ignore()` refuses it exactly as on a desktop.
 Inside a text widget the chord is still readline's rub-out, which is where a
