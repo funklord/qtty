@@ -167,7 +167,36 @@ std::optional<QRect> follow_rect(QWidget *layer) {
 		// the focus widget rather than from the inner editor that may own
 		// it: that distinction is worth a cell when PLACING a cursor and
 		// is not worth one when deciding what to scroll into view.
-		const QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
+		//
+		// AND ONLY FOR A WIDGET THAT ACTUALLY EDITS TEXT, which
+		// `v.isValid()` does not say. Measured 2026-10-22: a QWidget
+		// answers ImCursorRectangle with a one-pixel rect at its own
+		// MIDDLE whether it edits anything or not --
+		//
+		//     QLineEdit    WA_InputMethodEnabled 1, rect valid 1
+		//     QLabel       WA_InputMethodEnabled 0, rect valid 1
+		//     QPushButton  WA_InputMethodEnabled 0, rect valid 1
+		//     QListWidget  WA_InputMethodEnabled 0, rect valid 1
+		//
+		// -- so this branch took every focus widget and scrolled a
+		// one-cell rect into view instead of the widget. On a window
+		// 41 cells wide in a 20-cell terminal, tabbing to a button at
+		// cells 30..40 scrolled to 16 and showed `<Right` with six of
+		// its eleven cells off the screen. A focused control only
+		// partly visible is the one thing this whole function exists
+		// to prevent, and it fitted.
+		//
+		// WA_InputMethodEnabled, with the item-view exclusion, is the
+		// predicate this tree already uses twice for the same question
+		// -- cursor placement below and readline_edit() in the router --
+		// because an item view over an editable model carries the
+		// attribute while a caret is not what a user moves in it. One
+		// spelling of one rule; the comment above says why a caret
+		// rather than a rectangle, and this says which widgets have one.
+		const QVariant v = fw->testAttribute(Qt::WA_InputMethodEnabled)
+		                   && !qobject_cast<QAbstractItemView *>(fw)
+		                   ? fw->inputMethodQuery(Qt::ImCursorRectangle)
+		                   : QVariant();
 		if (v.isValid()) {
 			const QRect caret = v.toRect();
 			if (caret.isValid())

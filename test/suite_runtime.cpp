@@ -1573,6 +1573,89 @@ int suite_runtime() {
 		c.compose(b);
 		CHECK(a.to_text() == b.to_text(),
 		      "and a window that fits does not scroll at all");
+
+		// AND THE SAME ON THE OTHER AXIS, with the whole widget brought
+		// in rather than a cell of it. follow_rect() follows a text
+		// widget's CARET rather than its rectangle, and it decided which
+		// widgets have one by asking whether ImCursorRectangle is VALID
+		// -- which every QWidget answers, with a one-pixel rect at its
+		// own middle:
+		//
+		//     QLineEdit    WA_InputMethodEnabled 1, rect valid 1
+		//     QLabel       WA_InputMethodEnabled 0, rect valid 1
+		//     QPushButton  WA_InputMethodEnabled 0, rect valid 1
+		//     QListWidget  WA_InputMethodEnabled 0, rect valid 1
+		//
+		// So every focus scrolled a single cell into view instead of the
+		// control. Measured 2026-10-22 on a window 41 cells wide in a
+		// 20-cell view, two buttons at the ends of one row: tabbing to
+		// the right one scrolled to 16 and drew `<Right`, six of its
+		// eleven cells off the screen. A focused control only partly
+		// visible is what this function exists to prevent, and it
+		// fitted.
+		//
+		// ASSERTED AS THE WHOLE LABEL, both ways, because the fault left
+		// the first half or the second half on screen depending on which
+		// direction the view had come from -- a check for "some of it"
+		// passes against both. The horizontal axis had no check of its
+		// own at all: the vertical one is asserted above, and the only
+		// horizontal cases were a caret and a menu.
+		{
+			// ALONE ON THE SCREEN, because earlier checks in this file
+			// leave top-level windows up: with a second one visible the
+			// compositor draws a window tab strip on row 0 and the
+			// fixture read a strip of window names three times instead of
+			// its own buttons. The same leftover hazard the modal ring's
+			// check in suite_router records, met on the other axis.
+			QVector<QWidget *> hidden;
+			for (QWidget *other : QApplication::topLevelWidgets())
+				if (other->isVisible()) {
+					other->hide();
+					hidden.append(other);
+				}
+			QCoreApplication::processEvents();
+			QWidget wide;
+			wide.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *far_left = new QPushButton(QStringLiteral("LeftEnd"),
+			                                 &wide);
+			auto *far_right = new QPushButton(QStringLiteral("RightEnd"),
+			                                  &wide);
+			far_left->setGeometry(0, 0, 10 * cw, ch);
+			far_right->setGeometry(30 * cw, 0, 11 * cw, ch);
+			wide.resize(41 * cw, 3 * ch);
+			wide.show();
+			QCoreApplication::processEvents();
+			InputRouter wr(&wide);
+			Compositor wc(&wide, &wr);
+			const auto row_of = [&](QWidget *focus) {
+				focus->setFocus();
+				set_focus_widget(wide.focusWidget());
+				QCoreApplication::processEvents();
+				CellBuffer b(20, 3);
+				wc.compose(b);
+				QString row;
+				for (int x = 0; x < b.cols(); ++x) row += b.at(x, 0).ch;
+				return row;
+			};
+			const QString at_left = row_of(far_left);
+			const QString at_right = row_of(far_right);
+			const QString back = row_of(far_left);
+			printf("info: a 41-cell window in 20 cells: |%s| |%s| |%s|\n",
+			       qPrintable(at_left.trimmed()),
+			       qPrintable(at_right.trimmed()),
+			       qPrintable(back.trimmed()));
+			CHECK(at_left.contains(QStringLiteral("<LeftEnd>"))
+			      && at_right.contains(QStringLiteral("<RightEnd>")),
+			      "a window wider than the terminal scrolls to its focus"
+			      " and brings the WHOLE control in, not the one cell a"
+			      " plain QWidget calls its cursor");
+			CHECK(back.contains(QStringLiteral("<LeftEnd>")),
+			      "and scrolls back when the focus returns, which is the"
+			      " horizontal arm of the pair the vertical one asserts");
+			for (QWidget *other : hidden) other->show();
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+		}
 		GridGuard::reset();
 	}
 

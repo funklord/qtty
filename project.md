@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2262 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2264 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2262 on Qt 6 with no failures,
-  and 2231 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2264 on Qt 6 with no failures,
+  and 2233 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,58 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.497 Every focus was followed by one cell of itself (2026-10-22)
+
+**Found by asking the axis nobody had asked.** 8.496's measurement showed a
+window 42 cells wide on a 40-cell terminal, which is section 7's policy
+working -- the window keeps its minimum and the terminal scrolls. The
+vertical half of that scroll is asserted both ways; horizontally the only
+checks were a caret and a menu, and an ordinary window had none.
+
+**`follow_rect()` decided which widgets have a caret by asking whether
+`ImCursorRectangle` is VALID, and every QWidget answers it** -- with a
+one-pixel rect at its own middle. Measured 2026-10-22:
+
+    QLineEdit    WA_InputMethodEnabled 1, rect valid 1
+    QLabel       WA_InputMethodEnabled 0, rect valid 1
+    QPushButton  WA_InputMethodEnabled 0, rect valid 1
+    QListWidget  WA_InputMethodEnabled 0, rect valid 1
+
+So every focus scrolled ONE CELL into view instead of the control. On a
+41-cell window in a 20-cell view with two buttons at the ends of a row,
+tabbing to the right one scrolled to 16 and drew `<Right` -- six of its
+eleven cells off the screen. **A focused control only partly visible is the
+one thing that function exists to prevent, and it fitted.**
+
+**The predicate was already in the tree, twice.**
+`WA_InputMethodEnabled` with the item-view exclusion is what the cursor
+placement thirty lines below and `readline_edit()` in the router both use
+for the same question -- an item view over an editable model carries the
+attribute while a caret is not what a user moves in it. One spelling of one
+rule; the old comment said why a caret rather than a rectangle and never
+said which widgets have one.
+
+**Two wrong readings on the way, both mine.**
+
+The first was that the view did not scroll BACK: the third frame read
+`End>` and the check looked for `LeftEnd`. It had scrolled back correctly --
+to the caret's cell, five cells in -- so what was on screen was the tail of
+the left button's own label. One defect, not two, and the string the probe
+looked for was the thing that made it look like two.
+
+The second was the fixture: in-suite it read a window tab strip three times
+instead of its own buttons, because earlier checks in that file leave
+top-level windows visible. The same leftover hazard suite_router's modal
+ring records, met on another axis -- hidden for the block and restored
+after.
+
+**ASSERTED AS THE WHOLE LABEL, both ways**, because the fault left the first
+half or the second half on screen depending on which direction the view had
+come from: a check for "some of it" passes against both.
+
+2264 checks on Qt 6, 2233 passing and 31 stepping over on Qt 5, 715 sabotage
+entries, every anchor matching.
 
 ### 8.496 The shipped example's key hints, cut rather than shortened (2026-10-22)
 

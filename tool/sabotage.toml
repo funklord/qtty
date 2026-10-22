@@ -7704,3 +7704,14 @@ find = "\tcase 'S': k.qt_key = Qt::Key_F4; break;\n\tdefault:  return true;     
 into = "\tcase 'S': return true;\n\tdefault:  return true;                        // consumed, unmapped"
 count = 1
 check = "CSI 1;5S decodes as Ctrl+F4, which is the chord the conventions close a tab with and the form every terminal that encodes function-key modifiers sends it in"
+
+[[sabotage]]
+# follow_rect() goes back to asking whether ImCursorRectangle is valid, which
+# every QWidget answers -- so a focus scrolls one cell into view instead of
+# the control. 8.497.
+name = "a focus is followed by a cell of itself"
+file = "src/runtime/compositor.cpp"
+find = "\t\tconst QVariant v = fw->testAttribute(Qt::WA_InputMethodEnabled)\n\t\t                   && !qobject_cast<QAbstractItemView *>(fw)\n\t\t                   ? fw->inputMethodQuery(Qt::ImCursorRectangle)\n\t\t                   : QVariant();"
+into = "\t\tconst QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);"
+count = 1
+check = "a window wider than the terminal scrolls to its focus and brings the WHOLE control in, not the one cell a plain QWidget calls its cursor"
