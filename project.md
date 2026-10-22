@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2260 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2262 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2260 on Qt 6 with no failures,
-  and 2229 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2262 on Qt 6 with no failures,
+  and 2231 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,39 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.495 Joining the new chord to the wire (2026-10-22)
+
+**A key a terminal cannot send is a key that does nothing, and this library
+binds none of those.** 8.494 bound `Ctrl+F4` to the tab and dock close on
+the holder's instruction, and nothing in the tree joined that chord to the
+bytes it arrives in. Checked rather than assumed, because this decoder has
+been wrong about exactly this: the whole modified set of F1 to F4 was
+missing once, consumed and delivering nothing, which is the state a new
+binding would have landed in.
+
+**`CSI 1;5S` is Ctrl+F4** -- F1 to F4 take their unmodified form from SS3
+and every modified form from `CSI 1;<mod><final>`, with the same bitmask
+`1 + 4` that `CSI 1;5C` uses for Ctrl+Right. Asserted end to end through the
+decoder now, with the modifier flags read back.
+
+**And the pair is the reason 8.494 kept both keys.** A terminal that encodes
+no modifier on a function key sends plain F4 when Ctrl is held -- `SS3 S`,
+asserted beside it -- so the chord is ABSENT there rather than mistaken for
+something else, and `Ctrl+W` still answers outside a text field. Two keys
+for one action is a drift risk this file names repeatedly; the measurement
+is what makes it the right call here rather than a hedge.
+
+**The sabotage took a second attempt and the first names a hazard.** The
+obvious anchor -- `case 'S': k.qt_key = Qt::Key_F4; break;` -- appears
+TWICE, once in the SS3 table and once in the modified one, so the harness
+refused it. A one-line anchor into a switch that handles the same final in
+two branches cannot say which branch it means. Anchored on the pair of lines
+that follow it, which is unique, and the entry reddens the modified reading
+while leaving the SS3 one alone.
+
+2262 checks on Qt 6, 2231 passing and 31 stepping over on Qt 5, 714 sabotage
+entries, every anchor matching.
 
 ### 8.494 Ctrl+F4 beside Ctrl+W, and the one place they differ (2026-10-22)
 

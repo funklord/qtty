@@ -436,6 +436,33 @@ int suite_backend() {
 	feed("\033[16~");
 	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
 
+	// Ctrl+F4 ON THE WIRE, which 8.494 bound a convention to and nothing
+	// joined to the bytes. F1 to F4 take their unmodified form from SS3 and
+	// every modified form from CSI 1;<mod><final>, so Ctrl+F4 is CSI 1;5S --
+	// the same bitmask, 1 + 4, that CSI 1;5C uses for Ctrl+Right above.
+	//
+	// It matters because a key a terminal cannot send is a key that does
+	// nothing, and this library's own rule is to bind none of those. The
+	// modified set was missing from this decoder once and the whole of it
+	// was consumed and delivered nothing, which is the state a new binding
+	// would have landed in.
+	feed("\033[1;5S");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F4
+	      && rec.keys[0].ctrl && !rec.keys[0].shift && !rec.keys[0].alt,
+	      "CSI 1;5S decodes as Ctrl+F4, which is the chord the conventions"
+	      " close a tab with and the form every terminal that encodes"
+	      " function-key modifiers sends it in");
+	// AND PLAIN F4 IS NOT IT, which is what a terminal that encodes no
+	// modifier on a function key sends when Ctrl is held: the chord is
+	// absent there rather than mistaken for something else, and Ctrl+W
+	// still answers outside a text field. The pair is why 8.494 kept both
+	// keys rather than replacing one.
+	feed("\033OS");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F4
+	      && !rec.keys[0].ctrl,
+	      "and a terminal that sends F4 with no modifier sends F4, so the"
+	      " chord is absent there rather than misread");
+
 	// AN OVERLONG UTF-8 FORM MUST NOT BECOME THE CHARACTER IT ENCODES, and
 	// this is the one row of a fourteen-sequence sweep that earned a check.
 	// C0 AF is a two-byte encoding of '/', which the standard forbids
