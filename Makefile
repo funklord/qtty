@@ -1144,6 +1144,21 @@ test-tools: all
 		   echo "             example does not take"; fail=1;; \
 		esac; \
 		rm -f $(BUILD_DIR)/chat.out; \
+		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \
+		  i=$$((i + 1)); done ) \
+		| timeout $(TEST_TIMEOUT) script -qec \
+			"stty rows 10 cols 40; $(EXAMPLE)" \
+			$(BUILD_DIR)/chat40.out > /dev/null 2>&1; \
+		narrow="$$(tr -d '\000' < $(BUILD_DIR)/chat40.out)"; \
+		case "$$narrow" in \
+		*"Menu/Shift+F10 context menu"*) \
+			echo "    example: ok (its key hints fit a 40-column terminal)";; \
+		*) echo "    example: FAILED -- at 40 columns its key hint line is"; \
+		   echo "             CUT rather than shortened, which says the keys"; \
+		   echo "             wrongly rather than saying fewer of them"; \
+		   fail=1;; \
+		esac; \
+		rm -f $(BUILD_DIR)/chat40.out; \
 	else \
 		echo "    note: script(1) is absent, so the example is not run" >&2; \
 	fi; \

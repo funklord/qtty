@@ -18392,6 +18392,70 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.496 The shipped example's key hints, cut rather than shortened (2026-10-22)
+
+**section 0d's method aimed at the first thing anyone runs.** The example is
+exercised at one size by `test-tools` -- it drew a frame, it showed its keys
+-- and nothing had rendered it narrow. Rendered at four pty sizes, its
+status line came out:
+
+    80 cols   Menu/Shift+F10 context menu  Ctrl+L redraw
+    40 cols   Menu/Shift+F10 context menu  Ctrl+L redr
+    24 cols   Menu/Shift+F10 context m
+    16 cols   Menu/Shift+F10 c
+
+A key hint cut mid-word, which says the keys WRONGLY rather than saying
+fewer of them -- and practice 8, which this line exists to demonstrate, is
+"say what the keys are". A `QLabel` does not elide, so nothing below it was
+going to. The library's own rule for a tab and a menu item is that "a name
+cut without an ellipsis reads as a different class"; here the unit that
+yields is a whole hint, because half a chord is not a shorter chord.
+
+**Three wrong turns, and each is worth more than the fix.**
+
+**The window is LARGER than the terminal, so fitting to it fits nothing.**
+The first version measured `win.width()` and kept both hints at 40 columns.
+Measured at five sizes, the window stops at 42 cells while the terminal goes
+to 16: section 7's policy drops what is optional and then SCROLLS rather
+than clipping, so the window keeps its minimum and the terminal is a view
+onto it. **That also means the cropping this investigation started from is
+the documented policy and not a defect** -- the comfortable finding was
+wrong, and checking the guide before reporting it is what said so.
+
+**`terminal_cells()` is not zero before `exec()`.** The second version
+assumed it was and guarded on `room > 0`, which silently disabled the whole
+fit. `setup()` reads the terminal before the frontend branch runs, so the
+width is already there.
+
+**And the fit does not belong in `chat.h`.** Putting it there compiled only
+after adding qtty includes to a window whose whole demonstration is that it
+is a plain Qt window which "does not know what a terminal is". Reverted, and
+the terminal-shaped decision lives in the frontend -- an event filter for a
+terminal resized mid-run, which measurement showed is the only thing that
+moves the window afterwards.
+
+**What the fix cannot do, said rather than implied.** Which 24 of those 42
+cells are on screen is the scroll's business and follows the focus, so an
+application cannot know where its status row is being viewed from. Fitting
+to the terminal's width keeps the hints in the leftmost cells, which is
+where the view sits while the focused widget starts at the left edge.
+
+**And the stale claim this change had to fix was mine.** The comment beside
+the example's own `Ctrl+L` shortcut said "qtty binds Ctrl+L to nothing: a
+row for it would be a convention change rather than a capability" -- true
+when written and false since 8.493, two commits earlier. The example leaves
+the conventions off, so its own shortcut is still right; what was wrong was
+the sentence about the library. Corrected where the next reader will look,
+which is the rule `working-practice.md` states for exactly this.
+
+**Checked at a second size**, in the one target that runs the shipped
+programs rather than building them: `test-tools` now renders the example at
+40 columns and asserts the whole first hint is there.
+
+2262 checks on Qt 6, 2231 passing and 31 stepping over on Qt 5, 714 sabotage
+entries -- unchanged, the new assertion being a Makefile gate rather than a
+suite check.
+
 ### 8.495 Joining the new chord to the wire (2026-10-22)
 
 **A key a terminal cannot send is a key that does nothing, and this library
