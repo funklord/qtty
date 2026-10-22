@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2264 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2266 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2264 on Qt 6 with no failures,
-  and 2233 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2266 on Qt 6 with no failures,
+  and 2235 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,48 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.498 Which of the three queries is a capability test (2026-10-22)
+
+**8.497's lens, run over the rest of the surface it came from.** That defect
+was `isValid()` on `ImCursorRectangle` asked as "does this widget edit
+text", and the question it raises is where else a query's validity stands in
+for a capability. Three places in this library depend on the answer.
+
+**The sibling twenty lines away was already right**, which is what made the
+fix clearly a fix rather than a guess: the cursor placement asks
+`WA_InputMethodEnabled` and excludes an item view, and its comment says in
+as many words that the attribute "is set by exactly the widgets that edit
+text". `follow_rect()` was the one site that asked the rectangle instead.
+
+**And the third site -- the router's click correction -- is sound for a
+reason worth pinning.** Measured 2026-10-22 across five widget kinds:
+
+    query                line edit, text edit   label, button, list
+    ImCursorRectangle    valid                  VALID
+    ImCursorPosition     valid                  invalid
+    ImSurroundingText    valid                  invalid
+
+So `isValid()` is a real capability test on two of the three queries and
+none at all on the rectangle. 8.489's correction asks the POSITION and the
+SURROUNDING TEXT, which is why it leaves a press on a spin box's arrow
+alone -- and why it needed no attribute test of its own, where
+`follow_rect()` did.
+
+**Pinned rather than relied on.** A Qt that began answering the other two
+from `QWidget` would make that correction fire on every widget, silently,
+and the three guards would all be wrong in the same direction at once. The
+check asserts both halves: every widget answers a valid rectangle, and only
+the two that edit text answer the other two.
+
+**It is not defended by a sabotage and cannot be**: what it asserts is Qt's
+behaviour rather than this library's, so no edit here can redden it. That is
+the one kind of check worth keeping without one -- a guard on an assumption
+this tree's own guards rest on, which is the ground the `setFrame(false)`
+check beside the line edit already stands on.
+
+2266 checks on Qt 6, 2235 passing and 31 stepping over on Qt 5, 715 sabotage
+entries, every anchor matching.
 
 ### 8.497 Every focus was followed by one cell of itself (2026-10-22)
 

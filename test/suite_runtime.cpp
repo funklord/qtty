@@ -1656,6 +1656,76 @@ int suite_runtime() {
 			QCoreApplication::processEvents();
 			GridGuard::reset();
 		}
+
+		// WHICH INPUT-METHOD QUERIES ARE A CAPABILITY TEST AND WHICH ARE
+		// NOT, pinned because three places in this library depend on the
+		// difference and 8.497 was one of them getting it wrong.
+		//
+		// Measured 2026-10-22 across five widget kinds:
+		//
+		//     query                 line edit, text edit   label, button, list
+		//     ImCursorRectangle     valid                  VALID
+		//     ImCursorPosition      valid                  invalid
+		//     ImSurroundingText     valid                  invalid
+		//
+		// So `isValid()` on the RECTANGLE says nothing about whether a
+		// widget edits text -- QWidget answers it with a one-pixel rect
+		// at its own middle -- while on the other two it is a real
+		// capability test. follow_rect() and the cursor placement ask
+		// WA_InputMethodEnabled for exactly that reason; the router's
+		// click correction relies on the position and the surrounding
+		// text being absent on a button, which is what lets it leave a
+		// press on a spin box's arrow alone.
+		//
+		// A Qt that started answering the other two from QWidget would
+		// make that correction fire on every widget, silently. This is
+		// the check that would say so.
+		//
+		// NOT DEFENDED BY A SABOTAGE, and it cannot be: what it asserts
+		// is Qt's behaviour rather than this library's, so no edit here
+		// can redden it. It is a guard on an assumption three of this
+		// tree's own guards rest on, which is the one kind of check
+		// worth keeping without one -- the same ground the
+		// setFrame(false) check beside the line edit stands on.
+		{
+			QLineEdit a_field(QStringLiteral("abc"));
+			QLabel a_label(QStringLiteral("label text"));
+			QPushButton a_button(QStringLiteral("press"));
+			QListWidget a_list;
+			a_list.addItem(QStringLiteral("row"));
+			QTextEdit a_doc;
+			a_doc.setPlainText(QStringLiteral("one two"));
+			int edits = 0, others = 0, rect_everywhere = 0, asked = 0;
+			for (QWidget *w : { static_cast<QWidget *>(&a_field),
+			                    static_cast<QWidget *>(&a_doc),
+			                    static_cast<QWidget *>(&a_label),
+			                    static_cast<QWidget *>(&a_button),
+			                    static_cast<QWidget *>(&a_list) }) {
+				++asked;
+				const bool ime =
+				    w->testAttribute(Qt::WA_InputMethodEnabled);
+				const bool pos = w->inputMethodQuery(Qt::ImCursorPosition)
+				                     .isValid();
+				const bool around =
+				    w->inputMethodQuery(Qt::ImSurroundingText).isValid();
+				if (w->inputMethodQuery(Qt::ImCursorRectangle)
+				        .toRect().isValid())
+					++rect_everywhere;
+				if (ime && pos && around) ++edits;
+				if (!ime && !pos && !around) ++others;
+			}
+			printf("info: %d of %d widget(s) answer a valid cursor"
+			       " RECTANGLE; %d edit text and answer all three, %d"
+			       " answer none but the rectangle\n", rect_everywhere,
+			       asked, edits, others);
+			CHECK(asked == 5 && rect_everywhere == 5,
+			      "every widget answers a valid cursor rectangle, so that"
+			      " query's validity is no test of whether one edits text");
+			CHECK(edits == 2 && others == 3,
+			      "while the cursor POSITION and the surrounding text are"
+			      " answered only by the two that do, which is what makes"
+			      " those two a capability test and the rectangle not");
+		}
 		GridGuard::reset();
 	}
 
