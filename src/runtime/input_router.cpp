@@ -1070,6 +1070,61 @@ static QVector<const QWidget *> owners_of(const QAction *a) {
 	return out;
 }
 
+// Can this widget's shortcuts answer at all? Qt asks before it looks at the
+// context, and this asked nowhere.
+//
+// QShortcutMap::correctWidgetContext() opens with the owner's own state --
+//
+//     if (!w->isVisible() || !w->isEnabled()) return false;
+//
+// -- and nothing here read either, so every page of a QStackedWidget or
+// QTabWidget had its shortcuts live at once. That is the standard Qt idiom
+// for a paged dialog, and the wrong page answered. Measured against Qt on an
+// ordinary window, with a positive control so the three refusals are not a
+// probe that never reached QShortcutMap:
+//
+//     visible, enabled owner        Qt fires, qtty fires       (the control)
+//     QShortcut on a hidden page    Qt refuses, qtty FIRED
+//     QShortcut on a disabled owner Qt refuses, qtty FIRED
+//     QAction on a hidden page      Qt refuses, qtty FIRED
+//
+// It is the direction that changes what an application does rather than
+// merely failing to, which is what the context comment above says of the same
+// fault in its own arm.
+//
+// A POPUP'S OWN VISIBILITY IS NOT THE QUESTION, and writing this as
+// `w->isVisible()` would have disabled every menu shortcut in every
+// application. A QAction in a menu is associated with the QMenu and nothing
+// else -- measured, `associatedObjects()` is one QMenu -- and a closed QMenu
+// is hidden. Qt fires that shortcut anyway:
+//
+//     closed File menu, Ctrl+S      Qt fires, the menu isVisible() false
+//     QMenu under a hidden widget   Qt refuses
+//
+// So a popup is stepped over and the question is put to what it belongs to.
+// That is the same chain the window arm walks and for the same reason: Qt
+// uses parentWidget() to decide where a popup belongs, and a popup is a
+// window, so no ancestor test that stops at a window boundary can see it.
+static bool widget_can_answer(const QWidget *w) {
+	for (; w; w = w->parentWidget()) {
+		if (w->windowType() == Qt::Popup) continue;
+		return w->isVisible() && w->isEnabled();
+	}
+	// Nothing above it that is not a popup. Left alone rather than refused,
+	// for the reason owners_of() gives below: there is nothing to judge it
+	// by, and refusing would silently disable a binding that works today.
+	return true;
+}
+
+static bool owners_can_answer(const QVector<const QWidget *> &owners) {
+	// An action belonging to no widget has nothing to scope it by, which is
+	// the case action_context_applies() already allows through.
+	if (owners.isEmpty()) return true;
+	for (const QWidget *w : owners)
+		if (widget_can_answer(w)) return true;
+	return false;
+}
+
 static bool action_context_applies(const QAction *a, const QWidget *scope,
                                    const QWidget *fw) {
 	const Qt::ShortcutContext ctx = a->shortcutContext();
@@ -1137,6 +1192,15 @@ static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
 	QSet<const QObject *> counted;
 	const auto add_action = [&out, &counted](QAction *a, bool app) {
 		if (!a->isEnabled()) return;
+		// The OWNER's state as well as the action's, which is Qt's order:
+		// correctWidgetContext() refuses on the widget before any context
+		// is considered. Here rather than in context_applies() so that the
+		// conflict report and the help line subtract the same rows -- two
+		// pages each claiming Ctrl+F are not a conflict when only one page
+		// is up, and a key that cannot fire is worse in a help line than an
+		// absent one, which is what that table already says of a disabled
+		// action.
+		if (!owners_can_answer(owners_of(a))) return;
 		if (app && a->shortcutContext() != Qt::ApplicationShortcut) return;
 		if (counted.contains(a)) return;
 		counted.insert(a);
@@ -1154,6 +1218,11 @@ static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
 	}
 	const auto add_shortcut = [&out, &counted](QShortcut *sc, bool app) {
 		if (!sc->isEnabled() || sc->key().isEmpty()) return;
+		// A QShortcut's owner is its parent, where that is a widget. A
+		// non-widget parent leaves nothing to judge by and is allowed
+		// through, as an ownerless action is.
+		if (const auto *owner = qobject_cast<QWidget *>(sc->parent()))
+			if (!widget_can_answer(owner)) return;
 		if (app && sc->context() != Qt::ApplicationShortcut) return;
 		if (counted.contains(sc)) return;
 		counted.insert(sc);

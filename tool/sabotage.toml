@@ -6802,6 +6802,42 @@ count = 1
 check = "a cell-painted widget taller than its viewport is handed its whole rect and writes only the rows the viewport shows"
 
 [[sabotage]]
+# An ACTION's owner state unread, which is how it was: a QAction on the page
+# of a QStackedWidget you are not on answered, so the wrong page's Ctrl+K
+# fired. 8.503.
+name = "an action's owner state is not read"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!owners_can_answer(owners_of(a))) return;"
+into = "\t\tif (false) return;"
+count = 1
+check = "nor an action on a hidden page, nor one in a menu whose own host is hidden"
+
+[[sabotage]]
+# A QSHORTCUT's owner state unread, the other arm of the same rule: the
+# commonest Qt idiom is a QShortcut parented to a widget, and one on a hidden
+# or disabled widget answered. 8.503.
+name = "a shortcut's owner state is not read"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (!widget_can_answer(owner)) return;"
+into = "\t\t\tif (false) return;"
+count = 1
+check = "a shortcut owned by a hidden page does not fire, on a chord no other claimant could have won on distance"
+
+[[sabotage]]
+# The POPUP step-over removed, which is the half that cannot be written as
+# owner->isVisible(): a QAction in a menu is associated with the QMenu and
+# nothing else, and a closed QMenu is hidden, so without this every menu
+# shortcut in every application stops working. Qt fires them -- measured, a
+# closed File menu's Ctrl+S triggers while the menu's isVisible() is false.
+# 8.503.
+name = "a closed menu's own visibility decides its actions' shortcuts"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->windowType() == Qt::Popup) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "a shortcut on a visible enabled owner fires, and so does a menu action whose only owner is a CLOSED menu -- a popup's own visibility is not the question"
+
+[[sabotage]]
 # A harvested placement carrying no clip, which is how it was before 8.501:
 # the backend crops to the GRID and nothing said what the ancestors hid, so
 # a pixel surface 9 rows tall was placed over 9 rows of a 3-row viewport.

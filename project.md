@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2300 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2307 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,90 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.503 A shortcut answered from a page you were not on (2026-10-23)
+
+**The lens is 8.500's and 8.501's, run a third time:** what does the
+library ask an application to do that the application cannot get right?
+The two interfaces for custom content were the last two answers; this one
+is the shortcut matcher.
+
+**Qt refuses a shortcut whose OWNER WIDGET is hidden or disabled, before
+it looks at the context at all.** `QShortcutMap::correctWidgetContext()`
+opens with `if (!w->isVisible() || !w->isEnabled()) return false;`, and
+nothing here read either state. `shortcut_claims()` asked whether the
+ACTION or the SHORTCUT was enabled and stopped there.
+
+So every page of a `QStackedWidget` or `QTabWidget` had its shortcuts live
+at once. That is the standard Qt idiom for a paged dialog, and the wrong
+page answered.
+
+**Measured on both sides, with a positive control.** Qt's answers were
+taken from an ordinary window -- no `WA_DontShowOnScreen`, so
+`activeWindow()` is non-null and `QShortcutMap` is live -- and the control
+is a shortcut on a visible enabled owner, because three refusals prove
+nothing if the way the probe sends a key never reaches the map at all:
+
+        case                             Qt         qtty before
+        visible, enabled owner           fires      fires    (control)
+        closed File menu's action        fires      fires
+        QShortcut on a hidden page       refuses    FIRED
+        QShortcut on a disabled owner    refuses    FIRED
+        QAction on a hidden page         refuses    FIRED
+        QMenu under a hidden widget      refuses    FIRED
+
+It is the direction that changes what an application does rather than
+merely failing to, which is what this file's own context comment says of
+the same fault in its own arm.
+
+**The hidden page's shortcut looked refused even unfixed, and that was a
+mask.** A hidden page claiming `Ctrl+F` alongside the visible page is
+answered by the visible one, because `claim_distance()` picks the claim
+nearest the focus. The chord that proves anything is one the hidden page
+claims ALONE -- `Ctrl+Y` -- and that fired. Measured against the old code
+on purpose rather than inferred, by stashing the fix and re-running.
+
+**The fix cannot be written as `owner->isVisible()`, and that is the half
+worth keeping.** A `QAction` in a menu is associated with the `QMenu` and
+nothing else -- measured, `associatedObjects()` is one `QMenu` -- and a
+closed `QMenu` is hidden. Qt fires that shortcut anyway: a closed `File`
+menu's `Ctrl+S` triggers while `file->isVisible()` is false. So a naive
+visibility test disables every menu shortcut in every application.
+
+Qt steps over the popup and asks what it belongs to, which is the chain
+the window-context arm already walks and for the reason recorded there: a
+popup IS a window, so no ancestor test that stops at a window boundary can
+see past it. `widget_can_answer()` walks `parentWidget()`, skipping
+popups, and asks the first thing that is not one. A menu under a hidden
+host is refused, which is Qt's answer too.
+
+**The test went in the ENUMERATOR rather than in the context matcher**, so
+the conflict report and the help line subtract the same rows. Two pages
+each claiming `Ctrl+F` are not a conflict when only one page can be up,
+and a key that cannot fire is worse in a help line than an absent one --
+which is exactly what that table already says of a disabled action. The
+guide's table grew from four rows to five, with its driver, and
+`runtime.h`'s prose with them.
+
+**2300 checks to 2307.** The arrangement is asserted before the refusals,
+because every refusal is also what a fixture that failed to hide anything
+would produce.
+
+**And one of the six cases passed vacuously until the chord was
+changed.** The buried menu was bound to `Ctrl+D`, which is one of the
+library's own conventions and is answered before shortcut matching ever
+runs -- so the check read zero whatever the owner test did. It is
+`Ctrl+Shift+D` now. The probe said what I wanted to hear for a reason
+that had nothing to do with the subject, which is why the old-code run
+matters: it is the only thing that separated the four real refusals from
+the two that were never reachable.
+
+**Three sabotage entries, all `--only` proven.** Two break the owner test
+in each arm. The third removes the popup step-over and reddens the named
+check **and twelve others**, which is the evidence that the carve-out is
+load-bearing rather than defensive: without it, menu shortcuts across the
+suite stop working. `--validate` passes over all 725.
 
 
 ### 8.502 The clip travels with the placement (2026-10-22)

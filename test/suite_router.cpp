@@ -3428,6 +3428,155 @@ int suite_router() {
 		              .toUtf8().constData());
 	}
 
+	// ---- the OWNER's state, which the contexts above never ask about -------
+	//
+	// Qt refuses a shortcut whose owner widget is hidden or disabled BEFORE it
+	// looks at the context at all, and nothing here read either state. So
+	// every page of a QStackedWidget or QTabWidget had its shortcuts live at
+	// once -- the standard Qt idiom for a paged dialog -- and the wrong page
+	// answered. 8.503.
+	//
+	// Measured against Qt on an ordinary window with a positive control, then
+	// against this router before and after the fix:
+	//
+	//     visible, enabled owner         Qt fires      before: fires
+	//     closed File menu's action      Qt fires      before: fires
+	//     QShortcut on a hidden page     Qt refuses    before: FIRED
+	//     QShortcut on a disabled owner  Qt refuses    before: FIRED
+	//     QAction on a hidden page       Qt refuses    before: FIRED
+	//     QMenu under a hidden widget    Qt refuses    before: FIRED
+	//
+	// THE SOLE-CLAIMANT CHORD IS THE ONE THAT PROVES ANYTHING. A hidden
+	// page's Ctrl+F looks refused even unfixed, because the visible page
+	// claims the same chord and the nearest-the-focus tie-break answers with
+	// that one -- the mask, measured. Ctrl+Y is claimed by the hidden page
+	// alone, so nothing but the owner test can refuse it.
+	//
+	// AND THE MENU CARVE-OUT IS HALF THE CHECK. A QAction in a menu is
+	// associated with the QMenu and nothing else, and a closed QMenu is
+	// hidden -- so an owner test written as `owner->isVisible()` disables
+	// every menu shortcut in every application. Qt steps over the popup and
+	// asks what it belongs to, which is what the window-context arm already
+	// walks. Both halves are here because either alone is satisfied by the
+	// wrong implementation: refusing everything passes the four refusals, and
+	// asking nothing passes the two that fire.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *stack = new QStackedWidget;
+		v->addWidget(stack);
+		auto *shown = new QWidget, *hidden = new QWidget;
+		auto *field = new QLineEdit;
+		(new QVBoxLayout(shown))->addWidget(field);
+		(new QVBoxLayout(hidden))->addWidget(new QLabel(QStringLiteral("off")));
+		stack->addWidget(shown);
+		stack->addWidget(hidden);
+		stack->setCurrentIndex(0);
+
+		int control = 0, hidden_alone = 0, disabled_owner = 0;
+		int hidden_action = 0, menu_action = 0, buried = 0;
+		const auto shortcut = [](const char *chord, QWidget *owner, int *count) {
+			auto *sc = new QShortcut(QKeySequence(QLatin1String(chord)), owner);
+			QObject::connect(sc, &QShortcut::activated, [count] { ++*count; });
+			return sc;
+		};
+		shortcut("Ctrl+B", shown, &control);
+		shortcut("Ctrl+Y", hidden, &hidden_alone);
+		auto *off = new QWidget(&win);
+		off->setEnabled(false);
+		shortcut("Ctrl+J", off, &disabled_owner);
+
+		auto *on_hidden = new QAction(QStringLiteral("Find again"), hidden);
+		on_hidden->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
+		QObject::connect(on_hidden, &QAction::triggered, [&] { ++hidden_action; });
+		hidden->addAction(on_hidden);
+
+		auto *bar = new QMenuBar(&win);
+		v->setMenuBar(bar);
+		auto *file = bar->addMenu(QStringLiteral("&File"));
+		auto *save = file->addAction(QStringLiteral("&Save"));
+		save->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+		QObject::connect(save, &QAction::triggered, [&] { ++menu_action; });
+
+		auto *buried_host = new QWidget(&win);
+		buried_host->hide();
+		auto *buried_menu = new QMenu(QStringLiteral("Buried"), buried_host);
+		auto *deep = buried_menu->addAction(QStringLiteral("Deep"));
+		// Ctrl+Shift+D rather than Ctrl+D: Ctrl+D is one of the library's own
+		// conventions and is answered before shortcut matching, so a check
+		// written on it reads zero whatever the owner test does. Measured --
+		// this case passed vacuously until the chord was changed.
+		deep->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+D")));
+		QObject::connect(deep, &QAction::triggered, [&] { ++buried; });
+
+		win.resize(GridMetrics::cells(40, 10));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		field->setFocus();
+		QCoreApplication::processEvents();
+		const bool arranged = shown->isVisible() && !hidden->isVisible()
+		                   && !off->isEnabled() && !file->isVisible()
+		                   && !buried_host->isVisible();
+		r.on_key({Qt::Key_B, QString(), true, false, false});
+		r.on_key({Qt::Key_Y, QString(), true, false, false});
+		r.on_key({Qt::Key_J, QString(), true, false, false});
+		r.on_key({Qt::Key_K, QString(), true, false, false});
+		r.on_key({Qt::Key_S, QString(), true, false, false});
+		r.on_key({Qt::Key_D, QString(), true, false, true});
+		QCoreApplication::processEvents();
+
+		// THE ARRANGEMENT ASSERTED FIRST. Every refusal below is also what a
+		// fixture that failed to hide anything would produce, so the states
+		// are claimed rather than assumed.
+		CHECK(arranged,
+		      "the fixture really has a hidden page, a disabled widget, a"
+		      " closed menu and a buried one");
+		CHECK(control == 1 && menu_action == 1,
+		      "a shortcut on a visible enabled owner fires, and so does a"
+		      " menu action whose only owner is a CLOSED menu -- a popup's"
+		      " own visibility is not the question");
+		CHECK(hidden_alone == 0,
+		      "a shortcut owned by a hidden page does not fire, on a chord no"
+		      " other claimant could have won on distance");
+		CHECK(disabled_owner == 0,
+		      "nor one owned by a disabled widget, which Qt refuses before it"
+		      " looks at the context");
+		CHECK(hidden_action == 0 && buried == 0,
+		      "nor an action on a hidden page, nor one in a menu whose own"
+		      " host is hidden");
+
+		// AND THE REPORTS SUBTRACT THE SAME ROWS, which is why the test went
+		// in the enumerator rather than in the context matcher: two pages
+		// each claiming Ctrl+F are not a conflict when only one page can be
+		// up, and a key that cannot fire is worse in a help line than an
+		// absent one -- which is what that table already says of a disabled
+		// action.
+		shortcut("Ctrl+F", shown, &control);
+		shortcut("Ctrl+F", hidden, &hidden_alone);
+		QCoreApplication::processEvents();
+		const auto conflicts = Qtty::shortcut_conflicts(&win);
+		bool claims_ctrl_f = false;
+		for (const auto &c : conflicts)
+			if (c.first == QKeySequence(QStringLiteral("Ctrl+F")))
+				claims_ctrl_f = true;
+		const auto help = Qtty::shortcut_help(&win);
+		QStringList listed_keys;
+		for (const auto &row : help) listed_keys << row.first;
+		CHECK(!claims_ctrl_f,
+		      "and one chord claimed by a visible page and a hidden one is no"
+		      " conflict, only one of them being able to answer");
+		CHECK(listed_keys.contains(QStringLiteral("Ctrl+B"))
+		      && !listed_keys.contains(QStringLiteral("Ctrl+Y"))
+		      && !listed_keys.contains(QStringLiteral("Ctrl+J")),
+		      "and the help line carries the chord that can fire and leaves"
+		      " out the ones whose owners cannot");
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- the KeyEvent-shapes table, driven ---------------------------------
 	//
 	// Four rows, each naming the field that DECIDES and the field that is
@@ -8360,6 +8509,8 @@ int suite_router() {
 			const QStringList driven{
 				QStringLiteral("a **disabled** action or shortcut is "
 				               "left out"),
+				QStringLiteral("one whose **owner widget** is hidden or "
+				               "disabled is left out too"),
 				QStringLiteral("one action owned by a **menu and a "
 				               "toolbar** is one row"),
 				QStringLiteral("one action carrying **two sequences** "

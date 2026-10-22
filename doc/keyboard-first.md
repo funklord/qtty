@@ -1227,12 +1227,13 @@ reports on, which matters more than it sounds: a help line and a
 conflict report that walked your tree separately could describe
 different programs, and the line is the one your user believes.
 
-Four things it does that a walk of your own actions would have to
+Five things it does that a walk of your own actions would have to
 remember, and each is a row you would otherwise print wrongly:
 
 | | |
 |---|---|
 | a **disabled** action or shortcut is left out | a key that does nothing is worse in a hints line than an absent one |
+| one whose **owner widget** is hidden or disabled is left out too | the page of a `QStackedWidget` you are not on cannot answer, so its keys are not yours to advertise -- and a **closed menu** is not that case, its actions' shortcuts firing as they do on the desktop |
 | one action owned by a **menu and a toolbar** is one row | the naive walk reaches it twice |
 | one action carrying **two sequences** is two rows | both answer, so a user needs both |
 | another window's `Qt::ApplicationShortcut` is **in** | it answers here, whatever window it was declared in |

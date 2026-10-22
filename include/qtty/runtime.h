@@ -189,8 +189,12 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // What the enumeration already does, and an application walking its own
 // actions would have to remember: a disabled action or shortcut is left out,
 // because a key that does nothing is worse in a help line than an absent one;
-// an action reached through both a menu and a toolbar is one row; and another
-// window's `Qt::ApplicationShortcut` claims are IN, because they answer here.
+// one whose OWNER WIDGET is hidden or disabled is left out for the same
+// reason, since the page of a QStackedWidget you are not on cannot answer --
+// and a CLOSED MENU is not that case, a menu action's shortcut firing here as
+// it does on the desktop; an action reached through both a menu and a toolbar
+// is one row; and another window's `Qt::ApplicationShortcut` claims are IN,
+// because they answer here.
 //
 // Two things are deliberately absent. Mnemonics are not chords and are
 // already drawn underlined on the control itself, so a list of them is a
