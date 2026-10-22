@@ -15,6 +15,7 @@
 #include <QTextBlock>
 #include <QShortcut>
 #include "../qt_compat.h"
+#include "../cell_geometry.h"
 
 namespace Qtty {
 
@@ -2811,6 +2812,73 @@ static void prime_menu_motion(QWidget *target, const QPoint &screen,
 	}
 }
 
+// Where a click in `pos` has to be put for Qt to read it as the cluster this
+// library drew in that cell. See the call site for the measurement.
+//
+// TWO GUARDS, and both are the difference between a correction and a
+// regression. The text's own ORIGIN has to be on screen -- derived the way
+// 8.488 derives it, Qt's caret pixel less the font's advance over the text
+// before it -- because a scrolled field's rectangle is already clamped to
+// the visible part and Qt's x is then the only one carrying the offset. And
+// the click has to be on the caret's own ROW: ImSurroundingText answers the
+// current BLOCK in a multi-line editor and ImCursorPosition a position
+// within it, so on any other line the origin would belong to the wrong
+// line. A single-line field is always on that row, which is where wide text
+// is typed.
+//
+// Returns `pos.x()` unchanged wherever it cannot answer, which is every
+// widget that is not a text input: a button and a label answer neither
+// query.
+static int text_x_for_cell(QWidget *target, const QPoint &pos) {
+	const QVariant at = target->inputMethodQuery(Qt::ImCursorPosition);
+	const QVariant around = target->inputMethodQuery(Qt::ImSurroundingText);
+	const QVariant where = target->inputMethodQuery(Qt::ImCursorRectangle);
+	if (!at.isValid() || !around.isValid() || !where.isValid())
+		return pos.x();
+	const QString text = around.toString();
+	if (text.isEmpty()) return pos.x();
+	// AND ONLY WHERE THE TARGET OWNS THE RECTANGLE IT ANSWERED. A widget
+	// that delegates editing to an internal editor forwards this query
+	// VERBATIM, so the rectangle comes back in the EDITOR's coordinates
+	// while `pos` is in the target's -- 8.447 measured a QSpinBox and its
+	// inner QLineEdit both answering 10x20+17+0 while the edit sits at
+	// +10. Correcting across that offset moves the click by a cell.
+	//
+	// It is also what keeps a spin box's ARROWS clickable: they are the
+	// target's cells and not the editor's, and the first version of this
+	// reddened "a spin box's up and down arrows are separately clickable"
+	// by computing a text position for a click on an arrow.
+	for (QWidget *child : target->findChildren<QWidget *>())
+		if (child->isVisible()
+		    && child->inputMethodQuery(Qt::ImCursorRectangle) == where)
+			return pos.x();
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	const QFontMetrics fm(target->font());
+	const QRect cr = where.toRect();
+	const int origin = cr.x() + cr.width() / 2
+	                 - fm.horizontalAdvance(text.left(qMax(0, at.toInt())));
+	if (origin < 0) return pos.x();
+	if (pos.y() / ch != (cr.y() + cr.height() / 2) / ch) return pos.x();
+	if (pos.x() < origin) return pos.x();
+	// Which cell of the text was clicked, counted in cells from the cell
+	// the text starts in rather than from its pixel, so a sub-cell inset
+	// cannot shift the count.
+	const int k = pos.x() / cw - origin / cw;
+	int cells = 0, px = origin;
+	for (const QString &cl : to_clusters(text)) {
+		const int w = cluster_width(cl);
+		const int adv = fm.horizontalAdvance(cl);
+		if (cells + w > k) return px + adv / 2;
+		cells += w;
+		px += adv;
+	}
+	// PAST THE TEXT, and Qt's own x is the right answer there rather than
+	// the text's end: a click beyond the last character already reads as
+	// past the end, and handing back the text's end instead would answer
+	// for cells the text does not occupy -- a spin box's arrows among them.
+	return pos.x();
+}
+
 void InputRouter::on_mouse(const MouseEvent &m) {
 	if (!input_scope()) return;                 // see on_key(), above
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
@@ -2977,7 +3045,28 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	// QAbstractButton checks rect().contains() on the release before it
 	// emits clicked(), so the press landed and the click did not. Two
 	// derivations of one position, and only one of them was fixed.
-	const QPoint pos = target->mapFromGlobal(screen);
+	QPoint pos = target->mapFromGlobal(screen);
+	// AND THE X A TEXT WIDGET NEEDS IS NOT THE CELL'S CENTRE. Qt maps a
+	// pixel to a text position through the FONT's advance, and this library
+	// draws a two-column cluster in two CELLS whatever the font says -- so a
+	// click on the cell a character is drawn in lands on a different
+	// character. Measured 2026-10-22 on a twenty-cell field:
+	//
+	//     abcd       4 clicks, 4 right
+	//     four CJK   clicking character 2's cell gave character 3, and
+	//                character 3's gave 4
+	//     ab + four  the same two, one pair further along
+	//
+	// It is 8.488's fault pointed the other way: that one corrected where
+	// the caret is SHOWN, and this is where a click is HEARD. Both are a
+	// pixel measurement of Qt's reinterpreted as cells.
+	//
+	// The correction walks the text in clusters and hands Qt the pixel in
+	// the middle of the cluster this library drew in that cell. For narrow
+	// text every advance is a whole cell and the answer is the cell's own
+	// centre, so nothing moves -- which the fixture asserts rather than
+	// assumes.
+	pos.setX(text_x_for_cell(target, pos));
 
 	if (m.wheel || m.wheel_x) {
 		// Up the parent chain until something takes it. Qt propagates an

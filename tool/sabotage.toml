@@ -7623,3 +7623,13 @@ find = "\t\t\t\t\tif (cr.x() + cr.width() / 2 - qt_px >= 0)\n\t\t\t\t\t\tadrift 
 into = "\t\t\t\t\tadrift = 0;"
 count = 1
 check = "a caret sits one cell past the text before it, counted in cells, so a field of wide characters does not put the terminal's cursor inside its own text"
+
+[[sabotage]]
+# A click goes back to the cell's own centre, so on wide text it lands on a
+# different character than the one drawn there. 8.489.
+name = "a click is mapped through the font's advance"
+file = "src/runtime/input_router.cpp"
+find = "\tpos.setX(text_x_for_cell(target, pos));"
+into = "\t(void)text_x_for_cell(target, pos);"
+count = 1
+check = "a click on the cell a character is drawn in puts the cursor at that character, wide characters included"

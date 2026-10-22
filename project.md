@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2248 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2249 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1074,7 +1074,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item, and 8.488 correcting the CARET, which Qt also places at the font's advance. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
+| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item, and 8.488 and 8.489 correcting the CARET and the CLICK, which Qt places and reads at the font's advance. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2248 on Qt 6 with no failures,
-  and 2217 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2249 on Qt 6 with no failures,
+  and 2218 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,55 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.489 A click landed on the character beside the one drawn there (2026-10-22)
+
+**8.488's fault pointed the other way.** That entry corrected where the
+caret is SHOWN; this is where a click is HEARD. Both are a pixel
+measurement of Qt's reinterpreted as cells: Qt maps a pixel to a text
+position through the FONT's advance, and this library draws a two-column
+cluster in two CELLS whatever the font says.
+
+Measured 2026-10-22 on a twenty-cell field, clicking the cell each character
+was drawn in:
+
+    abcd           4 of 4 right
+    four CJK       character 2's cell gave 3, and character 3's gave 4
+    ab + four CJK  the same two, one pair along
+
+So in a field of wide characters the cursor landed beside where the user
+clicked, and further out the further right they clicked.
+
+**The correction walks the text in clusters** and hands Qt the pixel in the
+middle of the cluster this library drew in that cell. For narrow text every
+advance is a whole cell and the answer is the cell's own centre, so nothing
+moves -- asserted with an ASCII row rather than assumed.
+
+**Three guards, and two of them were paid for.** The text's origin has to be
+on screen, which is 8.488's guard for the same reason: a scrolled field's
+rectangle is clamped to the visible part and Qt's x is then the only one
+carrying the offset. The click has to be on the caret's own ROW, because
+`ImSurroundingText` answers the current BLOCK in a multi-line editor and
+`ImCursorPosition` a position within it.
+
+**And the target has to OWN the rectangle it answered, which the suite
+found.** A widget that delegates editing to an internal editor forwards the
+query verbatim, so the rectangle comes back in the editor's coordinates
+while the click is in the target's -- 8.447 measured a `QSpinBox` and its
+inner `QLineEdit` both answering `10x20+17+0` while the edit sits at +10.
+The first version of this reddened **"a spin box's up and down arrows are
+separately clickable"**: it computed a text position for a click on an
+arrow, because a spin box answers both queries on its editor's behalf. Where
+a visible child answers the same rectangle, Qt's x is kept.
+
+**Past the text, Qt's own x is the right answer** rather than the text's
+end. A click beyond the last character already reads as past the end, and
+handing back the end instead would answer for cells the text does not
+occupy -- a spin box's arrows among them, which is the same regression by a
+second route.
+
+2249 checks on Qt 6, 2218 passing and 31 stepping over on Qt 5, 707 sabotage
+entries, every anchor matching.
 
 ### 8.488 The cursor sat inside the text it was meant to follow (2026-10-22)
 

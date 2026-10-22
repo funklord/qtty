@@ -4327,6 +4327,73 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a click lands on the character it was drawn on --------------------
+	//
+	// Qt maps a pixel to a text position through the FONT's advance, and
+	// this library draws a two-column cluster in two CELLS whatever the
+	// font says -- so a click on the cell a character is drawn in landed on
+	// a different character. Measured 2026-10-22 on a twenty-cell field,
+	// clicking the cell each character was drawn in:
+	//
+	//     abcd           4 of 4 right
+	//     four CJK       character 2's cell gave 3, and 3's gave 4
+	//     ab + four CJK  the same two, one pair along
+	//
+	// It is 8.488's fault pointed the other way: that one corrected where
+	// the caret is SHOWN and this is where a click is HEARD.
+	//
+	// THE CELLS ARE READ OFF THE BUFFER rather than computed, for the
+	// reason the caret's check gives: a wide cluster's lead cell is where
+	// it was drawn and its continuation is not a character of its own.
+	{
+		int wrong = 0, clicks = 0;
+		QString cjk;
+		for (int k = 0; k < 4; ++k) cjk += QChar(0x4fdd + k);
+		for (const QString &text : { QStringLiteral("abcd"), cjk,
+		                             QStringLiteral("ab") + cjk }) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *ed = new QLineEdit(&host);
+			ed->setGeometry(0, 0, 20 * cw, ch);
+			ed->setText(text);
+			host.resize(GridMetrics::cells(20, 2));
+			host.show();
+			QCoreApplication::processEvents();
+			ed->setFocus();
+			QCoreApplication::processEvents();
+			set_focus_widget(ed);
+			InputRouter cr(&host);
+			CellBuffer cb(20, 2);
+			render_once(host, cb);
+			QVector<int> lead;
+			for (int x = 0; x < cb.cols(); ++x) {
+				const QString g = cb.at(x, 0).ch;
+				if (cb.at(x, 0).width == 0) continue;
+				if (g.isEmpty() || g == QStringLiteral(" ")
+				    || g == QStringLiteral("[") || g == QStringLiteral("]"))
+					continue;
+				lead.append(x);
+			}
+			for (int i = 0; i < lead.size(); ++i) {
+				test::click(cr, QPoint(lead[i], 0));
+				QCoreApplication::processEvents();
+				++clicks;
+				if (ed->cursorPosition() != i) {
+					++wrong;
+					printf("info:   |%s|: cell %d is character %d and the"
+					       " cursor went to %d\n", qPrintable(text),
+					       lead[i], i, ed->cursorPosition());
+				}
+			}
+			GridGuard::reset();
+		}
+		printf("info: %d of %d clicks on a character's own cell landed"
+		       " elsewhere\n", wrong, clicks);
+		CHECK(clicks == 14 && wrong == 0,
+		      "a click on the cell a character is drawn in puts the cursor"
+		      " at that character, wide characters included");
+	}
+
 	// ---- a title that is not ASCII ----------------------------------------
 	//
 	// The strip laid its tabs out in QChars. A QString's size counts code
