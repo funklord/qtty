@@ -75,6 +75,7 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 		// separate rows all along.
 		{ QStringLiteral("Ctrl+W"),         QStringLiteral("rub out word in text, else close the tab or dock") },
 		{ QStringLiteral("Ctrl+D"),         QStringLiteral("delete, in text") },
+		{ QStringLiteral("Ctrl+L"),         QStringLiteral("redraw") },
 		menu,
 	};
 }
@@ -128,6 +129,7 @@ static const ConventionRow k_convention_rows[] = {
 	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },
 	{ "Ctrl+W",         Qt::CTRL,        { Qt::Key_W,        Qt::Key(0) },      false },
 	{ "Ctrl+D",         Qt::CTRL,        { Qt::Key_D,        Qt::Key(0) },      false },
+	{ "Ctrl+L",         Qt::CTRL,        { Qt::Key_L,        Qt::Key(0) },      false },
 	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      true  },
 };
 
@@ -2361,6 +2363,25 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 		// document. A QDockWidget's button closes the dock itself, and
 		// close() sends a QCloseEvent an application can refuse --
 		// which is the same route the quit key takes.
+		// Ctrl+L REDRAWS THE SCREEN, the most universal terminal
+		// convention after Ctrl+C. The mechanism has been there since
+		// 8.318 and had no key: a screen can be corrupted by something
+		// this library did not do and cannot see -- another process
+		// writing to the tty, a sequence dropped over a slow link -- and
+		// the frame diff then describes a screen that no longer exists.
+		// Qtty::redraw() is the recourse and an application had to bind
+		// it. 0b carried the binding as the holder's; taken on their
+		// instruction 2026-10-22.
+		//
+		// NO YIELD TO A TEXT WIDGET, unlike Ctrl+W beside it: readline's
+		// own Ctrl+L clears the screen while the line being edited stays,
+		// so a caret is exactly where a terminal user expects this to
+		// work. A widget that wants the key keeps it anyway -- this arm
+		// runs only where nothing accepted the press.
+		if (k.ctrl && k.qt_key == Qt::Key_L) {
+			redraw();
+			return;
+		}
 		if (k.ctrl && k.qt_key == Qt::Key_W) {
 			for (QWidget *w = key_target(); w; w = w->parentWidget()) {
 				if (auto *dock = qobject_cast<QDockWidget *>(w)) {

@@ -7655,3 +7655,32 @@ into = "\t\tif (false) {"
 count = 1
 check = "Ctrl+W asks a closable tab to close and closes a closable dock, which had no keyboard route anywhere before"
 
+
+[[sabotage]]
+# A tab's mnemonic is marked whether or not the key answers, which promises
+# a key that does nothing with the conventions off. 8.493.
+name = "a tab's mnemonic is marked when the key does nothing"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst int mn = keyboard_conventions()\n\t\t\t\t               ? mnemonic_index(t->text) : -1;"
+into = "\t\t\t\tconst int mn = mnemonic_index(t->text);"
+count = 1
+check = "and it is bare without them, a mark for a key that does nothing being worse than none -- the glyphs being identical either way"
+
+[[sabotage]]
+# And it is not marked at all, so a key that works is invisible. 8.493.
+name = "a tab's mnemonic is never marked"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t\tdev->buffer().at(at, c.top()).attrs |= Attr::Underline;"
+into = "\t\t\t\t\t\t(void)at;"
+count = 1
+check = "a tab's mnemonic letter is underlined under the keyboard conventions, which is when Alt and that letter reach it"
+
+[[sabotage]]
+# Ctrl+L stops redrawing, so a terminal corrupted by something outside the
+# program has no key to recover with again. 8.493.
+name = "Ctrl+L does not redraw"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (k.ctrl && k.qt_key == Qt::Key_L) {\n\t\t\tredraw();"
+into = "\t\tif (false) {\n\t\t\tredraw();"
+count = 1
+check = "Ctrl+L redraws the screen under the conventions, which is the recourse a corrupted terminal has and had no key"

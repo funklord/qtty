@@ -9207,6 +9207,68 @@ int suite_widgets() {
 
 
 
+	// A TAB'S MNEMONIC IS MARKED WHILE THE KEY ANSWERS, and not before.
+	// 8.37 recorded a tab's letter as doing nothing and left it unmarked on
+	// the rule this file states for the push button -- "underlining a key
+	// that does nothing is worse than leaving it bare". The key answers
+	// under the conventions as of 8.155, measured again 2026-10-22: Alt+S
+	// on a tab labelled "&Second" switches to it with the bundle on and
+	// does nothing with it off. So the mark follows the answer.
+	//
+	// ASSERTED IN BOTH STATES, which is the whole point: a mark that
+	// appeared with the conventions off would be promising a key that does
+	// nothing, and one that never appeared would be hiding a key that
+	// works.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QString on_row, off_row, on_mark, off_mark;
+		for (int conv = 0; conv < 2; ++conv) {
+			set_keyboard_conventions(conv != 0);
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *tabs = new QTabWidget(&host);
+			tabs->addTab(new QLabel(QStringLiteral("a")),
+			             QStringLiteral("&First"));
+			tabs->addTab(new QLabel(QStringLiteral("b")),
+			             QStringLiteral("Se&cond"));
+			tabs->setGeometry(0, 0, 30 * cw, 5 * ch);
+			host.resize(GridMetrics::cells(30, 6));
+			host.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(30, 6);
+			render_once(host, b);
+			QString row, mark;
+			for (int x = 0; x < b.cols(); ++x) {
+				row += b.at(x, 0).ch;
+				mark += (b.at(x, 0).attrs & Attr::Underline)
+				        ? QLatin1Char('U') : QLatin1Char('.');
+			}
+			if (conv) { on_row = row; on_mark = mark; }
+			else      { off_row = row; off_mark = mark; }
+			GridGuard::reset();
+		}
+		set_keyboard_conventions(false);
+		printf("info: a tab bar with the conventions off |%s| and on |%s|\n",
+		       qPrintable(off_mark.left(16)), qPrintable(on_mark.left(16)));
+		// The LETTERS rather than the columns: the mark has to be on the
+		// `F` of First and the `c` of Second, which is what says it found
+		// the mnemonic rather than a cell that happens to be there.
+		int marked = 0, wrong = 0;
+		for (int x = 0; x < on_mark.size(); ++x) {
+			if (on_mark.at(x) != QLatin1Char('U')) continue;
+			++marked;
+			const QChar g = on_row.at(x);
+			if (g != QLatin1Char('F') && g != QLatin1Char('c')) ++wrong;
+		}
+		CHECK(marked == 2 && wrong == 0,
+		      "a tab's mnemonic letter is underlined under the keyboard"
+		      " conventions, which is when Alt and that letter reach it");
+		CHECK(!off_mark.contains(QLatin1Char('U')) && off_row == on_row,
+		      "and it is bare without them, a mark for a key that does"
+		      " nothing being worse than none -- the glyphs being identical"
+		      " either way");
+	}
+
 	// THE CARET GOES WHERE THE TEXT WAS DRAWN, which it did not for wide
 	// text. The caret's cell comes from Qt's ImCursorRectangle, which is in
 	// PIXELS at the font's advance over the text before it -- and this

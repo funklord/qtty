@@ -956,6 +956,40 @@ int suite_runtime() {
 		sched.render_now();
 		CHECK(backend.frame_count() > first,
 		      "while a tree that changed is");
+
+		// AND Ctrl+L FORCES ONE, which is the binding 0b held open: the
+		// mechanism has been Qtty::redraw() since 8.318 and had no key,
+		// so an application had to bind the most universal terminal
+		// convention after Ctrl+C for itself. Taken on the copyright
+		// holder's instruction 2026-10-22.
+		//
+		// MEASURED THROUGH THE SCHEDULER, which is the only thing that
+		// can say it happened: an unchanged tree presents nothing, so a
+		// frame appearing with nothing changed IS the redraw. The
+		// conventions-off pass is the control, and it is the half that
+		// says this is an opt-in convention rather than a key the
+		// library takes.
+		sched.render_now();
+		const int settled = backend.frame_count();
+		set_keyboard_conventions(false);
+		router.on_key({Qt::Key_L, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		sched.render_now();
+		const int without = backend.frame_count();
+		set_keyboard_conventions(true);
+		router.on_key({Qt::Key_L, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		sched.render_now();
+		const int with = backend.frame_count();
+		set_keyboard_conventions(false);
+		printf("info: frames settled at %d, %d after Ctrl+L without the"
+		       " conventions, %d with\n", settled, without, with);
+		CHECK(with > without,
+		      "Ctrl+L redraws the screen under the conventions, which is"
+		      " the recourse a corrupted terminal has and had no key");
+		CHECK(without == settled,
+		      "and does nothing without them, the frame after it being as"
+		      " quiet as any other");
 	}
 	{
 		// The OTHER branch of that same gate, which the check above cannot

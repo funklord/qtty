@@ -2448,11 +2448,12 @@ int suite_router() {
 			"`Ctrl+K`, `Ctrl+U`",
 			"`Ctrl+W`",
 			"`Ctrl+D`",
+			"`Ctrl+L`",
 		};
 		int wrong = 0;
 		QString first_bad;
 		QStringList listed;
-		for (int i = 0; i < 10; ++i) {
+		for (int i = 0; i < 11; ++i) {
 			listed << QString::fromUtf8(published_rows[i]);
 			QString on_arm, off_arm;
 			for (int on = 1; on >= 0; --on) {
@@ -2683,6 +2684,35 @@ int suite_router() {
 						r.on_key({Qt::Key_W, QString(), true, false, false});
 						QCoreApplication::processEvents();
 						arm = QStringLiteral("[%1]").arg(field->text());
+					} else if (i == 10) {
+						// Ctrl+L REDRAWS, and only a scheduler can say it
+						// happened: an unchanged tree presents nothing, so
+						// a frame appearing with nothing changed IS the
+						// redraw. Its own window and backend, because the
+						// fixture above has no scheduler and the count has
+						// to start from a settled one.
+						NullBackend back(QSize(30, 6));
+						QWidget seen;
+						seen.setAttribute(Qt::WA_DontShowOnScreen);
+						auto *lab = new QLabel(QStringLiteral("x"), &seen);
+						lab->setGeometry(0, 0, cw * 4, ch);
+						seen.resize(GridMetrics::cells(30, 6));
+						seen.show();
+						QCoreApplication::processEvents();
+						InputRouter lr(&seen);
+						Compositor lc(&seen, &lr);
+						FrameScheduler ls(&back, &lc, &seen);
+						ls.render_now();
+						ls.render_now();            // settled: no new frame
+						const int before = back.frame_count();
+						lr.on_key({Qt::Key_L, QString(), true, false,
+						           false});
+						QCoreApplication::processEvents();
+						ls.render_now();
+						arm = QStringLiteral("frames %1")
+						          .arg(back.frame_count() - before);
+						seen.hide();
+						QCoreApplication::processEvents();
 					} else {
 						// Ctrl+D carries the row's second clause -- a quit
 						// key everywhere else -- so the window has to be
@@ -2747,6 +2777,7 @@ int suite_router() {
 				"K [hello ] U [brave world]",
 				"[hello world]",
 				"in text [abdef] close 0, on a button close 1",
+				"frames 1",
 			};
 			// And with them off: whatever QT does, which is NOT a constant
 			// and is what made this gate wrong on the platform it was not
@@ -2809,9 +2840,14 @@ int suite_router() {
 				                            : QStringLiteral("[hello brave "
 				                                             "world]");
 				break;
-			default:
+			case 9:
 				off_want = QStringLiteral("in text [abcdef] close 1, on a "
 				                          "button close 1");
+				break;
+			default:
+				// Qt binds nothing to Ctrl+L, so the off arm is the
+				// absence of a frame rather than something else happening.
+				off_want = QStringLiteral("frames 0");
 				break;
 			}
 			if (on_arm == QLatin1String(on_wants[i]) && off_arm == off_want)
@@ -10434,6 +10470,7 @@ int suite_router() {
 			      && keys.contains(QStringLiteral("Ctrl+K/U"))
 			      && keys.contains(QStringLiteral("Ctrl+W"))
 			      && keys.contains(QStringLiteral("Ctrl+D"))
+			      && keys.contains(QStringLiteral("Ctrl+L"))
 			      && keys.contains(QStringLiteral("Menu/Shift+F10")),
 			      "the conventions can list what they bind, so an "
 			      "application shows the keys without keeping its own copy "
@@ -10449,7 +10486,7 @@ int suite_router() {
 			// answers everywhere, differently. This number is what
 			// catches a row added without a line above saying what it
 			// is -- it did exactly that for the split.
-			CHECK(help.size() == 11,
+			CHECK(help.size() == 12,
 			      "and the list is exactly as long as this check knows about,"
 			      " which is what stands in for deriving it from the"
 			      " bindings");
@@ -10499,6 +10536,7 @@ int suite_router() {
 				{"Ctrl+K/U",       "`Ctrl+U`"},
 				{"Ctrl+W",         "`Ctrl+W`"},
 				{"Ctrl+D",         "`Ctrl+D`"},
+				{"Ctrl+L",         "`Ctrl+L`"},
 				{"Menu/Shift+F10", "`Menu`, `Shift+F10`"},
 			};
 
@@ -10695,6 +10733,7 @@ int suite_router() {
 			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_U,        nullptr },
 			{ "Ctrl+W",         int(Qt::CTRL),  Qt::Key_W,        nullptr },
 			{ "Ctrl+D",         int(Qt::CTRL),  Qt::Key_D,        nullptr },
+			{ "Ctrl+L",         int(Qt::CTRL),  Qt::Key_L,        nullptr },
 			{ "Menu/Shift+F10", int(Qt::SHIFT), Qt::Key_F10,      nullptr },
 			// THE ONE ROW THAT IS NOT A CHORD, and it is a family rather
 			// than an omission: the letter is whatever a tab, a mnemonic

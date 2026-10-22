@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2255 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2259 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1080,7 +1080,7 @@ Owned by the copyright holder:
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` closes the tab or the dock the focus is in, under the conventions and outside a text widget -- see 8.492.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
-| **~~Should there be a way to force a full repaint~~, and should `Ctrl+L` be it?** The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
+| **~~Should there be a way to force a full repaint, and should `Ctrl+L` be it?~~ BOTH TAKEN** -- the mechanism in 8.318 and the binding in 8.493, on the holder's instruction 2026-10-22: `Ctrl+L` redraws under the conventions, and the row, the chord table, the help list and the guide moved with it. Original row: The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
 | **Which mark should a drop indicator carry?** A view draws `PE_IndicatorItemViewItemDrop` while something is dragged into it, and `Qtty::exec_drag()` makes that reachable -- its contract is to deliver the enter, move, leave and drop events. Measured: the between-rows form draws a ten-cell rule on BLANK cells and **nothing at all** over the items, and the on-item form touches nothing even on a clean buffer. The mechanism is not a bug -- `clear_run` in `cell_paint.cpp` refuses a horizontal rule into any run holding a non-blank cell, which exists because a rule landing on a label put a box-drawing glyph in place of every space. That rule is right for frames and rules, and a drop indicator is neither: it is feedback, and the cells it wants are the ones an item's name is in. **The remedy needs a MARK and the vocabulary has none free** -- reverse is selected, underline is current -- so which one a provisional drop carries is a visual convention. Related to the four-row mark cluster above and not the same question: that one asks what a drawn mark BECOMES, this asks which mark a state should be GIVEN. Asserted as it stands, so a producer added later reddens a check | 8.343 |
 | **Should every printable carry its `Qt::Key`, and should the router ask the focus widget for a `ShortcutOverride`?** The two are one question. A terminal sends a printable as text with no key code, so `Qt::Key_Space` was dead until 8.334 fixed it for Space alone -- and `*` and `+` in a tree are dead by the same mechanism, measured. Giving every printable its key passes the whole suite and breaks an assumption `match_shortcut()` states outright: a bare letter cannot match a shortcut, which is why it falls through to `QMenu::keyPressEvent`. Qt arbitrates with `QEvent::ShortcutOverride` -- measured, a focused `QLineEdit` CLAIMS a plain letter and a plain Space, lets `Ctrl+N` through and CLAIMS `Ctrl+A` -- and this router never asks, so a plain-letter shortcut would fire where a desktop types the letter. Asking it would also subsume the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which are that arbitration written out for two chords. The cost is a change to the most load-bearing rule in the input path | 8.334 |
 | **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
@@ -1095,7 +1095,7 @@ Owned by the copyright holder:
 | **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
-| **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
+| **~~A tab's mnemonic does nothing.~~ ~~It works with the conventions on (8.67); what is left is the DEFAULT.~~ The MARK is drawn now, 8.493, on the holder's instruction**: under the conventions the letter is underlined, because that is when `Alt` and it reach the tab -- which is this row's own rule rather than a change to it. The default with the conventions OFF is untouched and still binds nothing. Original row: `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2255 on Qt 6 with no failures,
-  and 2224 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2259 on Qt 6 with no failures,
+  and 2228 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.493 Two more conventions: a tab's mark and Ctrl+L (2026-10-22)
+
+**Both taken on the copyright holder's instruction 2026-10-22**, having
+been section 0b's.
+
+**A TAB'S MNEMONIC IS MARKED WHILE THE KEY ANSWERS.** 8.37 recorded a tab's
+letter as doing nothing and left it unmarked on the rule this file states
+for the push button -- "underlining a key that does nothing is worse than
+leaving it bare". The key has answered under the conventions since 8.155,
+measured again 2026-10-22: `Alt+S` on a tab labelled "&Second" switches to
+it with the bundle on and does nothing with it off. So the mark follows the
+answer rather than the label, and is drawn only with the conventions on.
+
+    conventions off   |[First][Second]|   no underline
+    conventions on    |[First][Second]|   the F and the c underlined
+
+**Asserted on the LETTERS rather than the columns**, which is what says it
+found the mnemonic rather than a cell that happens to be there -- and in
+both states, because a mark with the conventions off would promise a key
+that does nothing while no mark at all would hide one that works.
+
+**Invisible on the current tab, which is the right place for it to be**: a
+selected tab with the focus already underlines its whole label, and the tab
+a user wants a letter for is one of the others.
+
+**Ctrl+L REDRAWS THE SCREEN**, the most universal terminal convention after
+Ctrl+C. `Qtty::redraw()` has existed since 8.318 with no key on it -- a
+screen can be corrupted by something this library did not do and cannot see,
+another process writing to the tty or a sequence dropped over a slow link,
+and the frame diff then describes a screen that no longer exists.
+
+**No yield to a text widget**, unlike Ctrl+W beside it: readline's own
+Ctrl+L clears the screen while the line being edited stays, so a caret is
+exactly where a terminal user expects this to work. A widget that wants the
+key keeps it anyway, this arm running only where nothing accepted the press.
+
+**Measured through the scheduler, which is the only thing that can say it
+happened**: an unchanged tree presents nothing, so a frame appearing with
+nothing changed IS the redraw. Frames settled at 2, stayed at 2 after Ctrl+L
+with the conventions off, and went to 3 with them on.
+
+**The guide's own table is a gate and it fired twice.** A row added to the
+conventions table has to have a case driving it -- "by name rather than by
+count, so neither can grow alone" -- so the eleventh row needed its own
+fixture with a `NullBackend` and a `FrameScheduler`, and the help list's
+length check needed its number moved. Both failures were the gate working:
+the first version of this change added the row and not the case.
+
+2259 checks on Qt 6, 2228 passing and 31 stepping over on Qt 5, 712 sabotage
+entries, every anchor matching.
 
 ### 8.492 Ctrl+W closes the tab or the dock the focus is in (2026-10-22)
 

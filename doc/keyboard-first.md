@@ -508,6 +508,7 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
 | `Ctrl+W` | Rub out the word before the caret -- and **outside a text widget**, close the tab or the dock the focus is in |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
+| `Ctrl+L` | Redraw the screen, for when something outside the program has corrupted it |
 
 **These are the chords as written, `Shift` included.** Adding a shift to
 one does not reach the binding: `Ctrl+Shift+K` is not the kill, and a

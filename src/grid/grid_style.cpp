@@ -3600,6 +3600,35 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				if (sel && owns_focus(w)) ta |= Attr::Underline;
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 				                   Color(), Color(), label_attrs(opt, w, ta));
+				// THE MNEMONIC, underlined, but only while the key
+				// answers. 8.37 recorded a tab's letter as doing nothing
+				// and left it unmarked on the rule this file states for
+				// the push button: "underlining a key that does nothing
+				// is worse than leaving it bare". The key answers under
+				// the conventions as of 8.155 -- measured 2026-10-22,
+				// Alt+S on a tab labelled "&Second" switches to it with
+				// the bundle on and does nothing with it off -- so the
+				// mark follows the answer rather than the label.
+				//
+				// Read off the STRIPPED text, which is what was drawn:
+				// the index mnemonic_index() returns counts the literal
+				// characters, and the cell is that many CELLS along
+				// rather than that many characters, a wide label being
+				// two apiece.
+				//
+				// Invisible on the current tab, which is the right place
+				// for it to be: a selected tab with the focus already
+				// underlines its whole label, and the tab a user wants a
+				// letter for is one of the others.
+				const int mn = keyboard_conventions()
+				               ? mnemonic_index(t->text) : -1;
+				if (mn >= 0) {
+					const QString before = strip_mnemonic(t->text).left(mn);
+					const int at = c.left() + 1 + text_cells(before);
+					if (at <= c.right() - 1
+					    && dev->buffer().writable(at, c.top()))
+						dev->buffer().at(at, c.top()).attrs |= Attr::Underline;
+				}
 				return;
 			}
 			break;
