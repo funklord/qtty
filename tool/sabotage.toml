@@ -7501,3 +7501,24 @@ find = "\tput_cluster(x, y, cluster, c.fg, c.bg, c.attrs);"
 into = "\td_[y * c_ + x].ch = cluster; (void)c;"
 count = 1
 check = "every write path across a two-column cluster leaves the pair whole -- no lead without its continuation and no continuation without its lead"
+
+[[sabotage]]
+# The tab strip goes back to laying its titles out in code units, so a CJK
+# title measures four and renders eight and the strip overflows its row.
+# 8.483.
+name = "a window tab's title is measured in code units"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (text_cells(name) > room - 3)"
+into = "\t\tif (name.size() > room - 3)"
+count = 1
+check = "and a title too wide for its tab is elided rather than cut, the budget being counted in cells and not in code units"
+
+[[sabotage]]
+# And written one QChar per cell, which splits a surrogate pair between two
+# cells and gives a two-column cluster width 1. 8.483.
+name = "a window tab's title is written one code unit per cell"
+file = "src/runtime/compositor.cpp"
+find = "\t\tx += out.text(x, 0, text, Color(), Color(),\n\t\t              here ? Attrs(Attr::Reverse) : Attrs());"
+into = "\t\tfor (const QChar qc : text) { Cell v; v.ch = QString(qc); if (here) v.attrs |= Attr::Reverse; if (out.writable(x, 0)) out.at(x, 0) = v; ++x; }"
+count = 1
+check = "a window tab strip lays out its titles in cells, so a wide or an astral title neither overflows the row nor splits a cluster across two cells"

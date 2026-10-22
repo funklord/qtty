@@ -4327,6 +4327,151 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a title that is not ASCII ----------------------------------------
+	//
+	// The strip laid its tabs out in QChars. A QString's size counts code
+	// UNITS, so a four-character CJK title measured four and rendered EIGHT
+	// columns -- the strip ran past the row it is drawn on -- and an emoji
+	// title was cut between its two surrogates by `left()`, putting half a
+	// pair in a cell of its own. Measured 2026-10-22 on a twenty-cell strip:
+	// 4 illegal cells for the CJK title, 2 for the emoji, 10 for a title of
+	// ten CJK characters.
+	//
+	// ASSERTED AS THE CELL MODEL rather than as the picture, because the
+	// picture is what a reader would have to count: a width-1 cell holding a
+	// two-column cluster, a lead without its continuation, and a lone
+	// surrogate are each illegal whatever the strip is meant to look like.
+	// The ASCII pass is the control -- it was already legal, so a check that
+	// passed on it alone would be saying nothing.
+	{
+		// A WIDE ENOUGH STRIP, and the title's presence asserted, because
+		// the first version of this was VACUOUS and the sabotage harness
+		// said so: both entries that broke the layout left it green. This
+		// file leaves other top-level windows up, the strip shows them in
+		// first-seen order, and at twenty cells the title under test never
+		// reached the row at all -- the check was measuring a strip that
+		// did not contain the thing it was about.
+		int bad = 0, passes = 0, shown = 0;
+		for (const QString &title : { QStringLiteral("One"),
+		                              QStringLiteral("\u4f60\u597d\u4e16"
+		                                             "\u754c"),
+		                              QStringLiteral("\U0001F389ok") }) {
+			QWidget first;
+			first.setWindowTitle(QStringLiteral("Host"));
+			first.resize(GridMetrics::cells(20, 3));
+			QWidget other;
+			other.setWindowTitle(title);
+			other.resize(GridMetrics::cells(20, 3));
+			first.show();
+			other.show();
+			QCoreApplication::processEvents();
+			Qtty::set_current_window(&first);
+			QCoreApplication::processEvents();
+			InputRouter sr(&first);
+			CellBuffer sb(60, 5);
+			{
+				Compositor sc(&first, &sr);
+				sc.compose(sb);
+			}
+			++passes;
+			int columns = 0;
+			for (int x = 0; x < sb.cols(); ++x) {
+				const Cell &c = sb.at(x, 0);
+				columns += c.width == 0 ? 0 : cluster_width(c.ch);
+				if (c.width == 1 && cluster_width(c.ch) == 2) ++bad;
+				if (c.width == 2
+				    && (x + 1 >= sb.cols() || sb.at(x + 1, 0).width != 0))
+					++bad;
+				if (c.width == 0 && (x == 0 || sb.at(x - 1, 0).width != 2))
+					++bad;
+				if (c.ch.size() == 1 && (c.ch.at(0).isHighSurrogate()
+				                         || c.ch.at(0).isLowSurrogate()))
+					++bad;
+			}
+			// The row cannot hold more columns than it has, which is the
+			// user-visible half: a strip that claims twenty and renders
+			// twenty-four is one a terminal wraps or truncates.
+			if (columns > sb.cols()) ++bad;
+			QString row0;
+			for (int x = 0; x < sb.cols(); ++x)
+				row0 += sb.at(x, 0).ch;
+			// The precondition, counted rather than assumed: the title has
+			// to BE on the strip for anything above to be evidence about
+			// it.
+			if (row0.contains(title)) ++shown;
+			printf("info:   strip |%s| for title |%s|\n",
+			       qPrintable(row0.trimmed()), qPrintable(title));
+			first.hide();
+			other.hide();
+			QCoreApplication::processEvents();
+		}
+		printf("info: %d illegal cell(s) across %d window tab strip(s)\n",
+		       bad, passes);
+		printf("info: %d of %d title(s) reached the strip\n", shown,
+		       passes);
+		CHECK(passes == 3 && shown == 3 && bad == 0,
+		      "a window tab strip lays out its titles in cells, so a wide"
+		      " or an astral title neither overflows the row nor splits a"
+		      " cluster across two cells");
+	}
+
+	// AND A TITLE TOO WIDE FOR ITS TAB IS ELIDED IN CELLS, which is the
+	// other half of the same measurement and the half the check above
+	// cannot see. text() stops at the row's edge, so a title measured in
+	// code units is not written past the buffer -- it is TRUNCATED, with no
+	// marker, and the row ends mid-title looking like a title that short.
+	//
+	// Asserted as "the whole title or a marker", which holds at every
+	// width and needs no arithmetic about how much room this fixture's
+	// leftover windows have taken. Several widths, because the case that
+	// discriminates is the one where the budget sits between the title's
+	// code-unit count and its cell count -- ten CJK characters are ten
+	// units and twenty cells -- and which width that is depends on what
+	// else is on the strip.
+	{
+		const QString wide_title =
+		    QStringLiteral("\u4f60\u597d\u4e16\u754c\u4f60\u597d\u4e16"
+		                   "\u754c\u4f60\u597d");
+		int unmarked = 0, widths = 0;
+		for (int cols : { 24, 30, 36, 44, 60 }) {
+			QWidget host2;
+			host2.setWindowTitle(QStringLiteral("H"));
+			host2.resize(GridMetrics::cells(10, 3));
+			QWidget other2;
+			other2.setWindowTitle(wide_title);
+			other2.resize(GridMetrics::cells(10, 3));
+			host2.show();
+			other2.show();
+			QCoreApplication::processEvents();
+			Qtty::set_current_window(&host2);
+			QCoreApplication::processEvents();
+			InputRouter r2(&host2);
+			CellBuffer b2(cols, 4);
+			{
+				Compositor c2(&host2, &r2);
+				c2.compose(b2);
+			}
+			QString row0;
+			for (int x = 0; x < b2.cols(); ++x) row0 += b2.at(x, 0).ch;
+			++widths;
+			const bool whole = row0.contains(wide_title);
+			const bool marked = row0.contains(QChar(0x2026));
+			if (!whole && !marked) {
+				++unmarked;
+				printf("info:   %d cells |%s| -- cut with no marker\n",
+				       cols, qPrintable(row0.trimmed()));
+			}
+			host2.hide();
+			other2.hide();
+			QCoreApplication::processEvents();
+		}
+		printf("info: %d of %d strip width(s) cut a title with no marker\n",
+		       unmarked, widths);
+		CHECK(widths == 5 && unmarked == 0,
+		      "and a title too wide for its tab is elided rather than cut,"
+		      " the budget being counted in cells and not in code units");
+	}
+
 	// ---- the strip keeps its order ----------------------------------------
 	//
 	// It did not. The list came from QApplication::topLevelWidgets(), whose

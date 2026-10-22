@@ -733,21 +733,33 @@ static void draw_window_tabs(CellBuffer &out, const QVector<QWidget *> &tabs,
 		const int room = out.cols() - x;
 		if (room <= 2) { g_tab_spans.append({out.cols(), out.cols() - 1}); continue; }
 		QString name = window_name(tabs[i], i);
+		// IN CELLS AND NOT IN QChars, which this measured and cut by the
+		// wrong unit in both directions. A QString's size counts code
+		// units: a CJK title of four characters is four units and EIGHT
+		// cells, and an emoji is two units in one cell. Measured
+		// 2026-10-22 on a twenty-cell strip -- a title of four CJK
+		// characters was laid out as four cells and rendered as eight, so
+		// the strip ran past the row it is drawn on, and `left()` cut an
+		// emoji title between its two surrogates.
+		//
 		// Two cells for the brackets, one so the next tab is not flush
-		// against this one.
-		if (name.size() > room - 3) name = name.left(qMax(0, room - 4)) + QStringLiteral("…");
+		// against this one. elide_to_cells() puts the marker in itself, by
+		// the mode, so the budget here is the whole name field rather than
+		// the name field less an ellipsis.
+		if (text_cells(name) > room - 3)
+			name = elide_to_cells(name, qMax(0, room - 3));
 		const QString text = (here ? QStringLiteral("[") : QStringLiteral(" "))
 		                   + name
 		                   + (here ? QStringLiteral("]") : QStringLiteral(" "));
 		const int first = x;
-		for (const QChar c : text) {
-			if (x >= out.cols()) break;
-			Cell v;
-			v.ch = QString(c);
-			if (here) v.attrs |= Attr::Reverse;
-			if (out.writable(x, 0)) out.at(x, 0) = v;
-			++x;
-		}
+		// Through text(), which writes one CLUSTER per cell, gives a
+		// two-column cluster its continuation, and returns the cells it
+		// used rather than the characters it was handed. Writing QChar by
+		// QChar put half a surrogate pair in a cell of its own -- a string
+		// no terminal can decode -- and gave a wide cluster width 1, so the
+		// row claimed twenty columns and held twenty-four.
+		x += out.text(x, 0, text, Color(), Color(),
+		              here ? Attrs(Attr::Reverse) : Attrs());
 		g_tab_spans.append({first, x - 1});
 	}
 }
