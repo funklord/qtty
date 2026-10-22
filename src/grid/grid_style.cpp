@@ -2193,6 +2193,12 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 			cells = text_cells(strip_mnemonic(b->text));
 		else if (const auto *tb = qstyleoption_cast<const QStyleOptionTab *>(o))
 			cells = text_cells(strip_mnemonic(tb->text));
+		else if (const auto *mi =
+		             qstyleoption_cast<const QStyleOptionMenuItem *>(o))
+			cells = text_cells(strip_mnemonic(mi->text));
+		else if (const auto *hd =
+		             qstyleoption_cast<const QStyleOptionHeader *>(o))
+			cells = text_cells(hd->text);
 		return cells > 0 ? (cells + chrome) * cw : 0;
 	};
 
@@ -2206,10 +2212,18 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 		return QSize(qMax(width, label_floor(4)), ch);
 	case CT_PushButton:
 		return QSize(qMax(width, label_floor(2)), ch);   // `<label>`
+	case CT_MenuBarItem:
+		// A LEADING CELL, which is where CE_MenuBarItem starts the label
+		// and the whole of its budget: it elides to `c.width() - 1`. The
+		// item was short by three cells for a six-character wide title --
+		// measured, four characters and an ellipsis -- and the comment at
+		// that drawing site says what a short item costs there: "a menu
+		// bar item's clip is the BAR, not the item, so an over-long title
+		// is not cut at all: it writes into the next item's cells."
+		return QSize(qMax(width, label_floor(1)), ch);
 	case CT_LineEdit:
 	case CT_ComboBox:
 	case CT_SpinBox:
-	case CT_MenuBarItem:
 	// A tab bar down the side is a column of rows, not a rotated strip. Qt
 	// hands a West or East tab its contents size already rotated -- narrow
 	// and tall -- so taking that width gave a tab two cells wide and the
@@ -2290,6 +2304,17 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 		}
 		return QSize(width, snapped);
 	case CT_HeaderSection:
+		// One cell in for a horizontal heading and none for a vertical
+		// one, which is CE_HeaderLabel's own budget -- it lines the
+		// heading up with the column of data below it, and the data is
+		// drawn at one cell of indent. Measured: a six-character wide
+		// heading came back four characters and an ellipsis.
+		if (const auto *hd = qstyleoption_cast<const QStyleOptionHeader *>(o))
+			return QSize(qMax(width,
+			                  label_floor(hd->orientation == Qt::Horizontal
+			                              ? 1 : 0)),
+			             ch);
+		return QSize(width, ch);
 	case CT_ProgressBar:
 	case CT_Slider:
 		return QSize(width, ch);
@@ -2322,6 +2347,35 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	// A menu item is one row, except a separator, which is also one row but
 	// asks for a few pixels and would otherwise round to nothing.
 	case CT_MenuItem:
+		// THE CHROME IS THE OPTION'S, computed the way CE_MenuItem lays it
+		// out rather than as a constant: one leading cell, two more for a
+		// check column -- present when this item is checkable, and also
+		// when a SIBLING is and this one is not, which is how a menu keeps
+		// its labels in a column -- and one for a submenu arrow. The
+		// accelerator is deliberately absent: that drawing drops it rather
+		// than letting it take the row, on the rule that "a command's NAME
+		// is what identifies it".
+		//
+		// Measured short by a cell for a wide label with no chrome at all,
+		// which is the case Qt's own answer should have covered.
+		if (const auto *mi = qstyleoption_cast<const QStyleOptionMenuItem *>(o)) {
+			// Only the leading cell is load-bearing today, which is
+			// measured rather than assumed: a sabotage removing the check
+			// column's two cells left the gate green, because Qt's own
+			// answer for a checkable item already carries the mark's
+			// pixels and covers the wide label with them. The entry
+			// written for it was withdrawn rather than left passing. The
+			// terms stay because they say what CE_MenuItem draws, and the
+			// one thing this file has paid for repeatedly is a size and a
+			// drawing derived from two different sums.
+			int chrome = 1;
+			if (mi->checkType != QStyleOptionMenuItem::NotCheckable)
+				chrome += 2;
+			else if (mi->menuHasCheckableItems)
+				chrome += 2;
+			if (mi->menuItemType == QStyleOptionMenuItem::SubMenu) ++chrome;
+			return QSize(qMax(width, label_floor(chrome)), ch);
+		}
 		return QSize(width, ch);
 
 	// These genuinely carry more than a line -- an item view row with a

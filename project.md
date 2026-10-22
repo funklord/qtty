@@ -1074,7 +1074,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- so a push button, a check box, a radio and a tab hold their wide labels now. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
+| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
@@ -18391,6 +18391,52 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.487 Finishing the label floor: a menu bar, a heading, a menu item (2026-10-22)
+
+**8.486 fixed four controls and the lens was not spent.** The same question
+asked of every remaining control whose text this style draws found three
+more, measured 2026-10-22 with a six-character CJK label:
+
+    menu bar item   four characters and an ellipsis of six
+    heading         four and an ellipsis
+    menu item       a cell short, and only for a label with no chrome
+                    at all -- the case Qt's own answer should have covered
+
+**The menu bar item is the one with teeth**, because its own drawing site
+records what a short item costs there: "a menu bar item's clip is the BAR,
+not the item, so an over-long title is not cut at all: it writes into the
+next item's cells." A title that does not fit its item therefore does not
+lose its tail -- it lands on the title beside it.
+
+**The heading's cell is not padding.** `CE_HeaderLabel` indents by one so a
+heading lines up with the column of data below it, which 8.422 fixed after
+8.420 broke it, and that cell has to be in the size or the label pays for
+it.
+
+**The menu item's chrome is computed from the option rather than taken as a
+constant**, the way `CE_MenuItem` lays it out: one leading cell, two more
+for a check column -- present when the item is checkable AND when a SIBLING
+is and this one is not, which is how a menu keeps its labels in a column --
+and one for a submenu arrow. The accelerator is deliberately not in the
+floor: that drawing drops it rather than letting it take the row, on its own
+rule that "a command's NAME is what identifies it".
+
+**Only the leading cell of that model is load-bearing today, and the
+sabotage harness is what established it.** An entry removing the check
+column's two cells left the gate green: Qt's own answer for a checkable item
+already carries the mark's pixels and covers a wide label with them. The
+entry was withdrawn rather than left passing. The terms stay, because what
+this file has paid for repeatedly is a size and a drawing derived from two
+different sums -- the spin box's arrows, the combo's edge cells, the tool
+button's menu band were each that fault.
+
+**The gate asks all three chrome shapes**, which is what makes the model
+asserted rather than assumed: a plain item, a checkable one and a submenu
+one, each with a wide label. Twenty sizes asked now, none short.
+
+2247 checks on Qt 6, 2216 passing and 31 stepping over on Qt 5, 705
+sabotage entries, every anchor matching.
 
 ### 8.486 Four controls a cell short of their own label (2026-10-22)
 

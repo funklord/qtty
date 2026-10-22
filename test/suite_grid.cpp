@@ -513,6 +513,37 @@ int suite_grid() {
 			tb.rect = QRect(0, 0, 200, GridMetrics::ch());
 			ask(QStringLiteral("tool button"), QStyle::CT_ToolButton, &tb, 2,
 			    label);
+			// The menu bar item and the heading, which the same
+			// measurement found short: four characters and an ellipsis
+			// each. Their chrome is one leading cell, which is what
+			// CE_MenuBarItem and CE_HeaderLabel budget for.
+			QStyleOptionMenuItem mi;
+			mi.text = label;
+			mi.rect = QRect(0, 0, 200, GridMetrics::ch());
+			ask(QStringLiteral("menu bar item"), QStyle::CT_MenuBarItem,
+			    &mi, 1, label);
+			// And the menu's own item, in its three chrome shapes, which
+			// is what makes the model of that chrome asserted rather than
+			// assumed: a plain item indents by one, a checkable one adds
+			// two for the mark, and a submenu one adds a cell for its
+			// arrow. Qt's own answer was a cell short of the plainest of
+			// the three for a wide label.
+			ask(QStringLiteral("menu item"), QStyle::CT_MenuItem, &mi, 1,
+			    label);
+			QStyleOptionMenuItem mc = mi;
+			mc.checkType = QStyleOptionMenuItem::NonExclusive;
+			ask(QStringLiteral("checkable item"), QStyle::CT_MenuItem, &mc,
+			    3, label);
+			QStyleOptionMenuItem ms = mi;
+			ms.menuItemType = QStyleOptionMenuItem::SubMenu;
+			ask(QStringLiteral("submenu item"), QStyle::CT_MenuItem, &ms, 2,
+			    label);
+			QStyleOptionHeader hd;
+			hd.text = label;
+			hd.orientation = Qt::Horizontal;
+			hd.rect = QRect(0, 0, 200, GridMetrics::ch());
+			ask(QStringLiteral("header"), QStyle::CT_HeaderSection, &hd, 1,
+			    label);
 			(void)push;
 		}
 		// THE CONTROL, and it has to be asked of a real widget. Asked of
@@ -539,7 +570,7 @@ int suite_grid() {
 		}
 		printf("info: %d of %d label size(s) are short of the cells they"
 		       " will be drawn in\n", short_of, asked);
-		CHECK(asked == 10 && short_of == 0,
+		CHECK(asked == 20 && short_of == 0,
 		      "every size this style answers for a control it draws a label"
 		      " in holds that label in cells, wide characters included");
 		CHECK(above == 1 && at == 1,

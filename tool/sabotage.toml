@@ -7583,3 +7583,33 @@ find = "\t\t\tcells = text_cells(strip_mnemonic(b->text));"
 into = "\t\t\tcells = strip_mnemonic(b->text).size();"
 count = 1
 check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
+
+[[sabotage]]
+# The menu bar item goes back to the proxied width, so a wide title comes
+# back four characters and an ellipsis -- and its clip is the BAR, so an
+# over-long one writes into the next item's cells. 8.487.
+name = "a menu bar item is sized from the font's advance"
+file = "src/grid/grid_style.cpp"
+find = "\t\treturn QSize(qMax(width, label_floor(1)), ch);"
+into = "\t\treturn QSize(width, ch);"
+count = 1
+check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
+
+[[sabotage]]
+# And a menu item's, where the chrome is computed from the option. 8.487.
+name = "a menu item is sized without its own chrome"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QSize(qMax(width, label_floor(chrome)), ch);"
+into = "\t\t\treturn QSize(width, ch);"
+count = 1
+check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
+
+[[sabotage]]
+# And a heading, whose one cell of indent lines it up with the column of
+# data below it. 8.487.
+name = "a header section is sized from the font's advance"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QSize(qMax(width,\n\t\t\t                  label_floor(hd->orientation == Qt::Horizontal\n\t\t\t                              ? 1 : 0)),\n\t\t\t             ch);"
+into = "\t\t\treturn QSize(width, ch);"
+count = 1
+check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
