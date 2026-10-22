@@ -731,12 +731,24 @@ QString CellBuffer::to_snapshot() const {
 	} else {
 		QVector<QString> lines;
 		lines.reserve(images.size());
-		for (const CellImage &im : images)
-			lines.append(QStringLiteral("%1,%2 %3x%4 z%5 (%6x%7 px)")
-			             .arg(im.cell_rect.left()).arg(im.cell_rect.top())
-			             .arg(im.cell_rect.width()).arg(im.cell_rect.height())
-			             .arg(im.z)
-			             .arg(im.pixmap.width()).arg(im.pixmap.height()));
+		// THE CLIP IS IN THE LINE, and only when there is one. A snapshot
+		// that cannot see a field is a fixture that goes green when the
+		// field stops being set -- the argument to_snapshot() already makes
+		// about the attribute and colour planes, which to_text() could not
+		// see. Appended rather than inserted, so every existing fixture of
+		// an unclipped placement is byte-identical. 8.502.
+		for (const CellImage &im : images) {
+			QString line = QStringLiteral("%1,%2 %3x%4 z%5 (%6x%7 px)")
+			               .arg(im.cell_rect.left()).arg(im.cell_rect.top())
+			               .arg(im.cell_rect.width()).arg(im.cell_rect.height())
+			               .arg(im.z)
+			               .arg(im.pixmap.width()).arg(im.pixmap.height());
+			if (im.has_clip)
+				line += QStringLiteral(" clip %1,%2 %3x%4")
+				        .arg(im.clip.left()).arg(im.clip.top())
+				        .arg(im.clip.width()).arg(im.clip.height());
+			lines.append(line);
+		}
 		std::sort(lines.begin(), lines.end());
 		for (const QString &l : lines) out += l + QLatin1Char('\n');
 	}

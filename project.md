@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2281 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2300 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,106 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.502 The clip travels with the placement (2026-10-22)
+
+**8.501's fix was correct and cost the upload-once property**, which that
+entry named as the cost and left to the holder because closing it needs a
+public header. The holder's instruction, 2026-10-22: add the field.
+
+`harvest()` cropped the IMAGE to what the widget's ancestors leave visible
+and shrank `cell_rect` to match, because nothing on the wire could carry a
+clip. So the pixels changed whenever the clip did -- `key` is
+`qHash(bits)` -- and scrolling a half-visible surface re-uploaded it where
+kitty can re-place a stored image with a new source rectangle.
+
+**`CellImage` carries `has_clip` and `clip` now**, and the image and
+`cell_rect` stay whole. That is what makes `key` a property of the PICTURE
+again, which is what it has to be for an upload to be reused at all.
+Asserted directly: the same surface scrolled to two positions has the same
+key, and the two placements still compare unequal.
+
+**A FLAG BESIDE THE RECTANGLE, not `QRect::isNull()`**, and this library
+had already paid for that once. `CellBuffer::set_clip()` carries
+`has_clip_` for the same reason and its comment records the sabotage that
+found it: a zero-sized rectangle answers `isNull()` true, so a widget with
+no room at all read as "no clip" and drew unbounded. Measured again here
+before choosing -- `QRect(0,0,0,0)` and `QRect(5,5,0,0)` are both null,
+position being no part of the test -- so "draw none of this" cannot be
+spelled as a rectangle. The first version of this change used `isNull()`
+and a check asserting a 0x0 clip drew nothing, which would have failed;
+measuring Qt rather than trusting the sentinel is what caught it.
+
+`has_clip` false is the quiet default, so an application appending a
+placement of its own writes the three fields it knows about and gets no
+restriction by saying nothing.
+
+**Every tier that reads `cell_rect` reads the pair beside it**, because a
+field that travels and is then ignored is the original fault with more
+code: `crop_placement()` for kitty and sixel, which narrows `visible` in
+the one intersection the rest of the function already works from;
+`compose_kitty_placeholders()` and `compose_halfblocks()`, which skip a
+cell outside it; and `paint_placements()`, the raster path a GUI build and
+`qtty-inspect` take, as a painter clip.
+
+**The sampling is deliberately NOT narrowed with the clip.** Both compose
+functions derive a cell's slice of the image from its position within
+`cell_rect`, so skipping a cell leaves every other cell sampling exactly
+the pixels it sampled before. Narrowing it would be the squash 8.501 had
+to crop the image to avoid, arriving inside the fix for it.
+
+**`to_snapshot()` shows the clip**, appended so every existing fixture of
+an unclipped placement is byte-identical -- both that carry an images
+section say `(none)`, so nothing moved. A snapshot that cannot see a field
+is a fixture that goes green when the field stops being set, which is the
+argument `to_snapshot()` already makes about the attribute and colour
+planes.
+
+**And the comparison check was green against its own sabotage**, which is
+the second instance of one shape in two days and the reason it is written
+out rather than quietly fixed. It was asserted end to end: the same
+surface at two scroll positions has the same key, and the two placements
+still compare unequal. The second clause is satisfied by `cell_rect` --
+those two placements differ in it, so `operator==` reads them apart on
+the rectangle whatever it does with the clip -- so dropping `clip` from
+the comparison left the check passing. An assertion satisfied by a field
+other than the one it names is worse than no assertion, because it
+reports a guard where there is none.
+
+The fixture that discriminates differs in NOTHING else: one picture, one
+rectangle, one z, two clips. That is a real frame rather than a contrived
+one -- a terminal resized under a surface whose widget has not moved
+changes what its ancestors leave visible and nothing else -- and the
+cells it produces are identical, so the gate is the only thing that can
+notice. It sits beside 8.235's z check in `suite_runtime`, which asks the
+same question about the same operator, and the end-to-end check keeps
+only the key clause it can actually prove.
+
+**2281 checks to 2300, and the other slip worth recording is mine.** The
+flag
+was threaded through every site by mechanical replacement, and the
+replacement for the PLACEHOLDER tier matched nothing and said nothing --
+`evidence.md`'s rule about a mechanical change carrying a proof, broken by
+not asserting one of six edits. That tier was left reading the rectangle
+whenever it was non-null.
+
+**Both of my own checks on it passed**, because they pass `has_clip` true
+with a real rectangle, where the two sentinels agree. The check that would
+have caught it is the `has_clip` false control -- and I had written one for
+the mosaic tier and not for this one. `sabotage.py --validate` found it, by
+the dead anchor rather than by the behaviour: the gate reporting that an
+entry cannot be applied is what said the line it names no longer exists.
+The control exists for both tiers now.
+
+**Five sabotage entries, and two re-pointed.** The new ones break the flag
+at `harvest()`, the clip in each of the three tiers, and the comparison in
+`operator==` -- that last being the `z` trap of 8.235 arriving by the route
+the field was added on, and the one that failed first, against the
+end-to-end check, until it was pointed at a fixture that differs in
+nothing but the clip. The re-pointed two are 8.235's
+own `operator==` entry and 8.290's snapshot entry, whose anchors moved
+under them. `--validate` passes over all 722.
 
 
 ### 8.501 A widget drawing its own cells was bounded by itself (2026-10-22)

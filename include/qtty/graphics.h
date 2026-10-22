@@ -169,11 +169,22 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 // `cells` is where to draw and is empty when the placement is wholly off
 // screen. `source` is the matching rectangle of the image in pixels, derived
 // through the grid, and equals the whole image when nothing was cropped.
+//
+// `clip` is CellImage::clip -- the cells of this placement its producer says
+// may be drawn, for a surface its ancestors clip -- and it is consulted only
+// when `has_clip` is true, which is the pair CellImage carries and for the
+// reason stated there: a 0x0 rectangle is null, so isNull() cannot tell "no
+// clip" from "no room". It narrows `cells` exactly as the grid does, and the
+// source rectangle follows, so a half-visible surface shows the half that is
+// visible rather than the whole of itself squeezed into the cells that
+// remain. 8.502.
 struct CroppedPlacement {
 	QRect cells;
 	QRect source;
 };
-CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid);
+CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid,
+                                bool has_clip = false,
+                                const QRect &clip = QRect());
 
 // How many cells an image of `image_px` pixels occupies on a terminal whose
 // cell measures `cell_px`. design.md section 5.7 calls this one of the two
@@ -217,7 +228,16 @@ QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int row
 //
 // Ids of 2^24 or more need a third diacritic for the most significant byte,
 // because the foreground colour carries only 24 bits.
-void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect);
+//
+// `clip`, consulted only when `has_clip` is true, is CellImage's pair: a
+// cell outside it is not written, so a surface its ancestors clip shows the
+// part that is visible. The buffer's own clip cannot serve here -- these
+// cells are written through CellBuffer::at(), which is the raw accessor and
+// is never clipped. 8.502.
+void compose_kitty_placeholders(CellBuffer &frame, quint32 id,
+                                const QRect &cell_rect,
+                                bool has_clip = false,
+                                const QRect &clip = QRect());
 
 // The other accommodation design.md section 5.7 names: round every image in a
 // QTextDocument up to a whole number of cells.
@@ -256,7 +276,15 @@ int align_text_document(QTextDocument *doc, QSize cell_px);
 // the parameter is required now, and the whole ground is passed rather than
 // one colour of it -- a caller holding a TerminalGround cannot then pick the
 // wrong field out of it. section 8.250.
+//
+// `clip`, consulted only when `has_clip` is true, is CellImage's pair: a
+// cell outside it is left alone, so a surface its ancestors clip composites
+// only the part that is visible. An overlay passes neither -- an overlay is
+// positioned in the frame rather than by a widget, so nothing clips it.
+// 8.502.
 void compose_halfblocks(CellBuffer &frame, const QImage &img, const QRect &cell_rect,
-                        const TerminalGround &ground);
+                        const TerminalGround &ground,
+                        bool has_clip = false,
+                        const QRect &clip = QRect());
 
 } // namespace Qtty

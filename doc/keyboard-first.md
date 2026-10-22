@@ -2419,10 +2419,14 @@ handed all nine and wrote all nine, over everything below the scroll
 area, while obeying this page to the letter. If you wrote clipping
 arithmetic of your own because of that sentence, you can take it out.
 
-The same bound now applies to a `PixelSurface`: a surface partly
-scrolled out is placed in the cells that are visible and carries the
-part of itself that is visible, rather than the whole image squeezed
-into the cells that remain.
+The same bound applies to a `PixelSurface`, and it reaches the terminal
+as part of the placement: a surface partly scrolled out keeps its whole
+rectangle and its whole picture, and carries the visible cells alongside
+as a clip, so each tier draws the part that is visible rather than the
+whole image squeezed into the cells that remain. You need do nothing for
+this; it is worth knowing only because the picture a terminal holds is
+then the same one from scroll step to scroll step, rather than being
+re-uploaded on each.
 
 The fifth is the one that is a limitation rather than a price: a cell row
 is the unit, so a widget laying its own lines out in pixels can ask for the

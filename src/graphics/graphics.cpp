@@ -278,8 +278,16 @@ QByteArray kitty_place(quint32 id, int z, const QRect &source) {
 	return "\033_G" + ctrl + ";\033\\";
 }
 
-CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid) {
-	const QRect visible = cell_rect.intersected(QRect(QPoint(0, 0), grid));
+CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid,
+                                bool has_clip, const QRect &clip) {
+	// THE CLIP NARROWS `visible` RATHER THAN BEING APPLIED AFTERWARDS, so
+	// everything below -- the empty test, the whole-image shortcut, the edge
+	// mapping -- works on one rectangle. Applying it to the result instead
+	// would have to redo the pixel mapping for the second intersection, and
+	// two places deriving one source rectangle is how the two elide
+	// implementations came to disagree.
+	QRect visible = cell_rect.intersected(QRect(QPoint(0, 0), grid));
+	if (has_clip) visible = visible.intersected(clip);
 	if (visible.isEmpty() || cell_rect.isEmpty() || image.isEmpty())
 		return {QRect(), QRect()};
 	if (visible == cell_rect)
@@ -671,7 +679,9 @@ QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int row
 	return kitty_chunks(ctrl, b64);
 }
 
-void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect) {
+void compose_kitty_placeholders(CellBuffer &frame, quint32 id,
+                                const QRect &cell_rect, bool has_clip,
+                                const QRect &clip) {
 	const bool wide_id = id >= (1u << 24);
 	const int msb = int((id >> 24) & 0xFF);
 	// The top byte indexes the diacritic table directly, and it cannot
@@ -688,6 +698,10 @@ void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell
 		for (int c = 0; c < cell_rect.width(); ++c) {
 			const int X = cell_rect.x() + c, Y = cell_rect.y() + r;
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
+			// The producer's clip, beside the grid's own bound. These cells
+			// go in through at(), which is the raw accessor and honours no
+			// buffer clip, so this is the only place that can refuse one.
+			if (has_clip && !clip.contains(QPoint(X, Y))) continue;
 			if (r >= KITTY_DIACRITIC_COUNT || c >= KITTY_DIACRITIC_COUNT) continue;
 			QString cluster;
 			cluster += QString::fromUcs4(reinterpret_cast<const char32_t *>(
@@ -767,7 +781,8 @@ QSize cells(QSize image_px, QSize cell_px) {
 }
 
 void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect,
-                       const TerminalGround &ground) {
+                       const TerminalGround &ground, bool has_clip,
+                       const QRect &clip) {
 	// A null image has nothing to composite, and asking it for pixels is not
 	// quiet about it. The sampling below clamps to width() - 1, which is -1
 	// when there is no width, and QImage::pixel() answers an out-of-range
@@ -850,6 +865,18 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 		for (int cx = 0; cx < cell_rect.width(); ++cx) {
 			const int X = cell_rect.x() + cx, Y = cell_rect.y() + cy;
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
+			// The producer's clip, beside the grid's own bound. These cells
+			// go in through at() as the placeholder tier's do, so the
+			// buffer's own clip would not refuse them either.
+			//
+			// The SAMPLING is deliberately not narrowed with it: the slice
+			// below is derived from the cell's position within cell_rect, so
+			// skipping a cell leaves every other cell sampling exactly the
+			// pixels it sampled before. That is what makes a clipped surface
+			// show the same picture with less of it, rather than the whole
+			// picture compressed -- the fault 8.501 had to crop the image to
+			// avoid when the clip could not travel.
+			if (has_clip && !clip.contains(QPoint(X, Y))) continue;
 			// The slice of the image this cell covers, and its two halves,
 			// derived from the cell's position within cell_rect so that a
 			// picture wider than one cell is sampled ACROSS rather than

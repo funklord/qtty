@@ -533,28 +533,32 @@ private:
 		w->setAttribute(Qt::WA_WState_InPaintEvent, painting);
 		harvesting_ = false;
 
-		QRect cells = cells_of_rect(w->rect(), w, dev->origin);
-		// THE IMAGE IS CROPPED WITH THE RECT, never one without the other:
-		// crop_placement() derives a source rectangle by assuming the image
-		// spans cell_rect, so shrinking the rect alone would squash the whole
-		// surface into the cells that remain rather than showing the part of
-		// it that is visible.
+		const QRect cells = cells_of_rect(w->rect(), w, dev->origin);
+		// THE CLIP TRAVELS WITH THE PLACEMENT; the image and the rectangle
+		// stay whole. 8.502, replacing 8.501's crop.
 		//
-		// Untouched where nothing clips -- the common case, a surface in an
-		// ordinary layout -- so the pixels, and therefore the content key
-		// below, are exactly what they were.
+		// 8.501 cropped the image here and shrank the rectangle to match,
+		// because nothing on the wire could carry a clip. That was correct
+		// and it cost the upload-once property: the pixels then changed
+		// whenever the clip did, so scrolling a half-visible surface
+		// re-uploaded it rather than re-placing a stored image with a new
+		// source rectangle. `CellImage::clip` exists so the cheaper thing is
+		// available, and `key` below is a property of the PICTURE again --
+		// which is what it has to be for an upload to be reused at all.
 		//
-		// The cost, so it is not discovered later: a CLIPPED surface is keyed
-		// on its visible pixels, so scrolling it re-uploads rather than
-		// re-placing a stored image with a new source rectangle. kitty can do
-		// the cheaper thing and would need the clip to reach it, which means
-		// a field in CellImage and therefore a public-header decision. The
-		// pixels change on every scroll step either way; what is lost is one
-		// upload per step for a surface that is partly out of view.
-		if (vis != w->rect()) {
-			img = img.copy(vis);
-			cells = cells_of_rect(vis, w, dev->origin);
-		}
+		// The two halves may not be separated. A clip with a cropped image
+		// would narrow twice; a cropped image with no clip is 8.501; and a
+		// clip the tiers ignore is the original fault. Every tier that reads
+		// cell_rect reads this beside it -- crop_placement() for kitty and
+		// sixel, compose_kitty_placeholders(), compose_halfblocks(), and
+		// paint_placements() for the raster path.
+		//
+		// has_clip false where nothing clips, which is the common case and
+		// is what an application appending its own placement produces by
+		// saying nothing.
+		const bool has_clip = vis != w->rect();
+		const QRect clip = has_clip ? cells_of_rect(vis, w, dev->origin)
+		                            : QRect();
 
 		// Content-addressed, because a surface is repainted rather than
 		// cached: a key taken from the widget would tell the kitty tier the
@@ -564,8 +568,11 @@ private:
 		// what it says here.
 		const QByteArray bits(reinterpret_cast<const char *>(img.constBits()),
 		                      int(img.sizeInBytes()));
-		dev->placements.append({quint64(qHash(bits)), cells,
-			                        QPixmap::fromImage(img)});
+		CellImage placement{quint64(qHash(bits)), cells,
+		                    QPixmap::fromImage(img)};
+		placement.has_clip = has_clip;
+		placement.clip = clip;
+		dev->placements.append(placement);
 		return true;                               // consumed: no Channel B pass
 	}
 };

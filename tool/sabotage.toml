@@ -3280,8 +3280,8 @@ check = "on the upload that displays it and on the re-place"
 # Every ordering check above stays green under this one. 8.235.
 name = "a frame whose only change is a z compares equal"
 file = "include/qtty/cell.h"
-find = "\t\treturn key == o.key && cell_rect == o.cell_rect && z == o.z;"
-into = "\t\treturn key == o.key && cell_rect == o.cell_rect;"
+find = "\t\treturn key == o.key && cell_rect == o.cell_rect && z == o.z\n\t\t    && has_clip == o.has_clip && (!has_clip || clip == o.clip);"
+into = "\t\treturn key == o.key && cell_rect == o.cell_rect\n\t\t    && has_clip == o.has_clip && (!has_clip || clip == o.clip);"
 count = 1
 check = "and the frame gate still calls that a different frame"
 
@@ -5122,8 +5122,8 @@ check = "and says which cell and which shape when a field has it"
 # past every fixture. 8.290.
 name = "a snapshot cannot see which picture is on top"
 file = "src/core/cell_buffer.cpp"
-find = "\t\t\t             .arg(im.z)\n"
-into = "\t\t\t             .arg(0)\n"
+find = "\t\t\t               .arg(im.z)\n"
+into = "\t\t\t               .arg(0)\n"
 count = 1
 check = "two pictures differing only in which is on top do not snapshot the same"
 
@@ -6802,15 +6802,64 @@ count = 1
 check = "a cell-painted widget taller than its viewport is handed its whole rect and writes only the rows the viewport shows"
 
 [[sabotage]]
-# A harvested placement taking the widget's whole rect, which is how it was:
-# the backend crops to the GRID and nothing cropped to the viewport, so a
-# pixel surface 9 rows tall was placed over 9 rows of a 3-row viewport. 8.501.
-name = "a harvested placement is not cropped to what is visible"
+# A harvested placement carrying no clip, which is how it was before 8.501:
+# the backend crops to the GRID and nothing said what the ancestors hid, so
+# a pixel surface 9 rows tall was placed over 9 rows of a 3-row viewport.
+# 8.502 re-points this at the flag, 8.501's crop having been replaced.
+name = "a harvested placement says nothing about what is visible"
 file = "src/render/cell_paint.cpp"
-find = "\t\tif (vis != w->rect()) {\n\t\t\timg = img.copy(vis);\n\t\t\tcells = cells_of_rect(vis, w, dev->origin);\n\t\t}"
-into = "\t\tif (false) {\n\t\t\timg = img.copy(vis);\n\t\t\tcells = cells_of_rect(vis, w, dev->origin);\n\t\t}"
+find = "\t\tconst bool has_clip = vis != w->rect();"
+into = "\t\tconst bool has_clip = false;"
 count = 1
-check = "a pixel surface taller than its viewport is placed in the viewport's cells, carrying the slice that is visible rather than the whole thing squashed"
+check = "a pixel surface taller than its viewport keeps its whole rect and whole picture, and carries the viewport as its clip"
+
+[[sabotage]]
+# The clip dropped by crop_placement, which is the kitty and sixel tiers: a
+# field that travels and is then ignored is the original fault with more
+# code. 8.502.
+name = "crop_placement ignores the clip it is given"
+file = "src/graphics/graphics.cpp"
+find = "\tif (has_clip) visible = visible.intersected(clip);"
+into = "\tif (false) visible = visible.intersected(clip);"
+count = 1
+check = "a clip keeps only the cells it names, the grid having nothing to say about them"
+
+[[sabotage]]
+# The clip dropped by the placeholder tier, where no buffer clip can catch
+# it either: these cells go in through CellBuffer::at(). 8.502.
+name = "the placeholder tier ignores the clip"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (has_clip && !clip.contains(QPoint(X, Y))) continue;\n\t\t\tif (r >= KITTY_DIACRITIC_COUNT || c >= KITTY_DIACRITIC_COUNT) continue;"
+into = "\t\t\tif (false && !clip.contains(QPoint(X, Y))) continue;\n\t\t\tif (r >= KITTY_DIACRITIC_COUNT || c >= KITTY_DIACRITIC_COUNT) continue;"
+count = 1
+check = "and writes nothing in the row it does not, these cells going in through at() where no buffer clip can refuse them"
+
+[[sabotage]]
+# The clip dropped by the mosaic tier, same shape and same reason. 8.502.
+name = "the mosaic tier ignores the clip"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (has_clip && !clip.contains(QPoint(X, Y))) continue;\n\t\t\t// The slice of the image this cell covers, and its two halves,"
+into = "\t\t\tif (false && !clip.contains(QPoint(X, Y))) continue;\n\t\t\t// The slice of the image this cell covers, and its two halves,"
+count = 1
+check = "a clipped mosaic leaves the row the clip excludes alone"
+
+[[sabotage]]
+# `clip` left out of the comparison the frame loop uses, which is the z trap
+# above arriving by the route the field was added on: a surface whose
+# ancestors reveal more or less of it -- a terminal resized under it -- has
+# the same picture and the same rectangle, so the frame compares equal to
+# its predecessor and the wrong slice stays on the screen. 8.502.
+#
+# It named the end-to-end check first and FAILED: the two placements of a
+# scrolled surface differ in cell_rect as well, so operator== read them
+# apart on the rectangle with the clip dropped. The check it names now
+# differs in nothing but the clip.
+name = "a frame whose only change is a clip compares equal"
+file = "include/qtty/cell.h"
+find = "\t\t    && has_clip == o.has_clip && (!has_clip || clip == o.clip);"
+into = "\t\t    && has_clip == o.has_clip;"
+count = 1
+check = "and the frame gate calls that a different frame too, so a surface whose visible part changed is presented"
 
 # WITHDRAWN rather than written: an entry disabling the `vis.isEmpty()`
 # early return in harvest() left "and one scrolled wholly out of view makes

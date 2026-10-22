@@ -1486,6 +1486,75 @@ int suite_graphics() {
 		CHECK(right.cells == QRect(18, 2, 2, 4) && right.source == QRect(0, 0, 20, 76),
 		      "a placement past the right edge keeps only the visible columns");
 
+		// THE PRODUCER'S CLIP, which is the grid's own bound arriving by a
+		// second route: a surface its ancestors clip is wholly inside the
+		// terminal and partly outside its viewport, so no test above can
+		// reach it. 8.502.
+		//
+		// The expected source rectangles are the same ones the grid cases
+		// above produce for the same geometry, written out separately rather
+		// than shared, so the two routes are asserted to agree rather than
+		// assumed to.
+		CroppedPlacement unclipped =
+		    crop_placement(QRect(2, 2, 4, 4), art.size(), grid, false,
+		                   QRect(2, 2, 1, 1));
+		CHECK(unclipped.cells == QRect(2, 2, 4, 4)
+		          && unclipped.source == QRect(0, 0, 40, 76),
+		      "a placement with has_clip false restricts nothing, and the"
+		      " rectangle beside the flag is not read");
+
+		// Bottom two rows hidden by the clip rather than by the grid, at a
+		// position where the grid crops nothing at all.
+		CroppedPlacement held =
+		    crop_placement(QRect(2, 2, 4, 4), art.size(), grid, true,
+		                   QRect(2, 2, 4, 2));
+		CHECK(held.cells == QRect(2, 2, 4, 2),
+		      "a clip keeps only the cells it names, the grid having nothing"
+		      " to say about them");
+		CHECK(held.source == QRect(0, 0, 40, 38),
+		      "and the source follows it, so a half-visible surface shows the"
+		      " half that is visible rather than all of itself squeezed into"
+		      " the cells that remain");
+
+		// A clip above the placement, which is the scrolled-down case: the
+		// viewport's cells are below the surface's own origin.
+		CroppedPlacement lower =
+		    crop_placement(QRect(2, 2, 4, 4), art.size(), grid, true,
+		                   QRect(2, 4, 4, 2));
+		CHECK(lower.cells == QRect(2, 4, 4, 2)
+		          && lower.source == QRect(0, 38, 40, 38),
+		      "and a clip over the lower rows takes the lower half of the"
+		      " image");
+
+		// Both bounds at once, each cutting a different edge, because a
+		// single intersection is the only implementation that gets this
+		// right and either-one-then-the-other does not.
+		CroppedPlacement both =
+		    crop_placement(QRect(18, 8, 4, 4), art.size(), grid, true,
+		                   QRect(0, 8, 20, 2));
+		CHECK(both.cells == QRect(18, 8, 2, 2),
+		      "the grid and the clip both narrow a placement, the grid taking"
+		      " the columns and the clip the rows");
+
+		// A CLIP OF NO CELLS IS A REAL ANSWER -- draw none of it -- and it
+		// is the case that decided the flag. Measured: QRect(0,0,0,0) and
+		// QRect(5,5,0,0) both answer isNull() TRUE, position being no part
+		// of the test, so a sentinel keyed on isNull() would read "no room
+		// at all" as "no clip" and draw the whole surface. That is the fault
+		// CellBuffer's own set_clip() sabotage found, which is why
+		// CellImage carries a flag beside the rectangle rather than one
+		// rectangle doing both jobs.
+		//
+		// Both spellings are asserted, so the flag is what decides it and
+		// not the shape of the rectangle.
+		CHECK(crop_placement(QRect(2, 2, 4, 4), art.size(), grid, true,
+		                     QRect(0, 0, 0, 0)).cells.isEmpty(),
+		      "a 0x0 clip draws nothing, although QRect calls it null");
+		CHECK(crop_placement(QRect(2, 2, 4, 4), art.size(), grid, true,
+		                     QRect(9, 9, 1, 1)).cells.isEmpty(),
+		      "and a clip that misses the placement entirely draws nothing,"
+		      " rather than falling back to the whole of it");
+
 		// Wholly off screen: nothing to draw at all.
 		// What an overlay's rectangle means when it is empty. The sentinel
 		// for "the whole terminal" was QRectF::isNull(), which is width and
@@ -1644,6 +1713,50 @@ int suite_graphics() {
 		      "a big id adds the most-significant-byte diacritic");
 		CHECK(wide.at(1, 0).ch == cluster({0x10EEEE, 0x0305, 0x030D, 0x030E}),
 		      "on every cell, not only the first");
+
+		// THE PRODUCER'S CLIP, which this tier is the one place the buffer
+		// cannot enforce: these cells go in through CellBuffer::at(), the
+		// raw accessor, so a buffer clip would not refuse them and nothing
+		// but this parameter can. 8.502.
+		//
+		// Asserted on both sides -- the cell inside the clip is written and
+		// the cell outside it is untouched -- because "wrote nothing"
+		// satisfies half of it and is the failure that matters least.
+		Qtty::CellBuffer held(4, 3);
+		Qtty::compose_kitty_placeholders(held, 42, QRect(0, 0, 2, 2), true,
+		                                 QRect(0, 0, 2, 1));
+		CHECK(held.at(0, 0).ch == cluster({0x10EEEE, 0x0305, 0x0305})
+		      && held.at(1, 0).ch == cluster({0x10EEEE, 0x0305, 0x030D}),
+		      "a clipped placement still writes the row the clip keeps");
+		CHECK(held.at(0, 1).ch == QStringLiteral(" ")
+		      && held.at(1, 1).ch == QStringLiteral(" "),
+		      "and writes nothing in the row it does not, these cells going"
+		      " in through at() where no buffer clip can refuse them");
+
+		// has_clip false with a rectangle beside it, which is the control
+		// the mosaic tier below had and this one did not -- and the
+		// asymmetry cost exactly what it was there to stop. This tier was
+		// left reading the rectangle whenever it was non-null while the flag
+		// was threaded through everywhere else, a mechanical replacement
+		// that matched nothing and said nothing; the checks above passed
+		// because they pass `true` with a real rectangle, where the two
+		// sentinels agree. `--validate` found the dead sabotage anchor.
+		CellBuffer flagged(4, 3);
+		Qtty::compose_kitty_placeholders(flagged, 42, QRect(0, 0, 2, 2), false,
+		                                 QRect(0, 0, 2, 1));
+		CHECK(flagged.at(0, 1).ch == frame.at(0, 1).ch
+		      && flagged.at(1, 1).ch == frame.at(1, 1).ch,
+		      "and has_clip false ignores the rectangle beside it, so the"
+		      " flag decides and not the shape of the rectangle");
+
+		// And the DIACRITICS are unchanged by the clip: the cell's row and
+		// column are its position within cell_rect, not within the clip, so
+		// a clipped placement shows the right part of the picture rather
+		// than the top-left of it. A clip that renumbered would be the
+		// squash fault 8.501 had to crop the image to avoid.
+		CHECK(held.at(1, 0).ch == frame.at(1, 0).ch,
+		      "and a kept cell carries the same row and column it would"
+		      " unclipped");
 
 		// One grapheme cluster per cell, which is what makes a placement
 		// ordinary text that any Unicode-aware program moves correctly -- the
@@ -2291,6 +2404,54 @@ int suite_graphics() {
 		      && QRgb(half_rast.pixels.pixel(plain) & 0xffffffu)
 		         == QRgb(qRgb(16, 20, 24) & 0xffffffu),
 		      "and is not enough to rasterise a cell, which needs the pair");
+	}
+
+	// THE PRODUCER'S CLIP, in the mosaic tier. Like the placeholder tier it
+	// writes through CellBuffer::at(), so a buffer clip would not refuse
+	// these cells either. 8.502.
+	//
+	// The image is two colours, top half and bottom half, which is what
+	// tells a clip from a squash: a cell kept by the clip has to carry the
+	// colour it would carry unclipped, because the sampling is derived from
+	// the cell's position within cell_rect and a clip must not renumber it.
+	// Narrowing the sampling with the clip is the squash fault 8.501 had to
+	// crop the image to avoid, and it would show here as the top colour in
+	// every kept row.
+	{
+		QImage banded(4, 4, QImage::Format_ARGB32);
+		banded.fill(Qt::transparent);
+		for (int y = 0; y < 4; ++y)
+			for (int x = 0; x < 4; ++x)
+				banded.setPixelColor(x, y, y < 2 ? QColor(255, 0, 0, 255)
+				                                 : QColor(0, 0, 255, 255));
+		const TerminalGround ground = TerminalGround::under(qRgb(0, 0, 0));
+		CellBuffer full(4, 2);
+		compose_halfblocks(full, banded, QRect(0, 0, 4, 2), ground);
+		CellBuffer lower(4, 2);
+		compose_halfblocks(lower, banded, QRect(0, 0, 4, 2), ground, true,
+		                   QRect(0, 1, 4, 1));
+		CHECK(lower.at(0, 0).ch == QStringLiteral(" "),
+		      "a clipped mosaic leaves the row the clip excludes alone");
+		CHECK(lower.at(0, 1).ch == full.at(0, 1).ch
+		      && lower.at(0, 1).fg == full.at(0, 1).fg
+		      && lower.at(0, 1).bg == full.at(0, 1).bg,
+		      "and a kept cell is byte-for-byte the cell it would be"
+		      " unclipped, so the clip hides part of a picture rather than"
+		      " compressing all of it");
+		CHECK(qBlue(lower.at(0, 1).fg.value()) > 200
+		      && qRed(lower.at(0, 1).fg.value()) < 60,
+		      "which for a two-banded image means the kept row carries the"
+		      " band that belongs there");
+		// has_clip false and a rectangle beside it: the flag decides, so the
+		// rectangle is not read. Without this the two checks above pass
+		// against an implementation that consults the rectangle whenever it
+		// is non-null, which is the sentinel CellImage::clip deliberately
+		// does not use.
+		CellBuffer ignored(4, 2);
+		compose_halfblocks(ignored, banded, QRect(0, 0, 4, 2), ground, false,
+		                   QRect(0, 1, 4, 1));
+		CHECK(ignored.at(0, 0).ch == full.at(0, 0).ch,
+		      "and has_clip false ignores the rectangle beside it entirely");
 	}
 
 	// The mosaic tier in the three configurations nothing reached, found by

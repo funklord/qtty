@@ -53,7 +53,19 @@ void paint_placements(QPainter &p, const QVector<CellImage> &images,
 	});
 	for (int i : order) {
 		const CellImage &ci = images[i];
+		// THE PRODUCER'S CLIP, applied as a painter clip rather than by
+		// cropping the pixmap: this is the raster path a GUI build and
+		// qtty-inspect take, and it has to agree with what the terminal
+		// tiers draw or the two frontends disagree about a scrolled surface.
+		// has_clip false is no restriction, which is every placement an
+		// application makes by hand. 8.502.
+		if (ci.has_clip) {
+			p.save();
+			p.setClipRect(QRect(ci.clip.x() * cw, ci.clip.y() * ch,
+			                    ci.clip.width() * cw, ci.clip.height() * ch));
+		}
 		p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
+		if (ci.has_clip) p.restore();
 	}
 }
 

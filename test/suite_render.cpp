@@ -2253,11 +2253,16 @@ int suite_render(bool record) {
 		// 9 rows tall in a 3-row viewport was placed at its full height --
 		// measured as 20x9+0+1 for a viewport of 20x3+0+1.
 		//
-		// The image is cropped WITH the rect, because crop_placement()
-		// derives its source rectangle by assuming the image spans
-		// cell_rect: shrinking the rect alone would squash the whole surface
-		// into the rows that remain. That is what the bands are for -- a
-		// squash carries both colours and a crop carries one.
+		// THE CLIP TRAVELS and the picture stays whole, which is 8.502
+		// replacing 8.501. 8.501 cropped the image here, which was correct
+		// and made `key` a property of the crop rather than of the picture,
+		// so scrolling a half-visible surface re-uploaded it. So what this
+		// asserts is the pair: cell_rect and the pixmap are the WHOLE
+		// surface, and `clip` is the viewport.
+		//
+		// The bands are what tell a travelling clip from a cropped image --
+		// a cropped placement carries one colour and a clipped one carries
+		// both, because the second is the whole picture with instructions.
 		QWidget pix;
 		pix.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *pix_area = new QScrollArea(&pix);
@@ -2281,36 +2286,93 @@ int suite_render(bool record) {
 		Qtty::CellBuffer pb2(24, 10);
 		QVector<Qtty::CellImage> bottom;
 		Qtty::render_once(pix, pb2, &bottom);
-		const QRect want(0, 1, 20, 3);
+		// THE SURFACE'S OWN RECTANGLE MOVES WITH THE SCROLL and the clip
+		// does not, which is the whole shape of the fix in two values: the
+		// picture is where the widget is, and the clip is where the viewport
+		// is. Scrolled down six rows the widget's origin is six rows above
+		// where it was, so its rect is at -5 while the clip stays at 1.
+		//
+		// This check first asserted one rect for both positions and failed
+		// on the scrolled one -- the assertion being wrong, not the code.
+		// Worth the sentence because the two values look interchangeable and
+		// are not.
+		const QRect at_rest_rect(0, 1, 20, 9), scrolled_rect(0, -5, 20, 9);
+		const QRect viewport(0, 1, 20, 3);
+		// BOTH placements in the message. The first version printed only the
+		// one at rest, so a failure in the scrolled one said nothing about
+		// itself -- which is the "a message that cannot separate the
+		// hypotheses it will generate guarantees the guessing" rule at the
+		// top of this file, met by leaving half the subject out.
+		const auto say = [](const QVector<Qtty::CellImage> &v) {
+			if (v.size() != 1) return QStringLiteral("(none)");
+			const QRect &q = v[0].cell_rect;
+			return QStringLiteral("%1x%2%3%4%5%6").arg(q.width()).arg(q.height())
+			       .arg(q.x() < 0 ? QString() : QStringLiteral("+"))
+			       .arg(q.x())
+			       .arg(q.y() < 0 ? QString() : QStringLiteral("+"))
+			       .arg(q.y());
+		};
+		const auto say_clip = [&say](const QVector<Qtty::CellImage> &v) {
+			if (v.size() != 1) return QStringLiteral("(none)");
+			if (!v[0].has_clip) return QStringLiteral("(none set)");
+			QVector<Qtty::CellImage> one;
+			Qtty::CellImage as_rect = v[0];
+			as_rect.cell_rect = v[0].clip;
+			one.append(as_rect);
+			return say(one);
+		};
 		const QPair<int, int> at_top = top.size() == 1 ? bands(top[0])
 		                                              : QPair<int, int>(-1, -1);
-		const QPair<int, int> at_bottom = bottom.size() == 1
-		                                      ? bands(bottom[0])
-		                                      : QPair<int, int>(-1, -1);
 		if (top.size() == 1 && bottom.size() == 1
-		    && top[0].cell_rect == want && bottom[0].cell_rect == want
-		    && at_top.first > 0 && at_top.second == 0
-		    && at_bottom.second > 0 && at_bottom.first == 0)
-			printf("PASS: a pixel surface taller than its viewport is placed"
-			       " in the viewport's cells, carrying the slice that is"
-			       " visible rather than the whole thing squashed\n");
+		    && top[0].cell_rect == at_rest_rect
+		    && bottom[0].cell_rect == scrolled_rect
+		    && top[0].has_clip && bottom[0].has_clip
+		    && top[0].clip == viewport && bottom[0].clip == viewport
+		    && at_top.first > 0 && at_top.second > 0)
+			printf("PASS: a pixel surface taller than its viewport keeps its"
+			       " whole rect and whole picture, and carries the viewport"
+			       " as its clip\n");
 		else {
-			printf("FAIL: a pixel surface taller than its viewport is placed"
-			       " in the viewport's cells, carrying the slice that is"
-			       " visible rather than the whole thing squashed\n"
-			       "      condition: %d/%d placement(s), rects %dx%d+%d+%d"
-			       " and %dx%d+%d+%d, bands %d/%d then %d/%d\n",
+			printf("FAIL: a pixel surface taller than its viewport keeps its"
+			       " whole rect and whole picture, and carries the viewport"
+			       " as its clip\n"
+			       "      condition: %d/%d placement(s), bands %d/%d\n"
+			       "      at rest:  rect %s clip %s\n"
+			       "      scrolled: rect %s clip %s\n",
 			       int(top.size()), int(bottom.size()),
-			       top.isEmpty() ? 0 : top[0].cell_rect.width(),
-			       top.isEmpty() ? 0 : top[0].cell_rect.height(),
-			       top.isEmpty() ? 0 : top[0].cell_rect.x(),
-			       top.isEmpty() ? 0 : top[0].cell_rect.y(),
-			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.width(),
-			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.height(),
-			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.x(),
-			       bottom.isEmpty() ? 0 : bottom[0].cell_rect.y(),
 			       at_top.first, at_top.second,
-			       at_bottom.first, at_bottom.second);
+			       qPrintable(say(top)), qPrintable(say_clip(top)),
+			       qPrintable(say(bottom)), qPrintable(say_clip(bottom)));
+			++r;
+		}
+
+		// AND THE KEY IS THE SAME AT BOTH SCROLL POSITIONS, which is the
+		// whole reason the clip travels rather than the image being cropped.
+		// Under 8.501 the pixels differed between these two frames, so the
+		// content key differed and kitty re-uploaded a picture that had only
+		// moved. Asserted on the key rather than on the pixmap, because the
+		// key is what the upload cache is indexed by.
+		//
+		// IT DOES NOT ALSO ASSERT THAT THE TWO COMPARE UNEQUAL, although it
+		// did at first and although that property matters. These two
+		// placements differ in cell_rect as well, so operator== reads them
+		// apart on the rectangle whatever it does with the clip -- the
+		// sabotage dropping `clip` from the comparison left that clause
+		// green. An assertion satisfied by a field other than the one it
+		// names is worse than no assertion, so it lives in suite_runtime
+		// now, on a fixture that differs in nothing but the clip.
+		if (top.size() == 1 && bottom.size() == 1
+		    && top[0].key == bottom[0].key)
+			printf("PASS: and scrolling it does not change the content key,"
+			       " so the picture is uploaded once rather than per scroll"
+			       " step\n");
+		else {
+			printf("FAIL: and scrolling it does not change the content key,"
+			       " so the picture is uploaded once rather than per scroll"
+			       " step\n"
+			       "      condition: keys %s\n",
+			       (top.size() == 1 && bottom.size() == 1
+			        && top[0].key == bottom[0].key) ? "equal" : "different");
 			++r;
 		}
 

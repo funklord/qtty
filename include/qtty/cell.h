@@ -39,14 +39,56 @@ struct CellImage {
 	// produced them in, which is what makes the default of 0 mean "say
 	// nothing about stacking" rather than "sit at the bottom".
 	//
-	// LAST in the struct deliberately. Both producers in cell_paint.cpp build
-	// a placement by aggregate initialisation naming three members, so a
-	// field inserted before `pixmap` would either refuse to compile or --
-	// had the types happened to line up -- silently take the pixmap's slot.
-	// design.md lists z before a pixmap it does not have; the order here is
-	// the tree's, and the difference costs nothing because nothing reads
-	// these by position.
+	// AFTER `pixmap`, and so is everything added since. Both producers in
+	// cell_paint.cpp build a placement by aggregate initialisation naming
+	// three members, so a field inserted before `pixmap` would either refuse
+	// to compile or -- had the types happened to line up -- silently take
+	// the pixmap's slot. design.md lists z before a pixmap it does not have;
+	// the order here is the tree's, and the difference costs nothing because
+	// nothing reads these by position.
+	//
+	// This said "LAST in the struct deliberately" until `clip` was added
+	// after it, which is the same safe place for the same reason. The rule
+	// was never about z being last; it is about nothing going before the
+	// three a producer names.
 	int     z = 0;
+
+	// Which cells of this placement may actually be drawn, or a null
+	// rectangle for no restriction. 8.502.
+	//
+	// It exists because a placement's only bound was the GRID. A pixel
+	// surface inside a scroll area is clipped by its ancestors, and nothing
+	// on the wire said so: a surface 9 rows tall in a viewport 3 rows tall
+	// was placed over nine rows, across the label below the scroll area.
+	// 8.501 fixed that by cropping the IMAGE at harvest time, which was
+	// correct and cost the upload-once property -- the pixels then changed
+	// whenever the clip did, so scrolling a half-visible surface re-uploaded
+	// it instead of re-placing a stored image with a new source rectangle.
+	//
+	// So the clip travels instead of being applied. The image and cell_rect
+	// stay whole, which is what keeps `key` a property of the PICTURE, and
+	// each tier narrows what it draws: crop_placement() intersects it for
+	// the kitty and sixel tiers, and the placeholder and half-block tiers
+	// skip a cell outside it.
+	//
+	// `clip` is read only when `has_clip` is set, which is why the two
+	// travel together everywhere below.
+	//
+	// A FLAG OF ITS OWN rather than QRect::isNull(), for the reason
+	// CellBuffer's set_clip() gives thirty lines below -- and that reason
+	// was reached by sabotage there, so it is not a style preference. A
+	// zero-sized rectangle answers isNull() true, so "draw none of this"
+	// cannot be spelled as a 0x0 clip: measured, QRect(0,0,0,0) and
+	// QRect(5,5,0,0) are both null, position being no part of the test. Read
+	// as "no clip", a surface with no room at all would draw in full -- the
+	// exact case CellBuffer's own sabotage set QRect(0,0,0,0) for and
+	// watched the suite pass.
+	//
+	// `has_clip` false is the quiet default, so an application appending its
+	// own placement writes the three fields it knows about and gets no
+	// restriction by saying nothing.
+	bool    has_clip = false;
+	QRect   clip;
 
 	// The pixmap is deliberately NOT compared, and this is not an omission:
 	// `key` is its cacheKey, so two placements have equal keys exactly when
@@ -65,8 +107,17 @@ struct CellImage {
 	// is the same shape as comparing placements by COUNT, which this gate was
 	// already fixed once for, arriving by a second route -- and one line here
 	// is the whole of what closes it.
+	// `has_clip` AND `clip` ARE COMPARED, for the reason the paragraph above
+	// gives about z
+	// and by the same route: Compositor decides whether a frame is worth
+	// sending with `frame.images != prev_->images`, so a frame in which only
+	// a clip changed -- a half-visible surface scrolled by one row, the
+	// picture and its rectangle identical -- would compare EQUAL to its
+	// predecessor and never be presented. The surface would then show the
+	// wrong slice of itself until something else dirtied the frame.
 	bool operator==(const CellImage &o) const {
-		return key == o.key && cell_rect == o.cell_rect && z == o.z;
+		return key == o.key && cell_rect == o.cell_rect && z == o.z
+		    && has_clip == o.has_clip && (!has_clip || clip == o.clip);
 	}
 	bool operator!=(const CellImage &o) const { return !(*this == o); }
 };

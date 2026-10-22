@@ -1102,6 +1102,46 @@ int suite_runtime() {
 			      "swapping two placements' z changes no cell at all");
 			CHECK(was.images != now.images,
 			      "and the frame gate still calls that a different frame");
+
+			// THE SAME QUESTION FOR THE CLIP, and it has to be asked here
+			// rather than end to end. 8.502 first asserted it on two real
+			// placements of a scrolled surface -- same picture, clip moved
+			// -- and the sabotage that drops `clip` from operator== left
+			// that check GREEN, because those two placements also differ in
+			// cell_rect and the comparison still reads that. An assertion
+			// satisfied by a field other than the one it names, which is the
+			// shape 8.501's scrolled check was caught in a day earlier.
+			//
+			// So the fixture differs in NOTHING ELSE: one picture, one
+			// rectangle, one z, two clips. That is a real frame -- a
+			// terminal resized under a surface whose widget has not moved
+			// changes what its ancestors leave visible and nothing else --
+			// and the cells it would produce are identical, so the gate is
+			// the only thing that can notice.
+			const auto clipped = [&](bool has, const QRect &r) {
+				CellBuffer b(30, 8);
+				CellImage im;
+				im.key = quint64(red.cacheKey());
+				im.cell_rect = QRect(0, 0, 3, 2);
+				im.pixmap = red;
+				im.has_clip = has;
+				im.clip = r;
+				b.images.append(im);
+				return b;
+			};
+			const CellBuffer wide_clip = clipped(true, QRect(0, 0, 3, 2));
+			const CellBuffer narrow = clipped(true, QRect(0, 0, 3, 1));
+			CHECK(wide_clip.diff(narrow).isEmpty(),
+			      "narrowing a placement's clip changes no cell either");
+			CHECK(wide_clip.images != narrow.images,
+			      "and the frame gate calls that a different frame too, so a"
+			      " surface whose visible part changed is presented");
+			// And the FLAG, separately: a placement that stops being clipped
+			// keeps whatever rectangle it had, so comparing only the
+			// rectangle would call the two identical.
+			CHECK(clipped(false, QRect(0, 0, 3, 1)).images != narrow.images,
+			      "and dropping the clip is a different frame from keeping"
+			      " it, the rectangle beside the flag being unchanged");
 		}
 	}
 

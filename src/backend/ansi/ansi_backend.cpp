@@ -1256,7 +1256,8 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				                                ci.cell_rect.width(),
 				                                ci.cell_rect.height());
 			live_uploads.append(ek);
-			compose_kitty_placeholders(composed, id, ci.cell_rect);
+			compose_kitty_placeholders(composed, id, ci.cell_rect,
+			                           ci.has_clip, ci.clip);
 		}
 		// Wrapped so tmux forwards the transmission to the terminal
 		// underneath. The placeholder CELLS are deliberately NOT wrapped:
@@ -1288,7 +1289,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 		const TerminalGround ground = TerminalGround::from(capabilities());
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
 			compose_halfblocks(composed, ci.pixmap.toImage(), ci.cell_rect,
-			                   ground);
+			                   ground, ci.has_clip, ci.clip);
 	}
 
 	// The transmission goes out ahead of the frame: the virtual placement has
@@ -1413,7 +1414,8 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			for (const CellImage &ci : frame.images) {
 				const QImage img = ci.pixmap.toImage();
 				const CroppedPlacement cp =
-				    crop_placement(ci.cell_rect, img.size(), grid);
+				    crop_placement(ci.cell_rect, img.size(), grid,
+				                   ci.has_clip, ci.clip);
 				if (cp.cells.isEmpty()) continue;     // wholly off screen
 				out += moveTo(cp.cells.topLeft());
 				// No extent: what goes up here is the whole image, placed
@@ -1467,7 +1469,8 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			for (const CellImage &ci : frame.images) {
 				const QImage img = ci.pixmap.toImage();
 				const CroppedPlacement cp =
-				    crop_placement(ci.cell_rect, img.size(), grid);
+				    crop_placement(ci.cell_rect, img.size(), grid,
+				                   ci.has_clip, ci.clip);
 				if (cp.cells.isEmpty()) continue;
 				out += moveTo(cp.cells.topLeft());
 				// No source-rectangle mechanism here, so the image itself is
@@ -1488,7 +1491,8 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			for (const CellImage &ci : frame.images) {
 				const QImage img = ci.pixmap.toImage();
 				const CroppedPlacement cp =
-				    crop_placement(ci.cell_rect, img.size(), grid);
+				    crop_placement(ci.cell_rect, img.size(), grid,
+				                   ci.has_clip, ci.clip);
 				if (cp.cells.isEmpty()) continue;
 				out += moveTo(cp.cells.topLeft());
 				// Cropped image and cropped cell size together: OSC 1337 sizes
