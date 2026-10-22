@@ -384,8 +384,17 @@ static void frame_layer(CellBuffer &out, const QRect &cells,
 	if (ring.width() < 2 || ring.height() < 2) return;
 	const auto put = [&out](int x, int y, const QString &g) {
 		if (!out.writable(x, y)) return;
-		out.at(x, y) = Cell{};
-		out.at(x, y).ch = g;
+		// THE GLYPH FIRST AND THE RESET AFTER, which is the order the
+		// wide-cell invariant needs: set_glyph() has to see the cell as
+		// it stands to find a partner outside it, and resetting first
+		// destroys exactly that. The ring carries no colour and no
+		// attribute of whatever it covers, which is what the reset is
+		// for.
+		out.set_glyph(x, y, g);
+		Cell &c = out.at(x, y);
+		c.fg = Color();
+		c.bg = Color();
+		c.attrs = Attrs();
 	};
 	for (int x = ring.left() + 1; x < ring.right(); ++x) {
 		put(x, ring.top(), QStringLiteral("─"));
@@ -713,8 +722,10 @@ static void draw_window_tabs(CellBuffer &out, const QVector<QWidget *> &tabs,
 	// put its own border on row 0. What showed through was the window's frame
 	// running out of the last tab to the right edge, which reads as part of
 	// the strip and is not.
-	for (int x = 0; x < out.cols(); ++x)
-		if (out.writable(x, 0)) out.at(x, 0) = Cell();
+	// Through fill(), which carries the wide-cell guard at its ends: with a
+	// clip in force this row does not reach both edges, and a two-column
+	// cluster across the clip's boundary would lose half of itself.
+	out.fill(QRect(0, 0, out.cols(), 1), Cell());
 	int x = 0;
 	for (int i = 0; i < tabs.size(); ++i) {
 		g_tabs.append(tabs[i]);

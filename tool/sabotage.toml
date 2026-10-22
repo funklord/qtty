@@ -290,8 +290,8 @@ check = "an unsupported widget says what it is"
 [[sabotage]]
 name = "a stroke's pen is thrown away again"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");\n\t\t\tb.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);"
-into = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");"
+find = "\t\t\tb.set_glyph(x, y, QStringLiteral(\"\u2500\"));\n\t\t\tb.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);"
+into = "\t\t\tb.set_glyph(x, y, QStringLiteral(\"\u2500\"));"
 count = 1
 check = "a rule in a colour no role explains carries it"
 
@@ -7468,3 +7468,36 @@ find = "\tconst int snapped = ((s.height() + ch - 1) / ch) * ch;"
 into = "\tconst int snapped = s.height();"
 count = 1
 check = "every size this style measures is a whole number of cells, on every contents type, where the base style's are not"
+
+[[sabotage]]
+# fill() stops clearing a pair whose lead lies outside its left edge, so a
+# fill beginning on a continuation cell leaves the lead claiming two columns
+# with one cell beside it. 8.482.
+name = "a fill leaves the lead of a pair it cut in half"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tclear_wide_partner(r.left(), y);"
+into = "\t\t(void)0;"
+count = 1
+check = "every write path across a two-column cluster leaves the pair whole -- no lead without its continuation and no continuation without its lead"
+
+[[sabotage]]
+# And the right edge, which is the orphaned-continuation half: a fill ending
+# on a lead leaves a continuation cell with no lead, and to_text() skips it
+# so every column after it is off by one. 8.482.
+name = "a fill leaves the continuation of a pair it cut in half"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tclear_wide_partner(r.right(), y);"
+into = "\t\t(void)0;"
+count = 1
+check = "every write path across a two-column cluster leaves the pair whole -- no lead without its continuation and no continuation without its lead"
+
+[[sabotage]]
+# set_glyph() goes back to poking the glyph in, which is what the five
+# box-drawing sites did: the width is left alone, so the glyph lands in a
+# continuation cell where nothing renders it. 8.482.
+name = "a glyph is poked into a cell without minding its pair"
+file = "src/core/cell_buffer.cpp"
+find = "\tput_cluster(x, y, cluster, c.fg, c.bg, c.attrs);"
+into = "\td_[y * c_ + x].ch = cluster; (void)c;"
+count = 1
+check = "every write path across a two-column cluster leaves the pair whole -- no lead without its continuation and no continuation without its lead"

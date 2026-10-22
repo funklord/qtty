@@ -1550,7 +1550,7 @@ void CellPaintEngine::box(const QRect &c, const std::optional<QRect> &clip) {
 	// would lose a border that is mostly visible.
 	const auto put = [&](int x, int y, const QString &g) {
 		if (clip && !clip->contains(x, y)) return;
-		b.at(x, y).ch = g;
+		b.set_glyph(x, y, g);
 	};
 	for (int x = c.left() + 1; x < c.right(); ++x) {
 		put(x, c.top(), QStringLiteral("─"));
@@ -1731,7 +1731,7 @@ void CellPaintEngine::line(const QLineF &l) {
 		if (!clear_run(y, span.first, span.second, true)) return;
 		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
 		for (int x = span.first; x <= span.second; ++x) {
-			b.at(x, y).ch = QStringLiteral("─");
+			b.set_glyph(x, y, QStringLiteral("─"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 		}
 	} else if (qAbs(m.dx()) < cw / 2.0 && one_col) {
@@ -1746,7 +1746,7 @@ void CellPaintEngine::line(const QLineF &l) {
 		if (!clear_run(x, span.first, span.second, false)) return;
 		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
 		for (int y = span.first; y <= span.second; ++y) {
-			b.at(x, y).ch = QStringLiteral("│");
+			b.set_glyph(x, y, QStringLiteral("│"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 		}
 	} else {
@@ -2242,9 +2242,12 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 				// a vertical edge gives, is the one cell it sits in.
 				int last = b > a ? int(std::ceil(b / cw)) - 1 : first;
 				if (last < first) last = first;
-				for (int x = qMax(first, bounded.left());
-				     x <= qMin(last, bounded.right()); ++x)
-					if (buf.writable(x, y)) buf.at(x, y) = written;
+				// Through fill() for the wide-cell guard at its ends,
+				// as the scanline's own run below is.
+				const int from = qMax(first, bounded.left());
+				const int to = qMin(last, bounded.right());
+				if (to >= from)
+					buf.fill(QRect(from, y, to - from + 1, 1), written);
 			};
 			for (int k = 1; k < band_order.size(); ++k) {
 				const int i = band_order[k];
@@ -2295,17 +2298,23 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			if (last < first) {
 				first = last = int(std::floor((lo + hi) / 2 / cw));
 			}
-			for (int x = qMax(first, bounded.left());
-			     x <= qMin(last, bounded.right()); ++x)
-				// writable(), which is what CellBuffer::fill() asks and so
-				// what fill_rectf() has always honoured. It carries the
-				// buffer's OWN clip as well as its bounds, and Channel A sets
-				// that one around a widget it is drawing (CellClip) -- so a
-				// fill reached from inside a style path stops where the widget
-				// does. box() and line() write through at() and do not; that
-				// is theirs to answer, and copying it here would be a second
-				// wrong answer rather than consistency.
-				if (buf.writable(x, y)) buf.at(x, y) = written;
+			// THROUGH fill() rather than cell by cell, which is how this
+			// run gets the wide-cell guard: a fill ending in the middle of
+			// a two-column cluster used to leave the other half behind,
+			// and that guard lives at fill()'s own edges.
+			//
+			// writable(), which is what fill() asks and so what
+			// fill_rectf() has always honoured. It carries the buffer's
+			// OWN clip as well as its bounds, and Channel A sets that one
+			// around a widget it is drawing (CellClip) -- so a fill
+			// reached from inside a style path stops where the widget
+			// does.
+			{
+				const int from = qMax(first, bounded.left());
+				const int to = qMin(last, bounded.right());
+				if (to >= from)
+					buf.fill(QRect(from, y, to - from + 1, 1), written);
+			}
 		}
 	}
 }

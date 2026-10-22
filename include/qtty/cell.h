@@ -181,6 +181,15 @@ public:
 	void put_cluster(int x, int y, const QString &cluster,
 	                Color fg = {}, Color bg = {}, Attrs attrs = {});
 
+	// Write one cluster at (x,y), keeping the colours and attributes the cell
+	// already has. The same operation as put_cluster() without the colours,
+	// and it shares the partner clearing: `at(x, y).ch = g` does not, which
+	// is how five box-drawing sites in this library came to write a glyph
+	// into a continuation cell -- where to_text() and the wire both skip it,
+	// so the border had a hole in it -- or over a lead, which then claimed
+	// two columns for a one-column glyph.
+	void set_glyph(int x, int y, const QString &cluster);
+
 	// Write a string of clusters starting at (x,y); returns cells consumed.
 	int text(int x, int y, const QString &s,
 	         Color fg = {}, Color bg = {}, Attrs attrs = {});

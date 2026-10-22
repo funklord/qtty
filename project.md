@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2239 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2241 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2239 on Qt 6 with no failures,
-  and 2208 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2241 on Qt 6 with no failures,
+  and 2210 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,76 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.482 Three write paths that cut a two-column cluster in half (2026-10-22)
+
+**section 5.2's invariant has been guarded in one function and nowhere else.**
+A width-2 cell always has its continuation and a continuation always has its
+lead; `put_cluster()` clears the partner before writing and its comment calls
+this "the classic corruption source, unit-tested". Nothing else did.
+Measured 2026-10-22 on a six-cell row with a two-column cluster at cells 2
+and 3:
+
+    fill(3..5)     [2:cluster][1:blank] -- a cell claiming two columns
+                   beside one claiming its own, so the row renders one
+                   column wider than the buffer and a terminal wraps or
+                   truncates it
+    fill(0..2)     an orphaned continuation at cell 3, which to_text()
+                   skips entirely: six columns of buffer, five of text,
+                   and every column after it off by one
+    at().ch = g    the same as the first, and over a continuation it puts
+                   a glyph where nothing renders it at all
+
+**It is reachable from ordinary drawing rather than from a fixture.**
+`GridStyle` clears a widget's rect with `fill()` before drawing it -- the
+tool button does, in as many words, because "a toolbar draws its own
+background through Channel B before its children" -- and a wide glyph
+belonging to the widget beside it can sit across that boundary.
+
+**Only the two cells at each end can be half of a pair**, which is what
+makes the fix small: the interior of the rectangle is overwritten whole, so
+`fill()` clears the partner at the left end, where the cell may be a
+continuation whose lead is outside, and at the right end, where it may be a
+lead whose continuation is.
+
+**`at(x, y).ch = g` was five sites, and they are one call now.**
+`CellBuffer::set_glyph()` is `put_cluster()` without the colours -- the same
+partner clearing, the same control substitution, the same bound on a
+cluster's length -- and the box sides in `cell_paint.cpp`, `grid_style.cpp`
+and `compositor.cpp` go through it. It exists rather than those five calling
+`put_cluster()` with the cell's own colours read back first, because that is
+three lines written five times and one of them would be forgotten.
+
+**One site needed its order reversed, which is the part worth keeping.** The
+compositor's window ring wrote `at(x, y) = Cell{}` and then the glyph, so
+the cell was reset before anything could look for its partner -- and the
+information needed to find the partner is exactly what the reset destroys.
+The glyph goes down first now and the colours are cleared after.
+
+**Three whole-cell loops went through `fill()` instead**, which is where the
+guard lives: the compositor's tab strip clearing row 0, and the two runs in
+`fill_polygon()`. The last two are the interesting ones -- a fill whose run
+ends mid-cluster is the same fault as `fill()`'s own, and routing the run
+through `fill()` fixes it without a second copy of the guard.
+
+**The invariant has three parts and the first sabotage could only see one.**
+Structural wholeness -- no lead without a continuation, no continuation
+without a lead -- is what the check was first written to assert, and poking
+a glyph into a continuation cell leaves the structure intact: `width` is
+untouched, so the pair is still a pair. What is wrong is that the glyph
+renders nowhere. The entry reported passing against broken code, and the
+check now also asks that a continuation carries NO glyph of its own and
+that a lead claiming two columns holds a cluster two columns wide.
+
+**Asserted over the whole buffer rather than over the cells each case
+touches**, because the fault is never in the cell written -- it is in the
+one left behind. Seven write paths, each over a fixture checked to start
+legal, and a separate check that `set_glyph()` writes the glyph it was given
+and keeps the colours, since an invariant that clears both halves and puts
+nothing down would pass the first one.
+
+2241 checks on Qt 6, 2210 passing and 31 stepping over on Qt 5, 694 sabotage
+entries, every anchor matching.
 
 ### 8.481 The surface every layout consumes, asked numerically (2026-10-22)
 

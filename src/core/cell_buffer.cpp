@@ -182,10 +182,51 @@ QVector<QString> to_clusters(const QString &text) {
 }
 
 // ---- CellBuffer ------------------------------------------------------------
+// A WIDE CLUSTER STRADDLING THE EDGE LOSES ITS OTHER HALF, which this did
+// not do and put_cluster() has guarded against since section 5.2 was
+// written. The interior of the rectangle is overwritten whole, so only the
+// two cells at each end can be half of a pair -- the left end may be a
+// CONTINUATION whose lead is outside, and the right end may be a LEAD whose
+// continuation is.
+//
+// Measured 2026-10-22 on a six-cell row with a two-column cluster at cells
+// 2 and 3. Filling 3..5 left `[2:cluster][1:blank]`: a cell claiming two
+// columns beside one claiming its own, so the row renders one column wider
+// than the buffer and a terminal wraps or truncates it -- exactly the
+// corruption put_cluster() was hardened at the buffer's own edge to stop.
+// Filling 0..2 left an orphaned continuation at 3, which to_text() skips
+// entirely, so the buffer said six columns and the text said five and every
+// column after it was off by one.
+//
+// It is reachable from ordinary drawing rather than from a fixture: this
+// style clears a widget's rect with fill() before drawing it, and a wide
+// glyph belonging to the widget beside it can sit across that boundary.
 void CellBuffer::fill(const QRect &r, const Cell &v) {
-	for (int y = r.top(); y <= r.bottom(); ++y)
+	for (int y = r.top(); y <= r.bottom(); ++y) {
+		clear_wide_partner(r.left(), y);
+		clear_wide_partner(r.right(), y);
 		for (int x = r.left(); x <= r.right(); ++x)
 			if (writable(x, y)) at(x, y) = v;
+	}
+}
+
+// THE GLYPH ALONE, with the colours and attributes the cell already has.
+// Five places in this library wrote `at(x, y).ch = g` to draw a box side or
+// a rule, and none of them touched `width` -- so the glyph landed in a
+// continuation cell, where to_text() and the wire both skip it and the
+// border came out with a hole in it, or over a width-2 lead, where the cell
+// kept claiming two columns for a one-column glyph.
+//
+// put_cluster() is the same operation with colours, and the two share
+// everything that matters: the partner clearing, the control substitution
+// and the bound on a cluster's length. This exists rather than those five
+// sites calling put_cluster() with the cell's own colours read back first,
+// because that is the same three lines written five times and one of them
+// would be forgotten.
+void CellBuffer::set_glyph(int x, int y, const QString &cluster) {
+	if (!writable(x, y)) return;
+	const Cell &c = d_[y * c_ + x];
+	put_cluster(x, y, cluster, c.fg, c.bg, c.attrs);
 }
 
 void CellBuffer::clear_wide_partner(int x, int y) {

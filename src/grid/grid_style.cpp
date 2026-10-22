@@ -1221,7 +1221,7 @@ static void draw_box(CellBuffer &b, const QRect &c, bool focused = false,
 	// have. The clip caught the group box's title and not its frame.
 	auto put = [&](int x, int y, const QString &g) {
 		if (!b.writable(x, y)) return;
-		b.at(x, y).ch = g;
+		b.set_glyph(x, y, g);
 		b.at(x, y).attrs |= a;
 	};
 	for (int x = c.left() + 1; x < c.right(); ++x) {

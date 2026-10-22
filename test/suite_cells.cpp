@@ -2,6 +2,7 @@
 #include <qtty/qtty.h>
 #include "src/cell_geometry.h"
 #include <cstdio>
+#include <functional>
 
 using namespace Qtty;
 
@@ -49,6 +50,113 @@ int suite_cells() {
 		      && !zero.writable(0, 0) && both_neg.to_text().isEmpty(),
 		      "and nothing in a degenerate buffer is writable, so at() has no"
 		      " cell inside its declared size that its storage lacks");
+	}
+
+	// EVERY WRITE PATH KEEPS THE PAIR WHOLE, which three of them did not.
+	// section 5.2's invariant is that a width-2 cell always has its
+	// continuation and a continuation always has its lead; put_cluster()
+	// has guarded it since that section was written and nothing else did.
+	//
+	// Measured 2026-10-22 on a six-cell row with a two-column cluster at
+	// cells 2 and 3:
+	//
+	//   fill(3..5)   left [2:cluster][1:blank] -- a cell claiming two
+	//                columns beside one claiming its own, so the row
+	//                renders one column wider than the buffer and a
+	//                terminal wraps or truncates it
+	//   fill(0..2)   left an orphaned continuation at 3, which to_text()
+	//                skips entirely: six columns of buffer, five of text,
+	//                and every column after it off by one
+	//   at().ch = g  the same as the first, and it is what five
+	//                box-drawing sites in this library used to write
+	//
+	// It is reachable from ordinary drawing rather than from a fixture:
+	// GridStyle clears a widget's rect with fill() before drawing it, and
+	// a wide glyph belonging to the widget beside it can sit across that
+	// boundary.
+	//
+	// ASSERTED AS THE INVARIANT over the whole buffer rather than as the
+	// cells each case touches, because the fault is never in the cell
+	// written -- it is in the one left behind.
+	{
+		const auto whole = [](const CellBuffer &b) {
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) {
+					const Cell &c = b.at(x, y);
+					if (c.width == 2
+					    && (x + 1 >= b.cols() || b.at(x + 1, y).width != 0))
+						return false;
+					if (c.width == 0
+					    && (x == 0 || b.at(x - 1, y).width != 2))
+						return false;
+					// AND THE GLYPH AGREES WITH THE WIDTH, which the
+					// structural half alone does not say. A continuation
+					// cell carries no glyph of its own -- one poked in
+					// renders nowhere, to_text() and the wire both
+					// skipping it -- and a lead that claims two columns
+					// has to hold a cluster two columns wide, or the row
+					// is one column wider than what is in it. Both are
+					// what `at(x, y).ch = g` produced, and the first
+					// sabotage written for this check could not see
+					// either.
+					if (c.width == 0 && !c.ch.isEmpty()) return false;
+					if (c.width == 2 && cluster_width(c.ch) != 2)
+						return false;
+				}
+			return true;
+		};
+		const QString wide = QStringLiteral("\u4f60");       // two columns
+		int kept = 0, cases = 0;
+		const auto after = [&](const char *what,
+		                       const std::function<void(CellBuffer &)> &write) {
+			CellBuffer b(6, 1);
+			b.put_cluster(2, 0, wide, Color(), Color(), Attrs());
+			// The fixture has to START legal or the case proves nothing.
+			const bool before = whole(b) && b.at(2, 0).width == 2
+			                 && b.at(3, 0).width == 0;
+			write(b);
+			++cases;
+			if (before && whole(b)) ++kept;
+			else printf("info: %s left the pair broken\n", what);
+		};
+		after("fill over the continuation",
+		      [](CellBuffer &b) { b.fill(QRect(3, 0, 3, 1), Cell{}); });
+		after("fill over the lead",
+		      [](CellBuffer &b) { b.fill(QRect(0, 0, 3, 1), Cell{}); });
+		after("fill of the one continuation cell",
+		      [](CellBuffer &b) { b.fill(QRect(3, 0, 1, 1), Cell{}); });
+		after("set_glyph over the continuation", [](CellBuffer &b) {
+			b.set_glyph(3, 0, QStringLiteral("x"));
+		});
+		after("set_glyph over the lead", [](CellBuffer &b) {
+			b.set_glyph(2, 0, QStringLiteral("x"));
+		});
+		after("put_cluster over the continuation", [&](CellBuffer &b) {
+			b.put_cluster(3, 0, QStringLiteral("x"), Color(), Color(),
+			              Attrs());
+		});
+		after("text over the lead", [](CellBuffer &b) {
+			b.text(2, 0, QStringLiteral("xy"), Color(), Color(), Attrs());
+		});
+		printf("info: %d of %d writes across a two-column pair left the"
+		       " buffer legal\n", kept, cases);
+		CHECK(cases == 7 && kept == cases,
+		      "every write path across a two-column cluster leaves the pair"
+		      " whole -- no lead without its continuation and no"
+		      " continuation without its lead");
+		// AND THE GLYPH ARRIVES, which the invariant alone does not say: a
+		// write that cleared both halves and put nothing down would pass
+		// the check above. set_glyph() is the new path and the one with no
+		// other caller in the suite.
+		CellBuffer b(6, 1);
+		b.put_cluster(2, 0, wide, Color(), Color(), Attrs());
+		b.at(1, 0).bg = Color::rgb(qRgb(0, 0, 255));
+		b.set_glyph(1, 0, QStringLiteral("-"));
+		CHECK(b.at(1, 0).ch == QStringLiteral("-")
+		      && b.at(1, 0).width == 1
+		      && b.at(1, 0).bg == Color::rgb(qRgb(0, 0, 255)),
+		      "and set_glyph writes the glyph it was given, keeping the"
+		      " colours the cell already had");
 	}
 
 	CHECK(cluster_width(u"a") == 1, "ascii is narrow");
