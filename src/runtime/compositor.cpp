@@ -1608,8 +1608,8 @@ void FrameScheduler::render_now() {
 		prev_.reset();
 		prev_overlays_.clear();
 		live_overlay_ids_ = 0;
-		// AND THE MOUSE GRAB, which is the one piece of handover state that
-		// is not this scheduler's. A press sets it and only a release clears
+		// AND THE MOUSE STATE, which is the handover state that is not this
+		// scheduler's: the grab, the hover and the double-click window. A press sets it and only a release clears
 		// it, and the handover took the release away -- kLeave turns mouse
 		// reporting off, so a button held while a shell or an editor had the
 		// terminal has its release delivered there. Left alone, every mouse
@@ -1623,7 +1623,7 @@ void FrameScheduler::render_now() {
 		// particular scheduler holds. handover.h carries the rest of the
 		// argument, including why the public seam section 0b weighed is not
 		// needed.
-		forget_mouse_grabs();
+		forget_mouse_state();
 	}
 	const QSize cells = backend_->size();
 	// A terminal with no cells has no frame to be given. Without this the

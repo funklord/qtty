@@ -172,13 +172,35 @@ void relayout_live_routers(QSize cells) {
 	for (InputRouter *r : std::as_const(s_live_routers)) r->on_resize(cells);
 }
 
-// The grab a handover ended. handover.h carries the argument; what it costs
-// here is one line per router, and a router with no grab is already in the
-// state this puts it in.
-void InputRouter::forget_mouse_grab() { grab_ = nullptr; }
+// What a handover ended. handover.h carries the argument; a router holding
+// none of this is already in the state this puts it in.
+void InputRouter::forget_mouse_state() {
+	grab_ = nullptr;
+	// The hover, through update_hover() rather than by clearing the member:
+	// the widget is owed a Leave it has not been sent, and QWidget::
+	// underMouse() stays true until something sends one. Clearing `hovered_`
+	// directly would leave a control painting its hover highlight with
+	// nothing able to correct it -- update_hover() early-returns when the
+	// widget has not changed, so the next motion over the SAME widget says
+	// nothing, and a user who shells out and does not move the pointer keeps
+	// the highlight for the rest of the run.
+	update_hover(nullptr, QPoint());
+	// And the double-click window, which is the one of the three that
+	// misreports an action rather than a state. `again` is "within the
+	// interval, same cell, same button", and a handover does not stop the
+	// clock: a press, a shell_out() whose body returns in milliseconds --
+	// a command that is not installed, a dialog the user cancels -- and one
+	// click on the same cell arrive as a DOUBLE click the user never made.
+	// Qt's own arrangement makes that worse rather than merely wrong: a
+	// double click REPLACES the press, so the single click is not delivered
+	// at all.
+	since_press_.invalidate();
+	last_press_cell_ = QPoint(-1, -1);
+	last_press_button_ = 0;
+}
 
-void forget_mouse_grabs() {
-	for (InputRouter *r : std::as_const(s_live_routers)) r->forget_mouse_grab();
+void forget_mouse_state() {
+	for (InputRouter *r : std::as_const(s_live_routers)) r->forget_mouse_state();
 }
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {

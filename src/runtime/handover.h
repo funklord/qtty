@@ -3,8 +3,9 @@
 // INTERNAL. Not shipped in include/qtty/, because no application needs it and
 // a header that leaves the tree is a promise about its contents.
 //
-// A press sets InputRouter's grab and only a release clears it. A handover
-// takes the release away: kLeave turns mouse reporting off, so a button held
+// A press sets InputRouter's grab, its hover and its double-click window,
+// and only a later mouse event clears each. A handover takes that event
+// away: kLeave turns mouse reporting off, so a button held
 // while an editor or a shell has the terminal has its release delivered
 // there, and every mouse event after the return is routed to the widget that
 // was pressed until the next click's release happens to clear it.
@@ -26,10 +27,26 @@
 
 namespace Qtty {
 
-// Every live router forgets a grab a handover has ended. A fan-out rather
-// than a call on one router for the reason `set_quit_keys()` is one: a
-// terminal session may have several, and "the terminal changed hands" is a
-// property of the process rather than of whichever router happens to be last.
-void forget_mouse_grabs();
+// Every live router forgets the mouse state a handover has ended: the grab,
+// the hover and the double-click window. A fan-out rather than a call on one
+// router for the reason `set_quit_keys()` is one: a terminal session may have
+// several, and "the terminal changed hands" is a property of the process
+// rather than of whichever router happens to be last.
+//
+// THREE THINGS RATHER THAN ONE, because they are the same fault and the grab
+// was simply the one section 0b had written down. Each is state a press
+// starts and some later event ends, and the handover is where that later
+// event goes to somebody else:
+//
+//   - the GRAB misroutes every motion and release to the pressed widget;
+//   - the HOVER leaves a control painting its highlight, with nothing able
+//     to correct it until the pointer moves to a DIFFERENT widget, since
+//     update_hover() early-returns when it has not changed;
+//   - the DOUBLE-CLICK WINDOW misreports an action rather than a state. A
+//     press, a shell_out() whose body returns in milliseconds, and one click
+//     on the same cell arrive as a double click nobody made -- and Qt's own
+//     arrangement has a double click REPLACE the press, so the real click is
+//     not delivered at all.
+void forget_mouse_state();
 
 } // namespace Qtty

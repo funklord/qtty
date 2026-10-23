@@ -618,8 +618,8 @@ private:
 	// anything public -- a friend declaration and a private method add no
 	// API, which is what section 0b's row on this deferred for.
 	QPointer<QWidget> grab_;
-	void forget_mouse_grab();
-	friend void forget_mouse_grabs();
+	void forget_mouse_state();
+	friend void forget_mouse_state();
 	// The widget the pointer is over, so that Enter and Leave can be sent
 	// when it changes. The platform layer normally does this -- the same
 	// reason the right-press context menu is synthesised here -- and without

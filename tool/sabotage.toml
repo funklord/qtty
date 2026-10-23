@@ -8246,9 +8246,31 @@ check = "crop_placement never answers cells outside the grid or a source outside
 # The compositor stops clearing the grab, so a button held across a handover
 # keeps every later mouse event pointed at the widget it was pressed on.
 # 8.523.
-name = "a handover leaves the mouse grab set"
+name = "a handover leaves the mouse state set"
 file = "src/runtime/compositor.cpp"
-find = "\t\tforget_mouse_grabs();\n"
+find = "\t\tforget_mouse_state();\n"
 into = ""
 count = 1
 check = "while a handover ends the grab, the release that would have cleared it having gone to whoever had the terminal"
+
+[[sabotage]]
+# The hover survives a handover, so a control keeps painting its highlight
+# with nothing able to correct it: update_hover() early-returns when the
+# widget has not changed, so only a motion onto a DIFFERENT one would. 8.524.
+name = "a handover leaves the hover set"
+file = "src/runtime/input_router.cpp"
+find = "\tupdate_hover(nullptr, QPoint());\n"
+into = ""
+count = 1
+check = "and it ends the hover, the widget being owed a Leave that no later motion would send"
+
+[[sabotage]]
+# The double-click window survives a handover, so the first click after a fast
+# shell-out is delivered as a double click nobody made -- and Qt has a double
+# click REPLACE the press, so the real click is lost. 8.524.
+name = "a handover leaves the double-click window open"
+file = "src/runtime/input_router.cpp"
+find = "\tsince_press_.invalidate();\n\tlast_press_cell_ = QPoint(-1, -1);\n\tlast_press_button_ = 0;\n}"
+into = "}"
+count = 1
+check = "while a handover ends the double-click window, so the first click after it is a click rather than a double nobody made"

@@ -6,6 +6,7 @@
 #include <qtty/drag.h>
 #include <qtty/windows.h>
 #include <QtWidgets>
+#include "src/runtime/handover.h"
 #include <QTemporaryDir>
 #include "chat.h"
 #include "page_table.h"
@@ -17013,6 +17014,72 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// THE DOUBLE-CLICK WINDOW ACROSS A HANDOVER, which is the third of the
+	// same family and the one that misreports an ACTION rather than a state.
+	// `again` is "within the interval, same cell, same button", and a
+	// handover does not stop the clock -- so a press, a shell_out() whose
+	// body returns in milliseconds, and one click on the same cell arrive as
+	// a double click nobody made. Qt's own arrangement makes it worse than
+	// wrong: a double click REPLACES the press, so the real click is never
+	// delivered.
+	//
+	// CALLED DIRECTLY RATHER THAN THROUGH A RENDER, and that is a correction
+	// rather than a shortcut. The first version drove a FrameScheduler over a
+	// fake backend whose handover count it bumped, and the press afterwards
+	// reached no widget at all -- 0 presses and 0 doubles, where the fault
+	// being guarded against would have shown as 1 double. Measured, the
+	// render moved nothing: the window stayed 0,0 200x114 and the child
+	// 0,0 80x38 across it. The scheduler is not what this check is about, and
+	// the block below already drives the compositor's own call of this
+	// through the full path -- so this one asks the unit the question
+	// instead.
+	//
+	// THE CONTROL COMES FIRST and is the half that matters: two presses on
+	// one cell with NO handover between them must still be a double click.
+	// Without it, a router that had simply stopped detecting double clicks
+	// would satisfy the assertion below perfectly.
+	{
+		struct Tally : QWidget {
+			int presses = 0, doubles = 0;
+			using QWidget::QWidget;
+			void mousePressEvent(QMouseEvent *) override { ++presses; }
+			void mouseDoubleClickEvent(QMouseEvent *) override { ++doubles; }
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 6));
+		auto *tally = new Tally(&win);
+		tally->setGeometry(0, 0, 8 * cw, 2 * ch);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		const auto press_at = [&](int x, int y) {
+			router.on_mouse({QPoint(x, y), 1, true, false, false,
+			                 0, 0, false, false, false});
+			QCoreApplication::processEvents();
+		};
+		press_at(2, 0);
+		press_at(2, 0);
+		const int paired = tally->doubles, singles = tally->presses;
+		// A third press starts the window again, which the router does on
+		// purpose, and leaves the clock running for the one after the
+		// handover.
+		tally->presses = tally->doubles = 0;
+		press_at(2, 0);
+		Qtty::forget_mouse_state();
+		tally->presses = tally->doubles = 0;
+		press_at(2, 0);
+		printf("info: two presses on a cell gave %d double(s) and %d"
+		       " press(es); after a handover the next press gave %d and %d\n",
+		       paired, singles, tally->doubles, tally->presses);
+		CHECK(paired == 1 && singles == 1,
+		      "two presses on one cell are a double click, which is the"
+		      " control the handover assertion below needs");
+		CHECK(tally->doubles == 0 && tally->presses == 1,
+		      "while a handover ends the double-click window, so the first"
+		      " click after it is a click rather than a double nobody made");
+	}
+
 	// A BUTTON HELD ACROSS A HANDOVER, which section 0b carried as a question
 	// and deferred on a cost that had stopped being real. A press sets the
 	// router's grab and only a release clears it; a handover takes the
@@ -17099,6 +17166,13 @@ int suite_router() {
 		back_end.handed = 1;
 		sched.render_now();
 		QCoreApplication::processEvents();
+		// THE HOVER READ HERE, before any further event, and the ordering is
+		// the whole check. The first version read it after the motion below
+		// and the sabotage run refused to redden it: that motion is consumed
+		// by the popup branch, which clears the hover on its own, so the
+		// assertion was passing for a reason that had nothing to do with the
+		// handover. A check is untested until it has been seen to fail.
+		const bool hovered_after = a.underMouse();
 		a_moves = b_moves = 0;
 		router.on_mouse(over_b);
 		QCoreApplication::processEvents();
@@ -17124,6 +17198,17 @@ int suite_router() {
 		CHECK(a_moves == 0,
 		      "while a handover ends the grab, the release that would have"
 		      " cleared it having gone to whoever had the terminal");
+		// AND THE HOVER, which is the same fault and was not in section 0b's
+		// row. The press above put the pointer over A, so A is owed a Leave
+		// that only a motion onto a DIFFERENT widget would send --
+		// update_hover() early-returns when the widget has not changed. A
+		// user who shells out without moving the pointer keeps the highlight
+		// for the rest of the run.
+		printf("info: after the handover A->underMouse() is %d\n",
+		       int(hovered_after));
+		CHECK(!hovered_after,
+		      "and it ends the hover, the widget being owed a Leave that no"
+		      " later motion would send");
 		Qtty::set_current_window(nullptr);
 	}
 

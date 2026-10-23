@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2381 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2384 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46375,3 +46375,62 @@ that never worked in this fixture look identical. The first version of
 the check asserted that the OTHER widget received the motion instead,
 which is a different mechanism altogether and failed for a reason that
 had nothing to do with the code under test.
+
+### 8.524 The grab was one of three, not the whole family (2026-10-23)
+
+**8.523 fixed the thing section 0b had written down and left its two
+siblings in place**, which is the lens working-practice.md names: read the
+instances for a shape rather than for fixes. Each of the three is state a
+press starts and some LATER mouse event ends, and a handover is exactly
+where that later event goes to somebody else -- so the grab was not a
+special case, it was the one that had been noticed.
+
+- **The grab** misroutes every motion and release to the pressed widget.
+  Fixed in 8.523.
+- **The hover** leaves a control painting its highlight with nothing able
+  to correct it. `update_hover()` early-returns when the widget has not
+  changed, so a motion back onto the SAME widget says nothing -- a user who
+  shells out and does not move the pointer keeps the highlight for the rest
+  of the run. Cleared through `update_hover(nullptr, QPoint())` rather than
+  by assigning the member, because the widget is owed a `Leave` that only
+  that path sends, and `QWidget::underMouse()` stays true until it arrives.
+- **The double-click window** is the one that misreports an ACTION rather
+  than a state, and it is the worst of the three for a reason that is Qt's
+  rather than qtty's: a double click REPLACES the press, so the click is
+  not delivered at all. `again` is "within the interval, same cell, same
+  button" and nothing stopped the clock, so a press, a `shell_out()` whose
+  body returns in milliseconds -- a command that is not installed, a dialog
+  the user cancels -- and one click on the same cell arrive as a double
+  click nobody made.
+
+**The function is `forget_mouse_state()` now rather than
+`forget_mouse_grabs()`**, which is the honest name for what a handover
+ends, and the sabotage entry is re-anchored with it. Three entries rather
+than one: the compositor's CALL, the hover clear and the double-click
+clear, because the second and third are not reachable from the first --
+removing the call reddens the two checks that go through the compositor and
+says nothing about the two that ask the unit.
+
+**AND THE HOVER CHECK WAS VACUOUS UNTIL THE SABOTAGE RUN SAID SO**, which
+is the rule earning its place rather than a near miss. The entry REFUSED
+to redden it: the assertion read `underMouse()` after the post-handover
+motion, and that motion is consumed by the popup branch, which clears the
+hover on its own -- so the check was green against the defect it names and
+would have shipped that way. Reading the hover immediately after the
+handover, before any further event, is what makes it depend on the clear,
+and the entry reddens it now. Three checks of mine have been written this
+session whose first version could not fail for the reason they name; only
+this one was caught by a tool rather than by a failing run, which is the
+difference between a discipline and luck.
+
+**AND THE DOUBLE-CLICK CHECK CALLS THE UNIT RATHER THAN DRIVING A RENDER,
+which is a correction rather than a shortcut.** The first version built a
+`FrameScheduler` over a fake backend and bumped its handover count, and the
+press afterwards reached no widget at all: 0 presses and 0 doubles, where
+the fault being guarded against shows as 1 double. So the check could not
+have failed for the right reason OR passed for it. Measured, the render was
+not the variable -- the window stayed `0,0 200x114` and the child
+`0,0 80x38` across it -- and the compositor's own call is already driven
+through the full path by the grab check beside it. Four instrument problems
+in one fixture is the signal that the fixture is wrong for the question,
+not that the debugging should continue.
