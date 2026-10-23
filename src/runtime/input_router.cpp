@@ -201,6 +201,24 @@ void InputRouter::forget_mouse_state() {
 
 void forget_mouse_state() {
 	for (InputRouter *r : std::as_const(s_live_routers)) r->forget_mouse_state();
+	// AND A DRAG, which is the same fault at its worst. exec_drag() runs a
+	// NESTED event loop and the only two things that end it are a release
+	// and Escape -- so a user who lets go while a shell or an editor has the
+	// terminal has their release delivered there and the loop runs on. The
+	// application is then in a permanent drag: every motion goes to
+	// drag_move_to(), the indicator follows the pointer, and Escape is the
+	// only way out of a state the user cannot see the cause of. 8.447
+	// records that qApp->quit() does not end a nested loop either, so not
+	// even a terminal loss would clear it.
+	//
+	// CANCELLED rather than dropped, which is the whole choice here. The
+	// release went somewhere else, so where the user meant to drop is not
+	// known -- dropping at the last position seen would perform an action
+	// they may never have asked for, and a cancel performs none.
+	//
+	// Once rather than per router: the drag is one global, and `drag_active()`
+	// is what makes asking cheap.
+	if (drag_active()) drag_cancel();
 }
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {

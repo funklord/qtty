@@ -7087,6 +7087,77 @@ int suite_router() {
 			      "and it still hears the leave, because it heard the enter");
 		}
 
+		// A DRAG ACROSS A HANDOVER, which is the worst of the family this
+		// session has been closing. exec_drag() runs a NESTED event loop and
+		// only two things end it: a release and Escape. A user who lets go
+		// while a shell or an editor has the terminal has that release
+		// delivered THERE, so the loop runs on and the application is in a
+		// permanent drag -- every motion going to drag_move_to(), the
+		// indicator following the pointer, and Escape the only way out of a
+		// state whose cause the user cannot see. 8.447 records that
+		// qApp->quit() does not end a nested loop either, so not even a
+		// terminal loss clears it.
+		//
+		// CANCELLED rather than dropped, which is the decision in the fix:
+		// the release went somewhere else, so where the user meant to drop
+		// is not known, and dropping at the last position seen would perform
+		// an action they may never have asked for.
+		//
+		// The rescue timer is this fixture's own pattern and the reason is
+		// recorded above: without it a broken cancel does not fail the check,
+		// it HANGS the suite, and a hang produces neither a PASS nor a FAIL.
+		// It records that it was NEEDED, and that is what the check asserts.
+		{
+			struct Handing4 : ITerminalBackend {
+				int handed = 0;
+				QSize size() const override { return QSize(12, 4); }
+				Capabilities capabilities() const override { return Capabilities(); }
+				void present(const CellBuffer &, const QRegion &) override {}
+				void set_cursor(std::optional<QPoint>, CursorShape) override {}
+				void set_event_sink(ITerminalEventSink *) override {}
+				void suspend() override {}
+				void resume() override {}
+				int handovers() const override { return handed; }
+			};
+			Handing4 back_end;
+			Compositor comp(&h, &r);
+			FrameScheduler sched(&back_end, &comp, &h);
+			auto *mime4 = new QMimeData;
+			mime4->setText(QStringLiteral("interrupted"));
+			auto *drag4 = new QDrag(&h);
+			drag4->setMimeData(mime4);
+			const int drops_before = t->drops, enters_before = t->enters;
+			QTimer::singleShot(0, [&] {
+				// The target is offered the drag first, or cancelling proves
+				// nothing -- an unstarted drag cancels trivially.
+				r.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				back_end.handed = 1;
+				sched.render_now();
+			});
+			bool needed_rescue = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) {
+					needed_rescue = true;
+					Qtty::drag_cancel();
+				}
+			});
+			const Qt::DropAction ended =
+			    Qtty::exec_drag(drag4, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: a drag interrupted by a handover entered %d more,"
+			       " dropped %d more, returned %d, rescued %d\n",
+			       t->enters - enters_before, t->drops - drops_before,
+			       int(ended), int(needed_rescue));
+			CHECK(t->enters > enters_before,
+			      "a drag interrupted by a handover was offered to the"
+			      " target first, so the cancel below is not a trivial one");
+			CHECK(ended == Qt::IgnoreAction && t->drops == drops_before
+			      && !needed_rescue,
+			      "and a handover abandons it without a drop, the release"
+			      " that would have ended it having gone to whoever had the"
+			      " terminal");
+		}
+
 		// THE WALK UP THE WIDGET TREE, which line coverage could not see:
 		// `drop_target` was 100% of lines and its loop had never taken the
 		// step that makes it a loop. Branch coverage says which direction --
@@ -7263,6 +7334,14 @@ int suite_router() {
 	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
 	       " has issued a stray quit -- project.md 8.464\n");
 	printf("SKIP: and it still hears the leave, because it heard the enter"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a drag interrupted by a handover was offered to the target"
+	       " first, so the cancel below is not a trivial one"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and a handover abandons it without a drop, the release that"
+	       " would have ended it having gone to whoever had the terminal"
 	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
 	       " has issued a stray quit -- project.md 8.464\n");
 	printf("SKIP: a drop over a child that takes no drops reaches the ancestor"

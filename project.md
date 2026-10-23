@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2385 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2387 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46461,3 +46461,42 @@ not the variable -- the window stayed `0,0 200x114` and the child
 through the full path by the grab check beside it. Four instrument problems
 in one fixture is the signal that the fixture is wrong for the question,
 not that the debugging should continue.
+
+### 8.525 A drag is the fourth, and the worst (2026-10-23)
+
+**The same lens once more, and this instance is a HANG rather than a
+misdirected event.** `exec_drag()` runs a NESTED event loop, and exactly
+two things end it: a release and Escape. A user who lets go while a shell
+or an editor has the terminal has that release delivered THERE -- so the
+loop runs on, and the application is in a permanent drag: every motion
+goes to `drag_move_to()`, the indicator follows the pointer, clicks do not
+do their ordinary thing, and Escape is the only way out of a state whose
+cause the user cannot see. 8.447 records that `qApp->quit()` does not end
+a nested loop either, so not even a terminal loss clears it.
+
+**CANCELLED rather than dropped, which is the decision in the fix.** The
+release went somewhere else, so where the user meant to drop is not known.
+Dropping at the last position seen would perform an action they may never
+have asked for; a cancel performs none, and `exec_drag()` answers
+`Qt::IgnoreAction` exactly as Escape makes it.
+
+**Four instances of one fault now, and the ordering is the lesson.**
+Section 0b had the grab written down and nothing else: the hover, the
+double-click window and the drag sat beside it, each state a press starts
+and some later mouse event ends, each with that event going to whoever
+took the terminal. Reading the instances for a shape rather than for fixes
+is what found the other three, and the one nobody had noticed is the one
+that wedges the program.
+
+**The check uses this fixture's own rescue timer, and the reason is
+recorded where that pattern was introduced**: without it a broken cancel
+does not FAIL the check, it hangs the suite, and a hang produces neither a
+PASS nor a FAIL line -- the sabotage harness reports "the code was broken
+and nothing noticed". The timer records that it was NEEDED and the check
+asserts it was not. Its pair asserts the target was offered the drag
+first, since an unstarted drag cancels trivially.
+
+**It is inside `QTTY_NESTED_LOOPS_USABLE` with two skip lines added for
+the Qt 5 arm**, which is not bookkeeping: `count-check` counts skips
+toward the total, so a check added inside that guard without them leaves
+the Qt 5 count short by two and reads as checks having disappeared.

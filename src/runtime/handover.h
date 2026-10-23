@@ -27,13 +27,14 @@
 
 namespace Qtty {
 
-// Every live router forgets the mouse state a handover has ended: the grab,
-// the hover and the double-click window. A fan-out rather than a call on one
+// Every live router forgets the mouse state a handover has ended -- the grab,
+// the hover and the double-click window -- and a drag in progress is
+// cancelled. A fan-out rather than a call on one
 // router for the reason `set_quit_keys()` is one: a terminal session may have
 // several, and "the terminal changed hands" is a property of the process
 // rather than of whichever router happens to be last.
 //
-// THREE THINGS RATHER THAN ONE, because they are the same fault and the grab
+// FOUR THINGS RATHER THAN ONE, because they are the same fault and the grab
 // was simply the one section 0b had written down. Each is state a press
 // starts and some later event ends, and the handover is where that later
 // event goes to somebody else:
@@ -42,6 +43,12 @@ namespace Qtty {
 //   - the HOVER leaves a control painting its highlight, with nothing able
 //     to correct it until the pointer moves to a DIFFERENT widget, since
 //     update_hover() early-returns when it has not changed;
+//   - a DRAG is the worst of the four, because exec_drag() runs a NESTED
+//     event loop that only a release or Escape ends: a release delivered to
+//     the shell leaves the application in a permanent drag, with every
+//     motion going to drag_move_to() and no way out the user can see. It is
+//     CANCELLED rather than dropped, the release having gone somewhere else
+//     so that where the user meant to drop is not known;
 //   - the DOUBLE-CLICK WINDOW misreports an action rather than a state. A
 //     press, a shell_out() whose body returns in milliseconds, and one click
 //     on the same cell arrive as a double click nobody made -- and Qt's own

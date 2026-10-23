@@ -8274,3 +8274,14 @@ find = "\tsince_press_.invalidate();\n\tlast_press_cell_ = QPoint(-1, -1);\n\tla
 into = "}"
 count = 1
 check = "while a handover ends the double-click window, so the first click after it is a click rather than a double nobody made"
+
+[[sabotage]]
+# A drag survives a handover, so the application is left in a permanent drag:
+# exec_drag()'s nested loop is ended only by a release or Escape, and the
+# release went to whoever had the terminal. 8.525.
+name = "a handover leaves a drag running"
+file = "src/runtime/input_router.cpp"
+find = "\tif (drag_active()) drag_cancel();\n"
+into = ""
+count = 1
+check = "and a handover abandons it without a drop, the release that would have ended it having gone to whoever had the terminal"
