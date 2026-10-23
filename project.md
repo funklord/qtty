@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2348 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2349 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18391,6 +18391,72 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.513 The restore string left synchronised output open (2026-10-23)
+
+**The lens: a rule applied on one side of a boundary and not the other** --
+today's recurring shape, pointed at the terminal's modes. Every mode qtty
+enables has to be undone when it gives the terminal back, so the two
+strings are a list to compare.
+
+`kEnter` sets seven things and `kLeave` undoes all seven, which is the easy
+half. **Two modes are set OUTSIDE that constant**, and only one of them was
+undone:
+
+        >1u      the kitty keyboard push, set at startup and on resume
+                 -- popped by hand in leave_terminal(), gated on
+                 `g_kbd_wanted` because it knows it was pushed
+        ?2026h   synchronised output, written at the head of a frame
+                 -- undone by NOTHING on the way out
+
+So the file already recognises the rule and applies it to one of the two.
+
+**The reachability is narrow and the asymmetry is the argument.** `?2026h`
+and `?2026l` are both appended to one `QByteArray`, and there is no
+`return` between them -- so no early exit can leave the bracket open. What
+can is stopping between the two halves REACHING the terminal: stdio's flush
+of a large frame is not one `write(2)`, and `leave_terminal()` runs from a
+signal handler. The symptom is the frame code's own sentence: *"a terminal
+that stops repainting, which is the worst failure this file has available
+and would be nobody's first hypothesis."*
+
+**`?2026l` goes FIRST in the string**, which is a decision rather than a
+place. A terminal honouring the mode shows nothing until the bracket
+closes, so closing it last would make the whole restore invisible on
+exactly the terminals that implement it. Unconditional, like the three
+reporting modes beside it -- a terminal without the mode consumes the
+reset, which is the argument `0 q` and the title pop already make in this
+same string.
+
+**The check it replaces claimed more than it tested.** *"And gets them all
+switched off again"* named `?1006l` and `?1049l`: two of the seven, true by
+construction and silent about the rest. It is driven from the PAIRS now, so
+a mode that joins the enter string and not the leave string fails here --
+and the sabotage that drops the title pop reports *"left set: ESC[22;2t"*,
+which the sample of two could not have seen.
+
+**Two sabotage entries added and one re-anchored.** The new ones drop
+`?2026l` and the title pop, each `--only` proven. The re-anchored one is
+the caret entry, which spanned a three-mode run that moved when the literal
+re-wrapped; it is anchored on the tail it actually breaks now. That is the
+fifth consecutive day `--validate` has caught an anchor a change of mine
+displaced.
+
+**AND A PINNED COUNT CAUGHT THE CHANGE, which is what it is for.**
+`make test-tools` asserts the exact number of escape sequences
+`qtty-negotiate --probes` writes to a terminal nothing can answer from --
+pinned rather than bounded, *"so a sequence ARRIVING is caught as well as
+one going somewhere it should not"*. It went red at 17 against a pin of 16.
+Its own comment carries the history -- 13 to 15 when the title push and pop
+arrived, 15 to 16 when the caret gained `0 q` -- and the rule with it: *"the
+number is updated with the change rather than loosened to stop noticing."*
+So 17, and the arithmetic cross-checks the fix: kEnter's seven plus
+kLeave's now-ten, with nothing else moved. `?2026l` is unbalanced for the
+same reason `0 q` is -- the mode is asked for per frame, so there is
+nothing to establish on entry and only a reset owed on the way out.
+
+**2348 checks to 2349.** `--validate` passes over all 737.
 
 
 ### 8.512 A composing frame loop is not a driven session (2026-10-23)

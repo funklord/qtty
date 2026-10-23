@@ -884,6 +884,18 @@ probe-install:
 # sixteen are kEnter's seven and kLeave's nine, and the sixteenth is the
 # `0 q`, read off the capture with `sed 's/\x1b/\n<ESC>/g'`.
 #
+# 16 -> 17 when kLeave gained `?2026l` (section 8.513): synchronised output
+# is opened at the head of a frame and closed at its tail, and nothing closed
+# it if the process stopped between the two halves reaching the terminal.
+# Unbalanced in the same way and for the same reason as `0 q` -- the mode is
+# asked for per frame rather than once at startup, so there is nothing to
+# establish on entry and only a reset owed on the way out. Seventeen is
+# kEnter's seven and kLeave's ten.
+#
+# THE GATE CAUGHT IT, which is what a pinned number is for: the fix was
+# correct and the count moved, and a bounded check would have said nothing.
+# Updated here rather than loosened, which is this comment's own rule.
+#
 # And a comment cannot go INSIDE the recipe below, which is why this one is
 # here. The whole recipe is one shell command joined by backslashes, so a
 # `#` line in the middle comments out the join: everything after it became a
@@ -1121,7 +1133,7 @@ test-tools: all
 			< /dev/null" $(BUILD_DIR)/neg.out > /dev/null 2>&1; \
 		n=$$(tr -cd '\033' < $(BUILD_DIR)/neg.out | wc -c); \
 		case "$$n:$$(cat $(BUILD_DIR)/neg.out)" in \
-		16:*"stdin is not a terminal"*) \
+		17:*"stdin is not a terminal"*) \
 			echo "    negotiate --probes, stdout only: ok";; \
 		*) echo "    negotiate --probes, stdout only: FAILED -- $$n escape"; \
 		   echo "                        sequence(s) on a terminal nothing"; \

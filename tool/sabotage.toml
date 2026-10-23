@@ -3400,10 +3400,14 @@ check = "an Underline cursor asks for a steady underline"
 # else in the suite reads the tail of kLeave, so this was invisible: the
 # program exits, the shell prompt returns, and the user's caret is a block
 # for the rest of that terminal's life with nothing to say what did it.
+#
+# Re-anchored 8.513: kLeave gained `?2026l` and the literal re-wrapped, so
+# the three-mode run this spanned is now on a different line. Anchored on
+# the tail alone, which is the part it breaks.
 name = "the user's caret is not put back on the way out"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\"\\033[?1006l\\033[0m\\033[?1049l\\033[?25h\\033[0 q\";"
-into = "\"\\033[?1006l\\033[0m\\033[?1049l\\033[?25h\";"
+find = "\"\\033[?25h\\033[0 q\";"
+into = "\"\\033[?25h\";"
 count = 1
 check = "restores the caret the user configured"
 
@@ -6902,6 +6906,32 @@ check = "the Menu key honours every context-menu policy"
 # already paid undefined behaviour for once (8.68), so there is no honest
 # breakage to write. The entry above defends the check by a different fault;
 # the propagation is defended by the check alone. 8.511.
+
+[[sabotage]]
+# Synchronised output left open by the restore string, which is how it was:
+# a frame opens `?2026h` and closes it in the same byte array, and nothing
+# closed it if the process stopped between the two halves reaching the
+# terminal -- stdio's flush of a large frame is not one write(2), and
+# leave_terminal() runs from a signal handler. The symptom is the frame
+# code's own words: a terminal that stops repainting. 8.513.
+name = "the restore string leaves synchronised output open"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "const char kLeave[] = \"\\033[?2026l\\033[23;2t\\033[?1004l\\033[?2004l\""
+into = "const char kLeave[] = \"\\033[23;2t\\033[?1004l\\033[?2004l\""
+count = 1
+check = "including synchronised output, which a frame opens and closes itself and which the restore string left to whatever stopped the process mid-flush"
+
+[[sabotage]]
+# The TITLE STACK pop dropped from the restore string, which the pair-driven
+# check catches and the old two-mode sample did not: `22;2t` pushes and
+# `23;2t` pops, and a terminal left holding the application's title shows it
+# over the user's shell for the rest of the session. 8.513.
+name = "the restore string keeps the pushed title"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\\033[?2026l\\033[23;2t\\033[?1004l\\033[?2004l\""
+into = "\\033[?2026l\\033[?1004l\\033[?2004l\""
+count = 1
+check = "and every mode it set is switched off again"
 
 [[sabotage]]
 # A quit key matched from behind an open popup, which is how it was: the

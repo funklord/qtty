@@ -5752,8 +5752,50 @@ int suite_backend() {
 			::close(ps);
 			CHECK(on_tty.contains("\033[?1049h") && on_tty.contains("\033[?1006h"),
 			      "a terminal gets the alternate screen and the reporting modes");
-			CHECK(on_tty.contains("\033[?1006l") && on_tty.contains("\033[?1049l"),
-			      "and gets them all switched off again");
+			// EVERY MODE, NOT TWO OF THEM. This said "them all" and named
+			// `?1006l` and `?1049l`, which is two of the seven the enter
+			// sequence sets -- true by construction and silent about the
+			// rest. Driven from the pairs now, so a mode that joins the
+			// enter string and not the leave string fails here. 8.513.
+			//
+			// AND `?2026l`, WHICH WAS IN NEITHER. Synchronised output is
+			// opened at the head of a frame and closed at its tail, in the
+			// same byte array -- so no early return can leave it open, and
+			// a signal arriving between the two halves reaching the
+			// terminal can: stdio's flush of a large frame is not one
+			// write(2), and leave_terminal() runs from a handler. The
+			// frame's own comment calls the symptom "a terminal that stops
+			// repainting, which is the worst failure this file has
+			// available". The handler already pops the kitty keyboard mode
+			// by hand because it is set outside the constant; this was the
+			// other such mode and nothing undid it.
+			struct Pair { const char *set; const char *unset; };
+			const Pair modes[] = {
+				{ "\033[?1049h", "\033[?1049l" },   // alternate screen
+				{ "\033[?1006h", "\033[?1006l" },   // SGR mouse
+				{ "\033[?1002h", "\033[?1002l" },   // mouse tracking
+				{ "\033[?2004h", "\033[?2004l" },   // bracketed paste
+				{ "\033[?1004h", "\033[?1004l" },   // focus reporting
+				{ "\033[22;2t",  "\033[23;2t"  },   // the title stack
+				{ "\033[?25l",   "\033[?25h"   },   // the cursor
+			};
+			QByteArray unpaired;
+			for (const Pair &m : modes) {
+				if (!on_tty.contains(m.set)) continue;   // not set, not owed
+				if (on_tty.contains(m.unset)) continue;
+				unpaired += QByteArray(m.set).replace("\033", "ESC") + " ";
+			}
+			CHECK(unpaired.isEmpty(),
+			      unpaired.isEmpty()
+			        ? "and every mode it set is switched off again, driven"
+			          " from the pairs rather than from a sample of two"
+			        : QByteArray("and every mode it set is switched off"
+			                     " again -- left set: " + unpaired)
+			              .constData());
+			CHECK(on_tty.contains("\033[?2026l"),
+			      "including synchronised output, which a frame opens and"
+			      " closes itself and which the restore string left to"
+			      " whatever stopped the process mid-flush");
 			CHECK(!on_pipe.contains("\033[?1049h") && !on_pipe.contains("\033[?1006h"),
 			      "while a pipe is sent no mode it cannot be in");
 			// Content is NOT gated, and that is a decision the tree already

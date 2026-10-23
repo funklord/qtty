@@ -566,8 +566,30 @@ namespace {
 // put back anyway.
 const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
                       "\033[?2004h\033[?1004h\033[22;2t";
-const char kLeave[] = "\033[23;2t\033[?1004l\033[?2004l\033[?1002l"
-                      "\033[?1006l\033[0m\033[?1049l\033[?25h\033[0 q";
+// SYNCHRONISED OUTPUT IS CLOSED FIRST, and it is here because nothing else
+// closed it. `?2026h` is written at the head of a frame and `?2026l` at the
+// tail of the SAME byte array, so an early return cannot leave the bracket
+// open -- there is none between them. What can is stopping between the two
+// halves reaching the terminal: stdio's flush of a large frame is not one
+// write(2), and leave_terminal() runs from a signal handler. The frame's
+// own comment names the symptom -- "a terminal that stops repainting, which
+// is the worst failure this file has available and would be nobody's first
+// hypothesis".
+//
+// THE ASYMMETRY IS THE ARGUMENT rather than the odds. Two modes are set
+// outside this constant: the kitty keyboard push, which the handler below
+// pops by hand because `g_kbd_wanted` says it was pushed, and this one,
+// which nothing undid. A mode qtty can set and does not clear is the shape
+// every sequence in this string exists to prevent.
+//
+// FIRST, because a terminal buffering output shows nothing until the
+// bracket closes -- so closing it last would make the rest of this restore
+// invisible on exactly the terminals that implement it. Unconditional, like
+// the three reporting modes beside it: a terminal without the mode consumes
+// the reset, which is the argument `0 q` and the title pop already make.
+const char kLeave[] = "\033[?2026l\033[23;2t\033[?1004l\033[?2004l"
+                      "\033[?1002l\033[?1006l\033[0m\033[?1049l"
+                      "\033[?25h\033[0 q";
 
 struct Restore {
 	struct termios saved {};      // as the terminal was before qtty
