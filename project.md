@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2349 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2353 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18391,6 +18391,56 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.514 SIGPIPE is not restored, and that is the right answer (2026-10-23)
+
+**8.513's lens again -- state established on one side and undone on the
+other -- walked down the list of signals.** The teardown restores the fatal
+set, SIGTSTP, SIGCONT and SIGWINCH from their saved dispositions.
+`signal(SIGPIPE, SIG_IGN)` is set once and never put back, with no comment
+about it, which is precisely the shape five of today's defects had.
+
+**And the measurement dissolved the question rather than informing it**,
+which `working-practice.md` says to try before deliberating. The restore
+block is not the end of teardown: `flush_deferred_messages()` runs after it
+and writes to stderr with `fprintf` -- those are the messages qtty held
+back BECAUSE the terminal was busy. Putting `SIG_DFL` back in front of them
+would reintroduce death by SIGPIPE over the one write whose whole purpose
+is to be seen. So the asymmetry is correct, and what was missing was the
+sentence saying so.
+
+Measured around a backend's lifetime rather than read off the source:
+
+        before   TSTP=DFL      PIPE=DFL      CONT=DFL
+        during   TSTP=handler  PIPE=IGN      CONT=handler
+        after    TSTP=DFL      PIPE=IGN      CONT=DFL
+
+The cost of leaving it is recorded with it: a program carrying on after its
+session has SIGPIPE ignored for the rest of its life, so a write to a
+closed pipe returns EPIPE where it would once have killed the process --
+which an unchecked write loop can spin on. The same trade the session
+already takes, extended past it because the alternative is losing the
+diagnostics.
+
+**THE FIRST VERSION OF THE CHECK PASSED VACUOUSLY AND THE SABOTAGE SAID
+SO.** The before-capture and the assertions were written two thousand lines
+apart, in different fixtures with many backend lifetimes between: SIGTSTP
+read DFL at both ends and agreed by accident, and a later constructor had
+re-ignored SIGPIPE, so the entry that restores it *passed against broken
+code*. The breakage was fine -- applied by hand to a probe it turned
+`PIPE=IGN` into `PIPE=DFL` -- and the placement was not.
+
+So the check is self-contained, first in the suite, and **three points
+rather than two**: before says the premise (nothing has taken the terminal
+yet), during says the handlers really were installed, after says which came
+back. Any two of the three can agree by accident; all three cannot. It
+needs no pty, because the handlers are installed whichever way stdout goes
+and a backend with stdout not a terminal writes no escape bytes.
+
+**2349 checks to 2353**, two sabotage entries, both `--only` proven -- one
+restoring SIGPIPE with the rest, one leaving the job-control signals taken.
+`--validate` passes over all 739.
 
 
 ### 8.513 The restore string left synchronised output open (2026-10-23)

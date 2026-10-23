@@ -858,6 +858,23 @@ void AnsiBackend::resume() {
 	// still running and still accumulating CPU four seconds later, drawing
 	// frames into a descriptor nothing was reading. Taken at the same point
 	// as SIGWINCH, which is where qtty takes over the terminal anyway.
+	//
+	// AND NOT PUT BACK, alone among the signals this file touches -- the
+	// teardown restores the fatal set, SIGTSTP, SIGCONT and SIGWINCH from
+	// their saved dispositions and leaves this one ignored. That reads as an
+	// omission and is not, and the reason is in the teardown's own tail:
+	// `flush_deferred_messages()` runs AFTER the restore block and writes to
+	// stderr with fprintf -- those are the messages qtty held back BECAUSE
+	// the terminal was busy -- so putting SIG_DFL back before it would
+	// reintroduce death by SIGPIPE in front of the one write whose whole
+	// purpose is to be seen. 8.514 read the order rather than supposing it.
+	//
+	// The cost of leaving it is that a program carrying on after its session
+	// has SIGPIPE ignored for the rest of its life, so a write to a closed
+	// pipe returns EPIPE where it would once have killed the process -- a
+	// behaviour an unchecked write loop can spin on. That is the same trade
+	// the paragraphs above take for the session, extended past it because
+	// the alternative is losing the diagnostics.
 	signal(SIGPIPE, SIG_IGN);
 
 	if (s_winch_pipe[0] < 0 && ::pipe(s_winch_pipe) == 0) {

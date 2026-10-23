@@ -385,6 +385,64 @@ int suite_backend() {
 		printf("FAIL: could not build the input pipe\n");
 		return 1;
 	}
+
+	// ---- what a backend leaves behind in the signal dispositions ----------
+	//
+	// The teardown restores the fatal set, SIGTSTP, SIGCONT and SIGWINCH
+	// from their saved dispositions and leaves SIGPIPE ignored. That reads
+	// as an omission and is not: flush_deferred_messages() runs AFTER the
+	// restore block and writes the held-back messages to stderr with
+	// fprintf, so putting SIG_DFL back in front of it would kill the process
+	// over the one write whose purpose is to be seen. 8.514.
+	//
+	// FIRST IN THE SUITE AND SELF-CONTAINED, which is the half this got
+	// wrong the first time. The before-capture and the checks were written
+	// two thousand lines apart, with many backend lifetimes between them --
+	// so SIGTSTP read DFL at both ends and passed vacuously, and a later
+	// constructor had re-ignored SIGPIPE, which is why the sabotage that
+	// restores it passed against broken code. Measured by hand to find
+	// that: the breakage works, the placement did not.
+	//
+	// THREE POINTS, not two. Before says the premise -- nothing has taken
+	// the terminal yet -- during says the handlers really were installed,
+	// and after says which of them came back. Any two of the three can
+	// agree by accident; all three cannot.
+	//
+	// No pty needed: the handlers are installed whichever way stdout goes,
+	// and with stdout not a terminal the backend writes no escape bytes, so
+	// this cannot corrupt the report.
+	{
+		const auto disposition = [](int sig) {
+			struct sigaction cur {};
+			sigaction(sig, nullptr, &cur);
+			return cur.sa_handler;
+		};
+		const bool tstp_default_before = disposition(SIGTSTP) == SIG_DFL;
+		const bool pipe_default_before = disposition(SIGPIPE) == SIG_DFL;
+		bool tstp_taken = false, pipe_ignored = false;
+		{
+			AnsiBackend probe;
+			tstp_taken = disposition(SIGTSTP) != SIG_DFL;
+			pipe_ignored = disposition(SIGPIPE) == SIG_IGN;
+		}
+		const bool tstp_back = disposition(SIGTSTP) == SIG_DFL;
+		const bool pipe_still_ignored = disposition(SIGPIPE) == SIG_IGN;
+
+		CHECK(tstp_default_before && pipe_default_before,
+		      "nothing has taken the terminal yet, so the dispositions below"
+		      " are a backend's own doing and not an earlier fixture's");
+		CHECK(tstp_taken && pipe_ignored,
+		      "a live backend takes the job-control signal and ignores"
+		      " SIGPIPE, which is the state the teardown has to answer for");
+		CHECK(tstp_back,
+		      "a backend going out of scope puts the job-control signal back"
+		      " as it found it");
+		CHECK(pipe_still_ignored,
+		      "while SIGPIPE stays ignored, deliberately: the teardown's own"
+		      " last act writes the deferred messages to stderr, and"
+		      " restoring the default would kill the process in front of"
+		      " them");
+	}
 	AnsiBackend backend;
 	Recorder rec;
 	backend.set_event_sink(&rec);
@@ -5421,6 +5479,7 @@ int suite_backend() {
 			fflush(stdout);
 			::dup2(keep_in, 0);
 			::dup2(keep_out, 1);
+
 			::close(keep_in);
 			::close(keep_out);
 			::close(master);
