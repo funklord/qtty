@@ -4696,6 +4696,61 @@ int suite_backend() {
 					      " having popped it on the way out");
 				}
 
+				// C1 AND THE SEPARATORS, which the title's own sanitiser
+				// let through. It strips `c < 0x20 || c == 0x7f` -- C0 and
+				// DEL -- and the library's own is_control() in
+				// core/cell_buffer.cpp covers those PLUS C1 (0x80..0x9f)
+				// and Separator_Line and Separator_Paragraph, with a
+				// comment arguing exactly this case: "a terminal is
+				// entitled to read U+2028 as a line break, and one
+				// arriving in the middle of a row would take the rest of
+				// the frame's geometry with it -- the same argument as the
+				// escape introducer, one character class along."
+				//
+				// It matters more here than in a cell. U+009C IS ST, the
+				// String Terminator, and U+009B is CSI: a terminal that
+				// decodes C1 from UTF-8 reads them as controls, so a title
+				// carrying one ends the OSC string early and whatever
+				// follows is executed rather than displayed. A window
+				// title is application data -- a filename, a document name
+				// from somewhere else -- so this is the escape-injection
+				// case the sanitiser was written for, reached by the class
+				// it did not name.
+				//
+				// Asserted on the bytes, and on the SAFE text surviving:
+				// a sanitiser that dropped the whole title would satisfy
+				// the first half and is the wrong fix.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					while (::read(master, eat, sizeof(eat)) > 0) { }
+					QString risky = QStringLiteral("safe");
+					risky += QChar(0x009c);          // ST
+					risky += QStringLiteral("mid");
+					risky += QChar(0x009b);          // CSI
+					risky += QChar(0x2028);          // Separator_Line
+					risky += QStringLiteral("end");
+					live.set_title(risky);
+					QByteArray out;
+					ssize_t n;
+					while ((n = ::read(master, eat, sizeof(eat))) > 0)
+						out.append(eat, int(n));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					const bool has_c1 = out.contains("\xc2\x9c")
+					                 || out.contains("\xc2\x9b");
+					const bool has_sep = out.contains("\xe2\x80\xa8");
+					CHECK(out.contains("\033]2;") && out.contains("safe")
+					      && out.contains("end"),
+					      "a title with a C1 control in it is still sent,"
+					      " and the text around it survives");
+					CHECK(!has_c1 && !has_sep,
+					      "and no C1 control or line separator reaches the"
+					      " wire inside it -- U+009C is ST, which would end"
+					      " the OSC string and let what follows be executed");
+				}
+
 				// The OTHER route to the same handover, and the reason this
 				// is a second check rather than a second assertion: Ctrl+Z
 				// does not call resume(). qtty_cont_handler() runs

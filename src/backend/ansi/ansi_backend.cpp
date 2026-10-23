@@ -1,6 +1,7 @@
 #include "ansi_backend.h"
 #include <cstdlib>
 #include "../../runtime/terminal_owner.h"
+#include "../../control_chars.h"
 #include "qtty/graphics.h"
 #include "qtty/grid.h"
 #include "qtty/theme.h"
@@ -1809,11 +1810,23 @@ void AnsiBackend::set_title(const QString &title) {
 	// A window title is application data and may hold anything; a filename
 	// with a newline in it is enough. Stripped rather than escaped, because
 	// there is no escaping inside an OSC string to do it with.
+	//
+	// THE LIBRARY'S OWN RULE rather than a second spelling of it. This read
+	// `c >= 0x20 && c != 0x7f` -- C0 and DEL -- while is_control() has
+	// covered those plus C1 (0x80..0x9f) and the line and paragraph
+	// separators since the cell path needed them. Measured on the wire
+	// before this: U+009C, U+009B and U+2028 all reached the terminal inside
+	// the OSC string, with the text around them intact. 8.510.
+	//
+	// And it costs more here than in a cell. U+009C IS ST and U+009B is CSI,
+	// so on a terminal that decodes C1 from UTF-8 the sequence ends early
+	// and whatever follows is executed -- which is the escape injection the
+	// paragraph above is about, reached by the one class it did not name. A
+	// cell's glyph goes out as text; a title goes out as part of a sequence.
 	QString safe;
 	safe.reserve(title.size());
 	for (const QChar c : title)
-		if (!c.isNull() && c.unicode() >= 0x20 && c.unicode() != 0x7f)
-			safe += c;
+		if (!is_control(c.unicode())) safe += c;
 
 	// Bounded, because this goes out on every title change and a terminal
 	// has to keep it. The cut is at a character rather than a byte so a

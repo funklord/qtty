@@ -526,10 +526,24 @@ count = 1
 check = "next_window moves to another window and previous_window"
 
 [[sabotage]]
+# The title's OWN narrower spelling of the control rule, restored. It read
+# `c >= 0x20 && c != 0x7f` -- C0 and DEL -- so a C1 control or a line
+# separator went out inside the OSC string, and U+009C is ST: the sequence
+# ends early and what follows is executed. The entry below catches an ESC
+# getting through, which the narrow test already stopped; this one catches
+# the classes it did not name. 8.510.
+name = "a title keeps C1 controls and line separators"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (!is_control(c.unicode())) safe += c;"
+into = "\t\tif (c.unicode() >= 0x20 && c.unicode() != 0x7f) safe += c;"
+count = 1
+check = "and no C1 control or line separator reaches the wire inside it -- U+009C is ST, which would end the OSC string and let what follows be executed"
+
+[[sabotage]]
 name = "a title goes out with its control characters intact"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tif (!c.isNull() && c.unicode() >= 0x20 && c.unicode() != 0x7f)"
-into = "\t\tif (true)"
+find = "\t\tif (!is_control(c.unicode())) safe += c;"
+into = "\t\tsafe += c;"
 count = 1
 check = "an escape inside a title does not reach the terminal"
 
@@ -5352,7 +5366,9 @@ check = "a spacing combining mark still takes one"
 # which is how it was: they are neither C0, C1 nor DEL, so the ranges
 # missed them and they reached a cell verbatim. 8.300.
 name = "a line separator reaches a cell as itself"
-file = "src/core/cell_buffer.cpp"
+# Re-pointed 8.510: is_control() moved to src/control_chars.h, where the
+# title sanitiser can reach the same rule instead of spelling a narrower one.
+file = "src/control_chars.h"
 find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)\n\t\treturn true;"
 into = "\t(void)cat;"
 count = 1
@@ -5363,7 +5379,9 @@ check = "nor does a line or paragraph separator"
 # a no-break space is Separator_Space and is a space, so replacing it
 # would change text nobody asked to change. 8.300.
 name = "a no-break space is treated as a control"
-file = "src/core/cell_buffer.cpp"
+# Re-pointed 8.510, with the entry above: is_control() moved to
+# src/control_chars.h.
+file = "src/control_chars.h"
 find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)"
 into = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph\n\t    || cat == QChar::Separator_Space)"
 count = 1

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2341 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2343 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,58 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.510 A title went out with C1 controls in it (2026-10-23)
+
+**8.506's shape again -- two spellings of one rule, the narrower one where
+it costs more.** `AnsiBackend::set_title()` sanitises a window title
+before putting it inside an OSC string, and open-coded the test as
+`c >= 0x20 && c != 0x7f`: C0 and DEL. The library's own `is_control()` has
+covered those **plus C1 (0x80..0x9f) and the line and paragraph
+separators** since the cell path needed them, and its comment makes this
+very argument -- *"a terminal is entitled to read U+2028 as a line break,
+and one arriving in the middle of a row would take the rest of the frame's
+geometry with it -- the same argument as the escape introducer, one
+character class along."*
+
+**Measured on the wire, through the suite's own pty harness**, by writing
+the check before the fix and watching it fail: a title carrying U+009C,
+U+009B and U+2028 put all three into the OSC string, with the surrounding
+text intact.
+
+**It costs more in a title than in a cell, which is why the narrower
+spelling was in the worse place.** U+009C **is** ST, the string
+terminator, and U+009B is CSI. A terminal that decodes C1 from UTF-8 reads
+them as controls, so the OSC ends early and whatever follows is executed
+rather than displayed -- which is precisely the escape injection the
+sanitiser's own comment is about, reached by the one class it did not
+name. A cell's glyph goes out as text; a title goes out as part of a
+sequence.
+
+**The rule moved rather than being widened in place.** `is_control()` is
+`src/control_chars.h` now, included by the cell path and the backend, so
+there is one spelling and not two. That is a new file, and the reason is
+the hazard itself: two layers need one rule and there was no shared home
+-- `cell_buffer.cpp` had no header and the only thing both reached was the
+PUBLIC `qtty/cell.h`, which would have made an API decision out of a fix.
+
+**The class is closed, not just the instance.** Every OSC string this
+library writes was read: the clipboard's payload is base64, the iTerm2
+inline image is base64 PNG and numbers, and the title was the only
+sequence carrying raw application text. The sweep for other open-coded
+control tests found only input-side protocol rules -- ECMA-48 intermediate
+bytes, key decoding -- which are a different question.
+
+**2341 checks to 2343, one sabotage entry added and three re-pointed.**
+The title sanitiser already HAD an entry, `a title goes out with its
+control characters intact`, and it was proving the half that worked: an
+ESC got through the narrow test and was caught. The new entry restores the
+narrow spelling itself, so the classes it did not name have a witness too.
+The three re-pointed are that one and 8.300's two, which followed
+`is_control()` into the new header. All four `--only` proven, the fourth
+run rather than inferred from the third although they share the move.
+`--validate` passes over all 734.
 
 
 ### 8.509 The way back out of a nested menu, which nothing asked about (2026-10-23)
