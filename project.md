@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2392 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2394 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46599,3 +46599,33 @@ asserts the POP still follows the push, because `leave_terminal()` reads
 the same `g_kbd_wanted` this sets -- pushing without setting it would
 leave the flags on the terminal for whatever ran next, which is the one
 outcome here that could do harm rather than merely lose a chord.
+
+### 8.528 The handover loop, on one descriptor (2026-10-23)
+
+**Every part of the ground re-ask was asserted and the JOIN was not**,
+which matters because the two halves were measured in different fixtures
+with different plumbing: the pty fixture reads the query off the wire, the
+Feeder drives the arrival down a pipe, and a real session does both
+through one descriptor. A correct function is not a working feature, and
+nothing had run the loop.
+
+It was not stageable until 8.527 taught `fatal_child()` a timed write.
+Now it is one child: the preload answers the startup query with a dark
+ground and the fence, the backend takes the terminal, suspends and
+resumes, and the late write answers the handover's re-ask with a light one
+400 ms in -- past the probe window and past the handover. Measured,
+`GROUND[#1c1c1c->#f0f0f0]`.
+
+**THE PAIR IS WHAT MAKES IT HONEST, and the first check alone would be
+vacuous.** The parent writes the late reply whether or not anything asked
+for it, so a backend that had stopped re-asking entirely would still see
+the ground move and still satisfy "the answer reached the published
+capabilities". The second check asserts `ESC ] 11 ; ?` is on the wire,
+which is what says the answer was not volunteered -- and it is the one the
+existing re-ask sabotage reddens.
+
+That is the fourth check this session whose first form could have passed
+without the code under test, and the only one caught while writing it
+rather than afterwards. What made the difference was asking who produces
+the input the assertion reads: the parent does, unconditionally, so the
+assertion could not be about the request.

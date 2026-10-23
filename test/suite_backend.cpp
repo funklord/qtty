@@ -6336,6 +6336,65 @@ int suite_backend() {
 			      "the keyboard protocol");
 			CHECK(spoke.contains("\033[>1u"),
 			      "and qtty pushes the disambiguating flag onto its stack");
+			// THE WHOLE LOOP ON A REAL TERMINAL: a handover asks for the
+			// ground again, the answer arrives late, and the backend
+			// publishes it. Every part of that is asserted somewhere already
+			// and the JOIN is not, which matters because the two halves were
+			// measured in different fixtures with different plumbing -- the
+			// pty fixture reads the query off the wire, the Feeder drives
+			// the arrival down a pipe -- while a real session does both
+			// through one descriptor. A correct function is not a working
+			// feature.
+			//
+			// The preload answers the startup query with a DARK ground and
+			// the fence; the late write answers the handover's re-ask with a
+			// LIGHT one, 400 ms in, which is past the probe window and past
+			// the suspend and resume below.
+			{
+				const QByteArray loop = fatal_child(true, [] {
+					{
+						Qtty::AnsiBackend backend;
+						Recorder rec;
+						backend.set_event_sink(&rec);
+						backend.resume();
+						const QColor first =
+						    backend.capabilities().background;
+						backend.suspend();
+						backend.resume();        // the handover re-asks
+						for (int i = 0; i < 1500; ++i) {
+							QCoreApplication::processEvents();
+							if (backend.capabilities().background != first)
+								break;
+							usleep(1000);
+						}
+						const QColor now =
+						    backend.capabilities().background;
+						fprintf(stderr, "\nGROUND[%s->%s]\n",
+						        qPrintable(first.name()),
+						        qPrintable(now.name()));
+						backend.suspend();
+					}
+					::_exit(0);
+				}, QByteArrayLiteral("\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+				                    "\033[?62;4c"),
+				   nullptr, nullptr,
+				   QByteArrayLiteral("\033]11;rgb:f0f0/f0f0/f0f0\033\\"),
+				   400);
+				const int at = loop.indexOf("GROUND[");
+				printf("info: a handover's re-ask on a real terminal -> %s,"
+				       " asked again %d\n",
+				       at < 0 ? "no marker" : loop.mid(at, 24).constData(),
+				       int(loop.contains("\033]11;?")));
+				CHECK(loop.contains("GROUND[#1c1c1c->#f0f0f0]"),
+				      "a handover asks the terminal for its ground again and"
+				      " the late answer reaches the published capabilities,"
+				      " which is the whole loop on one descriptor rather"
+				      " than its halves in two fixtures");
+				CHECK(loop.contains("\033]11;?"),
+				      "and the query really went out on the wire, so the"
+				      " answer above was not volunteered");
+			}
+
 			// A REPLY THAT ARRIVES AFTER THE NEGOTIATION, which no fixture
 			// here could stage until fatal_child() learned a timed write.
 			// The preload is the FENCE alone, so collect_caps() returns on
