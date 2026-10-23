@@ -249,15 +249,7 @@ AnsiBackend::AnsiBackend() {
 	mode_ = negotiate_graphics(caps_);
 	depth_ = negotiate_color(caps_);
 
-	// The terminal's own low sixteen, where it answered for all of them. A
-	// partial answer is refused rather than mixed with the built-in table:
-	// half a user's scheme and half xterm's is a palette no terminal has, and
-	// matching against it would be worse than matching against either.
-	if (caps_.palette16.size() == 16) {
-		bool complete = true;
-		for (QRgb c : caps_.palette16) if (c == 0) complete = false;
-		if (complete) set_terminal_palette(caps_.palette16);
-	}
+	publish_palette();
 
 	// And the GROUND, from the same place and for the same reason: a Default
 	// colour's luminance was a conventional dark theme asserted, and on a
@@ -284,6 +276,24 @@ QColor AnsiBackend::reported_bg() const {
 
 void AnsiBackend::publish_ground() {
 	set_terminal_ground(reported_fg(), reported_bg());
+}
+
+// The terminal's own low sixteen, where it answered for all of them. A
+// partial answer is refused rather than mixed with the built-in table: half a
+// user's scheme and half xterm's is a palette no terminal has, and matching
+// against it would be worse than matching against either.
+//
+// Zero is how an unanswered entry reads, which is safe rather than lucky:
+// qRgb() sets the alpha byte, so no colour a terminal can report is zero.
+//
+// Refusing leaves the previous answer standing, which is the right failure
+// for a RE-ask -- a terminal that answered fully at startup and partially
+// after a handover has told us nothing new, and the built-in table is a
+// worse answer than the scheme it already gave.
+void AnsiBackend::publish_palette() {
+	if (caps_.palette16.size() != 16) return;
+	for (QRgb c : caps_.palette16) if (c == 0) return;
+	set_terminal_palette(caps_.palette16);
 }
 
 Capabilities AnsiBackend::capabilities() const {
@@ -415,10 +425,12 @@ void AnsiBackend::query_geometry() {
 	(void)n;                           // a terminal that will not answer is fine
 }
 
-// And ask again for the GROUND -- OSC 11 for the background, OSC 10 for the
-// foreground. The same two the startup query carries, and the answer comes
-// back the same way the geometry's does: on stdin, through the string-sequence
-// branch of decode_one(), which hands it to scan_caps().
+// And ask again for the COLOURS -- the ground pair from OSC 11 and OSC 10,
+// and the low sixteen of the palette from OSC 4. The same queries the startup
+// batch carries, taken from the same two functions so the two callers cannot
+// disagree about what was asked, and the answers come back the way the
+// geometry's does: on stdin, through the string-sequence branch of
+// decode_one(), which hands them to scan_caps().
 //
 // It is asked at each handover rather than once, because a terminal's
 // background is not a constant and every reader of it treats the stored
@@ -427,11 +439,20 @@ void AnsiBackend::query_geometry() {
 // edge composited against a ground that is gone -- and with section 6's
 // contrast check measuring a terminal that no longer exists.
 //
-// Both halves, always, because they abstain together: TerminalGround says so
-// in as many words, a real background under a guessed foreground being the
-// one combination that can come out unreadable. Asking for one would let the
-// pair drift apart across a handover, which is worse than the stale pair it
-// replaces.
+// Both halves of the ground, always, because they abstain together:
+// TerminalGround says so in as many words, a real background under a guessed
+// foreground being the one combination that can come out unreadable. Asking
+// for one would let the pair drift apart across a handover, which is worse
+// than the stale pair it replaces.
+//
+// The PALETTE moves for the same reasons the ground does and costs more to
+// ask: sixteen replies rather than two. It is asked anyway, because the two
+// tiers have to agree about an index below sixteen -- the text tier sends the
+// index and lets the terminal paint its own colour, while anything that
+// rasterises has to reach the same colour itself through xterm256_rgb(), so a
+// stale scheme is two tiers disagreeing about one frame rather than a colour
+// slightly off. A handover is also the one moment where the cost is
+// invisible: the screen is being redrawn whole anyway.
 //
 // Wrapped for tmux exactly as the startup query is. An unwrapped OSC 11
 // inside tmux is answered by TMUX with its own background, so the two asks
@@ -439,9 +460,9 @@ void AnsiBackend::query_geometry() {
 // the first handover on every multiplexed session. Where passthrough is off
 // the wrapper is eaten, nothing answers, and the stored pair stands -- which
 // is the right answer for a tmux that will not forward a query.
-void AnsiBackend::query_ground() {
+void AnsiBackend::query_colors() {
 	if (!tty_out_) return;
-	const QByteArray q = QByteArrayLiteral("\033]11;?\033\\\033]10;?\033\\");
+	const QByteArray q = ground_query() + palette_query();
 	write_out(inside_tmux() ? tmux_wrap(q) : q);
 }
 
@@ -531,7 +552,7 @@ void AnsiBackend::read_winch() {
 		// the other. A theme changed while the job was STOPPED -- which is
 		// where somebody goes to change it, their shell being in front of
 		// them -- would otherwise never be asked about again.
-		query_ground();
+		query_colors();
 	}
 
 	winsize ws{};
@@ -1088,7 +1109,7 @@ void AnsiBackend::resume() {
 	// shell-out reaches this and no counter, so read_winch()'s copy covers
 	// Ctrl+Z and nothing else.
 	if (!first_resume_) forget_partial_input();
-	// And the GROUND, which query_ground() argues for at length. It goes
+	// And the COLOURS, which query_colors() argues for at length. It goes
 	// AFTER forget_partial_input() rather than before, and the reason is
 	// not that the order matters today: nothing between the two turns the
 	// event loop, so no reply can arrive in between and either order works.
@@ -1101,7 +1122,7 @@ void AnsiBackend::resume() {
 	// constructor's caps_query() carries both OSC queries already, and
 	// asking again would spend a round trip to learn what collect_caps()
 	// has just been told.
-	if (!first_resume_) query_ground();
+	if (!first_resume_) query_colors();
 	first_resume_ = false;
 }
 
@@ -2783,8 +2804,16 @@ bool AnsiBackend::decode_one() {
 			// colour it already gave -- which is every handover on a
 			// terminal whose theme did not change -- is correctly no news.
 			const QColor was_fg = reported_fg(), was_bg = reported_bg();
+			// And the palette, which is a second answer arriving down the
+			// same wire and had no effect at all: scan_osc4() writes into
+			// caps_.palette16 and set_terminal_palette() had one caller, the
+			// constructor. So an OSC 4 reply mid-run was parsed and
+			// published nowhere -- the ground's half-applied shape, one
+			// store along, and total rather than partial.
+			const QVector<QRgb> was_palette = caps_.palette16;
 			scan_caps(pending_.left(n), caps_);
 			pending_.remove(0, n);
+			if (caps_.palette16 != was_palette) publish_palette();
 			if (reported_fg() != was_fg || reported_bg() != was_bg) {
 				// The global store, which is the half nothing updated.
 				// capabilities() recomputes from caps_ on every call, so an

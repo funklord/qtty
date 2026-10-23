@@ -279,7 +279,7 @@ private:
 	ScrollSettle settle_;                         // section 5.7, sixel/iTerm2 only
 	QElapsedTimer clock_;
 	void query_geometry();                        // re-ask after a resize
-	void query_ground();                          // re-ask after a handover
+	void query_colors();                          // re-ask after a handover
 	// The ground as this backend reports it: the terminal's answer, or an
 	// invalid QColor where it did not answer. Three sites spelled this
 	// ternary out -- the constructor, capabilities() and nothing else that
@@ -294,6 +294,12 @@ private:
 	// published to applications and withheld from Color::luminance(), which
 	// section 6's contrast check runs on every emitted cell.
 	void publish_ground();
+	// And the palette, under the rule the constructor used to carry inline:
+	// all sixteen or none of them. It had ONE caller and the arrival path had
+	// none, so an OSC 4 reply that turned up mid-run was parsed into caps_
+	// and published nowhere -- the same half-applied shape the ground had,
+	// one store along in the same constructor.
+	void publish_palette();
 	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	// The kitty upload-once cache, and the id the terminal holds each upload

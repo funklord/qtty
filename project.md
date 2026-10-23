@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2368 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2370 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46018,3 +46018,68 @@ one of the three, the row's own argument for it having been that the cost
 falls on the fallback tier alone, which was wrong in two places: the
 software-composite tier rasterises every `Color::Default` cell on the
 ground, and the contrast check reads it on every emitted cell.
+
+### 8.518 The palette is re-asked and published too (2026-10-23)
+
+**8.517's own lens, pointed one store along, and it found a worse
+instance.** That record ends by naming the ground's half-applied
+publication -- `set_terminal_ground()` called in exactly one place while
+`capabilities()` recomputed on every call -- and the sibling store is
+three lines above it in the same constructor.
+`set_terminal_palette(caps_.palette16)` had exactly one caller, that
+constructor, and the arrival path had none. So an OSC 4 reply that turned
+up mid-run was parsed into `caps_.palette16` by `scan_osc4()`, which
+overwrites the entry it names, and published NOWHERE. Not half-applied:
+not applied at all.
+
+**And nothing asked, which is why the gap was invisible.** OSC 4 was in
+the startup batch and nowhere else, so the only way to reach the arrival
+path was a terminal volunteering a reply. The two halves were therefore
+each useless on their own: a publication with no trigger, and after 8.517
+a handover that re-measured the ground and left the scheme it is paired
+with.
+
+**What it costs is two tiers disagreeing inside one frame, which is worse
+than a colour being slightly off.** The text tier sends an index below
+sixteen and lets the terminal paint its own scheme; anything that
+rasterises -- the software composite, the half-block mosaic -- has to
+reach the same colour itself through `xterm256_rgb()`. Section 8.255
+settled that those two must agree. A stale scheme breaks the agreement
+for every index the user has re-mapped, and re-mapping the low sixteen is
+what a terminal theme IS.
+
+**The query is now named once rather than spelled twice.** A handover
+asks exactly the ground pair and exactly the low sixteen, so both came
+out of `caps_query()` into `ground_query()` and `palette_query()` and the
+batch is composed from them. `queried_modes()` already exists one layer
+along for this reason and its comment records the duplicate list having
+drifted before it was first run. The recomposition is proved rather than
+eyeballed: the batch's bytes are identical, 196 of them, checked by
+decoding the string literals of both revisions and comparing.
+
+**The cost is sixteen replies per handover against the ground's two**,
+and it is paid because a handover is the one moment where it is
+invisible: the screen is being redrawn whole anyway, and the alternative
+is a scheme that can only ever be right for the terminal the program
+started on.
+
+**Two checks, and the shape of the pair is what makes either worth
+anything.** The replies are fed in two halves over a palette that is
+already set, so the refusal check asserts that three replies did NOT
+replace the scheme in hand -- a partial answer being refused rather than
+mixed with the built-in table, half a user's scheme and half xterm's
+being a palette no terminal has. That check alone could pass because
+nothing arrived, and the second is what forbids it: only indices 3 to 15
+are sent afterwards, so the publication cannot complete unless the first
+three had arrived. **Index 0 is black on purpose.** An unanswered entry
+reads as a zero `QRgb`, and `qRgb(0, 0, 0)` is `0xff000000` because
+`qRgb` sets the alpha byte -- so the commonest colour in a real scheme is
+the one that would break a completeness test written on the colour rather
+than on the whole value.
+
+**And the first version of the publication check failed for a reason
+outside the code under test**, which is worth keeping because the fixture
+looked obviously right. Thirteen replies are 286 bytes and `read_input()`
+reads 256 at a time, so one `processEvents()` left the rest in the pipe
+and nothing published. The fix is to pump, bounded; the bound is not the
+assertion, the pair of checks is.

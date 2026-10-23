@@ -8126,12 +8126,12 @@ check = "a window wider than the terminal scrolls to its focus and brings the WH
 # resume() stops asking for the ground, so the background is what it was when
 # the program started and a theme changed during a shell-out is invisible.
 # 8.517.
-name = "a handover does not re-ask the ground"
+name = "a handover does not re-ask the terminal's colours"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\tif (!first_resume_) query_ground();\n\tfirst_resume_ = false;"
+find = "\tif (!first_resume_) query_colors();\n\tfirst_resume_ = false;"
 into = "\tfirst_resume_ = false;"
 count = 1
-check = "a resume asks the terminal for its ground again, a handover being where a theme change hides"
+check = "a resume asks the terminal for its colours again, a handover being where a theme change hides"
 
 [[sabotage]]
 # The reply reaches caps_ and stops there, which is the state the tree was in:
@@ -8159,9 +8159,41 @@ check = "a ground that moves discards the kept pixel buffer, an undamaged cell h
 [[sabotage]]
 # The Ctrl+Z route stops re-asking, leaving the re-ask in resume() -- which
 # covers a shell-out and cannot reach this one. 8.517.
-name = "a stopped job comes back without re-asking the ground"
+name = "a stopped job comes back without re-asking the colours"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tquery_ground();\n\t}\n"
+find = "\t\tquery_colors();\n\t}\n"
 into = "\t}\n"
 count = 1
-check = "and asks the terminal for its ground again on that route too, which resume() cannot reach"
+check = "and asks the terminal for its colours again on that route too, which resume() cannot reach"
+
+[[sabotage]]
+# The handover stops asking for the palette, leaving only the ground pair --
+# which is the state 8.517 left: a handover re-measured the ground and not the
+# scheme. 8.518.
+name = "a handover re-asks the ground and not the palette"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tconst QByteArray q = ground_query() + palette_query();"
+into = "\tconst QByteArray q = ground_query();"
+count = 1
+check = "a resume asks the terminal for its colours again, a handover being where a theme change hides"
+
+[[sabotage]]
+# The arrival path stops publishing a changed palette, which is the state the
+# tree was in: scan_osc4() wrote into caps_ and the global store had one
+# caller, the constructor. 8.518.
+name = "a fresh palette is parsed and published nowhere"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (caps_.palette16 != was_palette) publish_palette();\n"
+into = ""
+count = 1
+check = "while the sixteenth reply publishes the terminal's own scheme, down the same path the ground's reply takes"
+
+[[sabotage]]
+# publish_palette() stops refusing a partial answer, so half a user's scheme
+# and half xterm's reaches every colour conversion. 8.518.
+name = "a partial palette answer is published anyway"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tfor (QRgb c : caps_.palette16) if (c == 0) return;\n"
+into = ""
+count = 1
+check = "a partial OSC 4 answer is refused rather than mixed with the scheme already in hand"

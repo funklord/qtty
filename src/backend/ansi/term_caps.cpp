@@ -320,17 +320,12 @@ QByteArray tmux_wrap(const QByteArray &payload) {
 	return out;
 }
 
-QByteArray caps_query() {
-	// In the order the replies are expected back, with primary device
-	// attributes LAST as the fence.
+// The ground pair, in the order the replies come back. Named rather than left
+// inline in caps_query() because a handover asks exactly this again, and the
+// alternative is the same query spelled in two places -- see the header, and
+// queried_modes() below, which exists because that already happened once.
+QByteArray ground_query() {
 	return QByteArray(
-	    // The kitty protocol's own "can you hear me": a query action carrying
-	    // one 24-bit pixel of direct data. A terminal without the protocol
-	    // ignores the APC string entirely, which is what makes it safe to
-	    // send blind to something that may be anything at all.
-	    "\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\"
-	    // Direct colour, asked rather than inherited.
-	    "\033P+q524742;5463\033\\"
 	    // Background, which every tier below kitty needs: they composite an
 	    // image's alpha against it themselves.
 	    "\033]11;?\033\\"
@@ -343,7 +338,31 @@ QByteArray caps_query() {
 	    // than by the terminal. One more OSC in a query already carrying
 	    // four, ignored by anything that does not implement it exactly as
 	    // OSC 11 is.
-	    "\033]10;?\033\\"
+	    "\033]10;?\033\\");
+}
+
+// The low sixteen palette entries. Only these: 16 to 255 are a formula every
+// terminal shares, so asking would be 240 round trips to learn what is
+// already known. Several index/? pairs in one OSC, answered one reply each.
+QByteArray palette_query() {
+	return QByteArray(
+	    "\033]4;0;?;1;?;2;?;3;?;4;?;5;?;6;?;7;?"
+	    ";8;?;9;?;10;?;11;?;12;?;13;?;14;?;15;?\033\\");
+}
+
+QByteArray caps_query() {
+	// In the order the replies are expected back, with primary device
+	// attributes LAST as the fence.
+	return QByteArray(
+	    // The kitty protocol's own "can you hear me": a query action carrying
+	    // one 24-bit pixel of direct data. A terminal without the protocol
+	    // ignores the APC string entirely, which is what makes it safe to
+	    // send blind to something that may be anything at all.
+	    "\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\"
+	    // Direct colour, asked rather than inherited.
+	    "\033P+q524742;5463\033\\"
+	    // The ground pair, from ground_query() for the same reason.
+	    + ground_query() +
 	    // The text area and one cell, both in pixels. The cell is what keeps
 	    // an image's aspect ratio: a half-block pixel is one cell wide and
 	    // half a cell tall, and treating that as square squashes every
@@ -358,12 +377,10 @@ QByteArray caps_query() {
 	    "\033[?1004$p"                            // focus reporting
 	    "\033[?2004$p"                            // bracketed paste
 	    "\033[?2026$p"                            // synchronised output
-	    // The low sixteen palette entries. Only these: 16 to 255 are a formula
-	    // every terminal shares, so asking would be 240 round trips to learn
-	    // what is already known. Several index/? pairs in one OSC, answered
-	    // one reply each.
-	    "\033]4;0;?;1;?;2;?;3;?;4;?;5;?;6;?;7;?"
-	    ";8;?;9;?;10;?;11;?;12;?;13;?;14;?;15;?\033\\"
+	    // The low sixteen palette entries, from palette_query() so the
+	    // handover re-ask and this batch cannot disagree about what was
+	    // asked for.
+	    + palette_query() +
 	    // The kitty keyboard protocol: "what are your current flags". A
 	    // terminal that implements it answers CSI ? <flags> u, and one that
 	    // does not ignores an unknown CSI as it ignores any other -- which

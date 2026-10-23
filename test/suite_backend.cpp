@@ -2873,6 +2873,80 @@ int suite_backend() {
 		set_terminal_ground(QColor(), QColor());
 	}
 
+	// A PALETTE THAT ARRIVES MID-RUN, which is the ground's defect one store
+	// along and total rather than partial. scan_osc4() writes into
+	// caps_.palette16 on every reply, and set_terminal_palette() had exactly
+	// ONE caller -- the constructor -- so an OSC 4 reply during a run was
+	// parsed and published nowhere at all.
+	//
+	// It matters on the two tiers having to agree about one colour. The text
+	// tier sends an index below sixteen and lets the terminal paint its own
+	// scheme; anything that rasterises has to reach the same colour itself
+	// through xterm256_rgb(). So a stale scheme is not a colour slightly off,
+	// it is two tiers disagreeing within one frame.
+	//
+	// FED IN TWO HALVES, over a palette that is already set, which is what
+	// makes the refusal mean something. A partial answer is refused rather
+	// than mixed with the built-in table -- half a user's scheme and half
+	// xterm's is a palette no terminal has -- and a check that fed all
+	// sixteen at once, or that started from empty, could not tell that
+	// refusal from "nothing has arrived yet".
+	//
+	// INDEX 0 IS BLACK, deliberately. An unanswered entry reads as a zero
+	// QRgb, and black is qRgb(0, 0, 0) == 0xff000000 because qRgb sets the
+	// alpha byte -- so the commonest colour in a real scheme is the one that
+	// would break a completeness test written on the colour rather than on
+	// the whole value.
+	{
+		const auto osc4 = [](int from, int to) {
+			QByteArray b;
+			for (int i = from; i <= to; ++i)
+				b += "\033]4;" + QByteArray::number(i) + ";rgb:"
+				   + QByteArray::number(i * 16, 16).rightJustified(2, '0')
+				   + "/00/00\033\\";
+			return b;
+		};
+		// PUMPED RATHER THAN FED, because thirteen replies are 286 bytes and
+		// read_input() reads 256 at a time: one processEvents() leaves the
+		// rest in the pipe, so the first version of this published nothing
+		// and failed for a reason that had nothing to do with the code under
+		// test. Bounded, and the bound is not the assertion -- the two checks
+		// below are.
+		const auto pump = [&](const QByteArray &bytes, int spins) {
+			rec.clear();
+			feeder.send(bytes);
+			for (int i = 0; i < spins; ++i) QCoreApplication::processEvents();
+		};
+		QVector<QRgb> seed(16);
+		for (int i = 0; i < 16; ++i) seed[i] = qRgb(0, 0, 255 - i);
+		set_terminal_palette(seed);
+		pump(osc4(0, 2), 200);
+		// Non-vacuous, and the pair is what makes it so: only 3..15 are sent
+		// below, so the publication cannot complete unless these three
+		// arrived. A refusal that was really "nothing got through" would
+		// leave the second check red.
+		const bool refused = terminal_palette() == seed;
+		pump(osc4(3, 15), 400);
+		const QVector<QRgb> got = terminal_palette();
+		bool published = got.size() == 16;
+		for (int i = 0; i < got.size() && published; ++i)
+			if (got[i] != qRgb(i * 16, 0, 0)) published = false;
+		printf("info: three OSC 4 replies left the palette %s, and the"
+		       " remaining thirteen left %d entry(ies)\n",
+		       refused ? "as it was" : "changed", int(got.size()));
+		CHECK(refused,
+		      "a partial OSC 4 answer is refused rather than mixed with the"
+		      " scheme already in hand");
+		CHECK(published,
+		      "while the sixteenth reply publishes the terminal's own scheme,"
+		      " down the same path the ground's reply takes");
+		// Cleared, because the palette is process-wide and outlives this
+		// backend: every later check that quantises a colour would otherwise
+		// match against a scheme invented here. Empty is where it stood,
+		// descriptor 0 being a pipe so nothing was ever asked.
+		set_terminal_palette(QVector<QRgb>());
+	}
+
 	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
 	// that carries a legitimate report carries this one, and the guard was
 	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims
@@ -4863,8 +4937,10 @@ int suite_backend() {
 						asked.append(eat, int(n));
 					fflush(stdout);
 					::dup2(keep_out, 1);
-					CHECK(asked.contains("\033]11;?") && asked.contains("\033]10;?"),
-					      "a resume asks the terminal for its ground again,"
+					CHECK(asked.contains("\033]11;?")
+					      && asked.contains("\033]10;?")
+					      && asked.contains("\033]4;0;?"),
+					      "a resume asks the terminal for its colours again,"
 					      " a handover being where a theme change hides");
 
 					// THE ANSWER IS ASSERTED ELSEWHERE, AND NOT BY
@@ -4977,8 +5053,9 @@ int suite_backend() {
 					// the job was stopped is the case this covers, and it is
 					// the likelier of the two -- the user is looking at their
 					// shell when they change it.
-					CHECK(after.contains("\033]11;?"),
-					      "and asks the terminal for its ground again on that"
+					CHECK(after.contains("\033]11;?")
+					      && after.contains("\033]4;0;?"),
+					      "and asks the terminal for its colours again on that"
 					      " route too, which resume() cannot reach");
 				}
 

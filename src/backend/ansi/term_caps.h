@@ -102,6 +102,25 @@ QByteArray tmux_wrap(const QByteArray &payload);
 // the whole of a visible startup delay.
 QByteArray caps_query();
 
+// The two halves of it that a HANDOVER asks again, each named rather than
+// spelled a second time at the second caller. A terminal's colours are not
+// constant -- a desktop theme toggle or the editor a shell-out ran can move
+// them -- and the alternative to naming them here is two copies of one
+// query, which is what queried_modes() below exists to prevent one layer
+// along: its own comment records a list that had already drifted before it
+// was first run.
+//
+// The ground is a PAIR and asking for one half is not a smaller version of
+// asking for both: TerminalGround abstains together, a real background under
+// a guessed foreground being the one combination that can come out
+// unreadable. So this is one query and not two.
+QByteArray ground_query();
+
+// The low sixteen palette entries. Only these: 16 to 255 are a formula every
+// terminal shares, so asking would be 240 round trips to learn what is
+// already known. Several index/? pairs in one OSC, answered one reply each.
+QByteArray palette_query();
+
 // The private modes caps_query() asks DECRQM about, derived from the query
 // itself rather than listed a second time. A tool reporting per-probe results
 // needs to know what was asked, and the first version of that report carried
