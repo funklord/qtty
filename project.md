@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2345 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2348 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1078,6 +1078,7 @@ Owned by the copyright holder:
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
+| **Should a composing frame loop count as a driven session, and how would it say so?** `is_tui_active()` is `s_tuiActive \|\| g_backend != nullptr`, so an application's own loop answers true when it constructs a backend and **false** when it only composes -- `render_once(win, buf)` into a buffer it writes out itself, which `application.h` names as a supported shape and `cell.h` describes as "no backend in the picture". The header's own sentence said a terminal session is driven "by exec(), or by an application's own frame loop", unqualified, and 8.512 corrected it; the behaviour is unchanged and now asserted. **The consequence is Overlay's and it is silent**: measured 2026-10-23, the overlay is registered (`visible_overlays()` is 1) and `render_once()` produces no placement and no inked cell, because overlays are composited in the frame path that reads `backend_->capabilities()` to pick a tier -- while `Overlay::publish()` reads the false flag and builds its GUI twin, a desktop window nobody can see under the platform `prepare_environment()` forces. Two remedies, both public-header changes: a way for such a loop to SAY it is driving a terminal, or `render_once()` compositing overlays itself -- it already takes a placements out-parameter, and overlays are section 5.7 as placements are, so the promise is arguably there already. Reachable only deliberately, which is why it is a question rather than a fix | 8.512, 8.153 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` and `Ctrl+F4` close the tab or the dock the focus is in, under the conventions -- 8.492 and 8.494. Ctrl+W yields to a caret, where it is readline's rub-out; Ctrl+F4 is claimed by nothing and closes from a text field too.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | **~~Should there be a way to force a full repaint, and should `Ctrl+L` be it?~~ BOTH TAKEN** -- the mechanism in 8.318 and the binding in 8.493, on the holder's instruction 2026-10-22: `Ctrl+L` redraws under the conventions, and the row, the chord table, the help list and the guide moved with it. Original row: The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
@@ -18390,6 +18391,49 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.512 A composing frame loop is not a driven session (2026-10-23)
+
+**Found by asking what the GUI/TUI decision actually is.**
+`prepare_environment()` forces the offscreen platform unconditionally, so
+there is no runtime GUI/TUI choice there -- the choice is `is_tui_active()`,
+which `Overlay` branches on, and which had a false sentence in a public
+header.
+
+`application.h` said the flag is *"True while a terminal session is being
+driven -- by exec(), or by an application's own frame loop"*. **There are
+two kinds of own loop** and the sentence is true of one: a loop that
+constructs a backend and presents through it answers true, and a loop that
+only COMPOSES -- `render_once(win, buf)` into a buffer the program writes
+out itself, which the same header names as a supported shape and `cell.h`
+calls "no backend in the picture" -- answers false, the flag being
+`s_tuiActive || g_backend != nullptr`.
+
+**The suite had checked the sentence for one of the two kinds.**
+`suite_backend` asserts the true case, in a fixture holding a real
+`AnsiBackend`, which is 8.153's own seat.
+
+**The consequence is Overlay's and it is silent.** Measured with no
+backend: the overlay IS registered -- `visible_overlays()` is 1 -- and
+`render_once()` produces no placement and `Compositor::compose()` no inked
+cell, because overlays are composited in the frame path that reads
+`backend_->capabilities()` to pick a tier. Meanwhile `Overlay::publish()`
+reads the false flag and builds its GUI twin: a desktop window, under the
+platform `prepare_environment()` forces, that nobody can see. Both halves
+are needed to make it silent, and both are asserted.
+
+**The sentence is corrected and the behaviour is not changed**, which is
+`working-practice.md`'s rule where a document and the code disagree: the
+remedy is a public-header decision and is recorded in section 0b with its
+two shapes. What is fixed here is the claim, which was wrong, and what is
+added is the witness, so the two cannot drift apart again. Asserted as it
+STANDS rather than as it should be, so the day it changes the check goes
+red and the record has to be brought up to date.
+
+**2345 checks to 2348.** No sabotage entry: the behaviour asserted is the
+absence of a feature rather than a guard, and a breakage that made the
+overlay appear would be the remedy rather than a fault.
 
 
 ### 8.511 All five context-menu policies, and the one that cannot be sabotaged (2026-10-23)

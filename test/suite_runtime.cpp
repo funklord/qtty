@@ -197,6 +197,68 @@ int suite_runtime() {
 		CHECK(!is_tui_active(), "exec() clears the TUI flag on the way out");
 	}
 
+	// A COMPOSING FRAME LOOP IS NOT A DRIVEN SESSION, and the public header
+	// said it was. `is_tui_active()` is "true while a terminal session is
+	// being driven -- by exec(), or by an application's own frame loop", and
+	// there are TWO kinds of own loop: one that constructs a backend and
+	// presents through it, and one that only composes, through the public
+	// `render_once()`, writing the buffer out itself. The flag is
+	// `s_tuiActive || g_backend != nullptr`, so the second sets neither and
+	// answers false. 8.512.
+	//
+	// suite_backend already asserts the TRUE case, in a fixture holding a
+	// real AnsiBackend -- which is 8.153's seat -- so the sentence was
+	// checked for one of the two kinds it names.
+	//
+	// THE CONSEQUENCE IS OVERLAY'S AND IT IS SILENT. Overlay reads this flag
+	// to choose between leaving the compositing to the runtime and building
+	// a GUI twin, so a composing loop gets the twin: a desktop window, under
+	// the platform prepare_environment() forces, which nobody can see.
+	// Asserted as it STANDS rather than as it should be -- what should
+	// happen is a public-header decision recorded in section 0b -- so the
+	// day it changes this check goes red and the record has to be brought
+	// up to date, which is this tree's habit for a measured non-decision.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("body")));
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		QImage art(40, 38, QImage::Format_ARGB32);
+		art.fill(QColor(255, 0, 0, 255));
+		Overlay ov;
+		ov.set_image(art);
+		ov.set_rect(QRectF(1, 1, 4, 2));
+		ov.show();
+		QCoreApplication::processEvents();
+
+		CHECK(!is_tui_active() && Overlay::visible_overlays().size() == 1,
+		      "a loop that only composes is not a driven session, and the"
+		      " overlay it registered is registered all the same -- the two"
+		      " halves that make the gap silent");
+
+		CellBuffer buf(30, 8);
+		QVector<CellImage> placements;
+		render_once(win, buf, &placements);
+		int inked = 0;
+		for (int y = 0; y < buf.rows(); ++y)
+			for (int x = 0; x < buf.cols(); ++x)
+				if (buf.at(x, y).bg.kind() != Color::Default) ++inked;
+		CHECK(buf.to_text().contains(QStringLiteral("body")),
+		      "render_once still draws the window, so a frame with no"
+		      " overlay in it is not a frame with nothing in it");
+		CHECK(placements.isEmpty() && inked == 0,
+		      "while the overlay reaches neither the placements nor a cell,"
+		      " overlays being composited in the frame path that reads the"
+		      " backend's capabilities to pick a tier");
+		ov.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ----------------- whether the terminal is dark, which Qt cannot say
 	//
 	// The premise first, because the whole function rests on it: Qt's own

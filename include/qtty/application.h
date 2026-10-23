@@ -419,10 +419,33 @@ void redraw();
 int frame_interval();
 
 // True while a terminal session is being driven -- by exec(), or by an
-// application's own frame loop, which is the seat 8.153 found answering
-// false beside a backend holding the alternate screen. Overlay uses this to
-// pick its rendering path (section 5.7); apps can branch on it for
-// target-specific polish.
+// application's own frame loop THAT HAS A BACKEND, which is the seat 8.153
+// found answering false beside a backend holding the alternate screen.
+// Overlay uses this to pick its rendering path (section 5.7); apps can
+// branch on it for target-specific polish.
+//
+// THE QUALIFICATION IS NEW AND THE SENTENCE WAS WRONG WITHOUT IT. There are
+// two kinds of own loop: one that constructs a backend and presents through
+// it, and one that only composes -- `render_once(win, buf)` into a buffer
+// the program writes out itself. This answers true for the first and FALSE
+// for the second, because it is `s_tuiActive || g_backend != nullptr` and a
+// composing loop sets neither.
+//
+// The consequence is Overlay's, and it is silent. Measured 2026-10-23 with
+// no backend: the overlay is registered -- `visible_overlays()` is 1 -- and
+// `render_once()` produces no placement and `Compositor::compose()` no inked
+// cell, because overlays are composited in the frame path that reads
+// `backend_->capabilities()` to pick a tier. Meanwhile `Overlay::publish()`
+// sees this false and builds its GUI twin, a desktop window nobody can see
+// under the platform `prepare_environment()` forces.
+//
+// What SHOULD happen is a decision rather than a fix, and it is recorded in
+// project.md section 0b: a composing loop could be given a way to say it is
+// driving a terminal, or `render_once()` could composite overlays itself --
+// it already takes a placements out-parameter and overlays are section 5.7
+// as placements are. Both are public-header changes for a case an
+// application reaches only deliberately, so the sentence above is corrected
+// and the remedy is left where decisions of that size are taken.
 bool is_tui_active();
 
 // Render one frame of `win` into `buf` (and collect section 5.7 placements when
