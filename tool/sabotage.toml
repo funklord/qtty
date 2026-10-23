@@ -8183,8 +8183,10 @@ check = "a resume asks the terminal for its colours again, a handover being wher
 # caller, the constructor. 8.518.
 name = "a fresh palette is parsed and published nowhere"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\t\tif (caps_.palette16 != was_palette) publish_palette();\n"
-into = ""
+# Anchored on the call alone, leaving `colors_moved` set: the publication is
+# what this breaks, and the frame the arrival asks for is a different entry's.
+find = "\t\t\t\tpublish_palette();\n\t\t\t\tcolors_moved = true;\n"
+into = "\t\t\t\tcolors_moved = true;\n"
 count = 1
 check = "while the sixteenth reply publishes the terminal's own scheme, down the same path the ground's reply takes"
 
@@ -8197,3 +8199,24 @@ find = "\tfor (QRgb c : caps_.palette16) if (c == 0) return;\n"
 into = ""
 count = 1
 check = "a partial OSC 4 answer is refused rather than mixed with the scheme already in hand"
+
+[[sabotage]]
+# The colours publish and nothing draws, so the fix sits in a variable and the
+# screen keeps the old ground until something unrelated repaints. 8.519.
+name = "a moved ground is published but never drawn"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (colors_moved) redraw();\n"
+into = ""
+count = 1
+check = "while a ground arriving mid-run asks for a frame itself, a publication nobody draws being a fix in a variable"
+
+[[sabotage]]
+# The cell size forgets the uploads and asks for no frame, which is the state
+# the tree was in: a font-size change that leaves the cell count alone told the
+# sink nothing and drew nothing. 8.519.
+name = "a moved cell size forgets the uploads and draws nothing"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\t// frame right; this is what makes there be one.\n\t\t\t\tredraw();\n"
+into = ""
+count = 1
+check = "and so does a cell size, the uploads it forgets being what makes the next frame right rather than what makes there be one"

@@ -2947,6 +2947,87 @@ int suite_backend() {
 		set_terminal_palette(QVector<QRgb>());
 	}
 
+	// A LATE COLOUR CHANGE ASKS FOR A FRAME, which is the half the two
+	// publications above were missing. Every reader of the ground resolves
+	// at FRAME time -- a Default cell's colour, a translucent pixel's
+	// composite, the compositor's kept pixel buffer -- so publishing without
+	// drawing leaves the fix in a variable and the old ground on the screen
+	// until something unrelated repaints. A theme toggled while an idle
+	// program is up has nothing unrelated coming.
+	//
+	// OBSERVED THROUGH A COUNTING BACKEND RATHER THAN THE PTY, and that is
+	// not convenience. Qtty::redraw() fans out over every live
+	// FrameScheduler, which is the mechanism under test, so a scheduler over
+	// a backend that counts present() calls sees exactly what the arrival
+	// path asked for. Driving it through the live pty instead would need
+	// input fed to descriptor 0, which hangs -- the fixture further down
+	// records why -- and a scheduler over an AnsiBackend whose stdout is
+	// this suite's own would write a frame into the middle of these PASS
+	// lines.
+	{
+		struct Counter : ITerminalBackend {
+			int frames = 0;
+			QSize size() const override { return QSize(20, 5); }
+			Capabilities capabilities() const override { return Capabilities(); }
+			void present(const CellBuffer &, const QRegion &) override { ++frames; }
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void suspend() override {}
+			void resume() override {}
+		};
+		Counter counter;
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 5));
+		QLabel label(QStringLiteral("ground"), &win);
+		label.move(0, 0);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter ground_router(&win);
+		Compositor ground_comp(&win, &ground_router);
+		FrameScheduler ground_sched(&counter, &ground_comp, &win);
+		// Settled first, so that anything counted below is the arrival's and
+		// not a frame the scheduler already owed. The second render_now()
+		// has an empty diff and no overlays, so it presents nothing -- which
+		// the assertion depends on and the next line checks.
+		ground_sched.render_now();
+		ground_sched.render_now();
+		const int settled = counter.frames;
+		ground_sched.render_now();
+		const bool quiet = counter.frames == settled;
+		// A colour this backend has not already been told. The arrival check
+		// above left it at #eeeeee, and a reply repeating what caps_ already
+		// holds is correctly no news.
+		feed("\033]11;rgb:3333/4444/5555\033\\");
+		const int after = counter.frames;
+		printf("info: a settled scheduler drew %d frame(s), and an OSC 11"
+		       " reply naming a new ground drew %d more\n",
+		       settled, after - settled);
+		CHECK(quiet,
+		      "a settled frame scheduler presents nothing, which is what"
+		      " makes the next check mean something");
+		CHECK(after > settled,
+		      "while a ground arriving mid-run asks for a frame itself, a"
+		      " publication nobody draws being a fix in a variable");
+		// AND THE CELL SIZE, which is the same fault in the sibling branch
+		// and predates the ground's. A font-size change in the terminal
+		// moves the cell WITHOUT moving the cell count, which is why
+		// read_winch() re-asks the geometry on every SIGWINCH -- and in that
+		// case it returns before telling the sink anything, so the uploads
+		// were forgotten and no frame was ever asked for. Every picture then
+		// stayed at the old scale until something unrelated repainted.
+		ground_sched.render_now();
+		const int before_cell = counter.frames;
+		feed("\033[6;24;12t");
+		printf("info: a cell report naming a new size drew %d frame(s)\n",
+		       counter.frames - before_cell);
+		CHECK(counter.frames > before_cell,
+		      "and so does a cell size, the uploads it forgets being what"
+		      " makes the next frame right rather than what makes there be"
+		      " one");
+		set_terminal_ground(QColor(), QColor());
+	}
+
 	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
 	// that carries a legitimate report carries this one, and the guard was
 	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims

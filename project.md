@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2370 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2373 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46083,3 +46083,75 @@ looked obviously right. Thirteen replies are 286 bytes and `read_input()`
 reads 256 at a time, so one `processEvents()` left the rest in the pipe
 and nothing published. The fix is to pump, bounded; the bound is not the
 assertion, the pair of checks is.
+
+**BOTH LENSES ARE FINISHED, so that nobody sweeps them again.** The first
+is "a process-wide store whose arrival path never updates it", and it is
+exhausted: `set_terminal_ground()` and `set_terminal_palette()` were the
+two instances and both are fixed, `set_wide_clusters()` is re-derived from
+`capabilities()` on every frame by the compositor, `set_theme()` holds an
+AUTHORED table rather than a measured one -- `Color::Default` resolves
+through the ground at use time, which is the design -- and `GridMetrics`
+was 8.516. The second is "a handover duty present on one route only", and
+every duty is now on both: raw mode and the mode strings through
+`leave_terminal()`/`enter_terminal()`, the kitty keyboard flags (already
+there, with a comment recording that a Ctrl+Z and an `fg` would otherwise
+take Ctrl+Shift+letter away for the rest of the run), the title, the
+uploads, the partial input including `in_paste_`, the colours, the
+geometry, the counter and the cursor record. Terminal OWNERSHIP is on
+neither and is right: a stopped job never released it, so there is nothing
+to take back.
+
+**`last_pixel_size_` and `ScrollSettle` were the two near misses.** Both
+look like terminal state a handover invalidates and neither is: the
+compositor resets `prev_` at a handover, so the next frame's damage is the
+whole screen, every kitty tile is replaced and the `delete_all` a stale
+pixel size would trigger has nothing to delete -- and the settle state is
+about a placement's MOTION rather than about anything the terminal holds,
+so the worst a stale one costs is one frame of mosaic before the idle tick
+sharpens it.
+
+### 8.519 A late capability change asks for a frame (2026-10-23)
+
+**8.517 and 8.518 published and did not draw, which is a fix sitting in a
+variable.** Every reader of the ground resolves at FRAME time -- a
+`Color::Default` cell's colour, a translucent pixel's composite, the
+compositor's kept pixel buffer and its fill -- so a reply that moves the
+ground updates three stores and changes nothing on the screen. Something
+unrelated has to repaint first, and a theme toggled while an idle program
+is up has nothing unrelated coming. The same for a palette: the indices
+the user re-mapped are wrong until a cell happens to change.
+
+**`Qtty::redraw()` is the call that exists for this (8.318), and the
+precedent was already mine.** 8.516 ends a late `set_font()` the same way,
+`cw` and `ch` being the other thing every cell resolves through -- so the
+shape was in the tree one record earlier and the two colour records did
+not take it. It resets `prev_`, which is required rather than thorough:
+the CELLS have not changed, so a diff against the previous frame is empty
+and `present()` would write nothing at all. Guarded on the colours having
+MOVED, so a handover on a terminal nobody retuned -- every handover, in
+practice -- costs nothing.
+
+**AND THE CELL SIZE HAD THE SAME FAULT, older than either and found by
+looking at the sibling branch.** A CSI 4/6t reply that moves `cell_px`
+forgets the uploads and asked for nothing. `read_winch()` re-asks the
+geometry on every SIGWINCH precisely because a font-size change in the
+terminal moves the cell WITHOUT moving the cell count -- and in exactly
+that case it returns before telling the sink anything. So every picture
+stayed at the old scale until something unrelated repainted. Forgetting
+the uploads is what makes the next frame right; nothing made there be one.
+
+**The check is observed through a COUNTING BACKEND, and that is not
+convenience.** `redraw()` fans out over every live `FrameScheduler`, which
+is the mechanism under test, so a scheduler over a backend that counts
+`present()` calls sees exactly what the arrival path asked for. The two
+alternatives are both worse: driving it through the live pty needs input
+fed to descriptor 0, which hangs for the reason 8.517 recorded, and a
+scheduler over an `AnsiBackend` whose stdout is the suite's own would
+write a frame into the middle of the PASS lines -- which this file has
+already done once, losing eleven checks while still reporting OK.
+
+**The control is the half that makes it mean anything.** A settled
+scheduler is asserted to present NOTHING on a third `render_now()`, so the
+frame counted afterwards cannot be one the scheduler already owed. Without
+it the check passes against a scheduler that draws on every call, which is
+most of them.

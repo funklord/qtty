@@ -2475,6 +2475,16 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			if (caps_.cell_px.isValid() && caps_.cell_px != was) {
 				forget_uploads();
 				last_pixel_size_ = QSize();
+				// And a frame, by the argument the ground's arrival
+				// carries below. read_winch() asks for this geometry on
+				// every SIGWINCH precisely because a font-size change in
+				// the terminal moves the cell WITHOUT moving the cell
+				// count -- and in that case it returns before telling the
+				// sink anything, so nothing asks for a frame and every
+				// picture stays at the old scale until something else
+				// repaints. Forgetting the uploads is what makes the next
+				// frame right; this is what makes there be one.
+				redraw();
 			}
 			return true;
 		}
@@ -2813,8 +2823,13 @@ bool AnsiBackend::decode_one() {
 			const QVector<QRgb> was_palette = caps_.palette16;
 			scan_caps(pending_.left(n), caps_);
 			pending_.remove(0, n);
-			if (caps_.palette16 != was_palette) publish_palette();
+			bool colors_moved = false;
+			if (caps_.palette16 != was_palette) {
+				publish_palette();
+				colors_moved = true;
+			}
 			if (reported_fg() != was_fg || reported_bg() != was_bg) {
+				colors_moved = true;
 				// The global store, which is the half nothing updated.
 				// capabilities() recomputes from caps_ on every call, so an
 				// application saw the new ground immediately while
@@ -2832,6 +2847,28 @@ bool AnsiBackend::decode_one() {
 				forget_uploads();
 				last_pixel_size_ = QSize();
 			}
+			// AND A FRAME, because a publication nobody draws is a fix
+			// sitting in a variable. Every reader above resolves at
+			// frame time -- a Default cell's colour, a translucent
+			// pixel's composite, the kept pixel buffer's fill -- so the
+			// screen goes on showing the old ground until something
+			// unrelated repaints, and a theme toggled while an idle
+			// program is on screen has nothing unrelated coming.
+			//
+			// redraw() is the call that exists for this (8.318), and
+			// 8.516 set the precedent from the other direction: a late
+			// font change ends the same way, cw and ch being the other
+			// thing every cell resolves through. It resets prev_ so the
+			// next frame is whole, which is required rather than
+			// thorough -- the CELLS have not changed, so a diff against
+			// the previous frame is empty and present() would write
+			// nothing at all.
+			//
+			// Guarded on the colours having MOVED, so a terminal that
+			// re-answers a handover with the scheme it already gave --
+			// which is every handover on a terminal nobody retuned --
+			// costs nothing.
+			if (colors_moved) redraw();
 			return true;
 		}
 		// SS3: ESC O <final>. F1 to F4 arrive this way from xterm and from
