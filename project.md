@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2328 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2332 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,64 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.508 Esc as a quit key, and the popup it quit from behind (2026-10-23)
+
+**The copyright holder asked on 2026-10-23 how far along the TUI
+conventions are, naming "nested menus, enter/esc to go in and out, and esc
+to exit possibly with confirmation", and wanting as little difference from
+the GUI code as possible.** Three gaps from that question were closed the
+same day. This is the Esc half, and the answer turned out to be that the
+feature needed nothing new and one defect removed.
+
+**The confirmation half already exists and is pure Qt.** A quit key closes
+the WINDOW rather than ending the loop -- 8.2xx's own fix, so that an
+application's `closeEvent()` runs -- so "Esc to exit with confirmation" is
+
+        Qtty::set_quit_keys({{Qt::Key_Escape, {}, false, false, false}});
+
+plus an ordinary `closeEvent()` that asks and calls `ignore()`. That is the
+desktop idiom unchanged, which is exactly the "little to no difference"
+the question asked for. Nothing had to be added.
+
+**What it needed was that a quit key stop being matched from behind an
+open popup.** The quit loop is the first thing in `on_key()`, so it ran
+before the popup stack was consulted at all. Measured with that recipe:
+
+        Esc, nothing open        closeEvent asked once, window refused
+        Esc, a menu open         closeEvent asked, AND THE MENU STAYED
+        Esc, in a modal dialog   the dialog was rejected
+
+The middle row is the defect twice over -- the key quit from behind a menu,
+and the menu it should have dismissed did not close -- and it is the row
+that makes Esc unusable as a quit key at all.
+
+**The shape was already named in the file, eleven lines below the loop.**
+The Tab interception's comment reads: *"The same shape as the quit key
+above: an interception before dispatch takes a key from the one widget
+that had a use for it."* Tab was fixed when that was written; the quit key
+was the instance left standing, and the comment has been pointing at it
+since.
+
+**FALLING THROUGH RATHER THAN BEING SWALLOWED**, which is the difference
+from `match_shortcut()`'s guard beside it. That one swallows a matching
+chord, because Qt answers such a key with nothing; here the key has a
+meaning the popup itself provides -- Esc closes a menu -- so swallowing
+would have fixed the quit and left the menu open, which is half the
+measured fault. One line, and which line it is matters.
+
+**2328 checks to 2332, and all three rows are asserted** -- the two that
+were already right are what a careless fix breaks: swallowing stops the
+quit and leaves the menu, and skipping the loop whenever any layer is up
+takes the dialog's Esc as well. The menu's own opening is asserted before
+the row that depends on it, so that row is not a key pressed at nothing.
+
+**The guide carries the recipe now**, and one of its sentences was wrong
+by a word: *"the quit key is tested before anything is dispatched"* is now
+"before the key is dispatched to a widget", with the popup named as the one
+thing it is not tested before. A recorder is not in a popup, so that
+section's advice is unchanged.
 
 
 ### 8.507 The keyboard grab was honoured and the mouse grab was not (2026-10-23)

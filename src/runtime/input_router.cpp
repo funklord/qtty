@@ -2866,7 +2866,33 @@ void InputRouter::on_key(const KeyEvent &k) {
 	// It costs a text-spelled spec nothing: a letter arrives with the
 	// SHIFTED character in `text` and no shift bit, so "Q" and "q" were
 	// already different quit keys and still are.
+	const bool popup_owns_keys = !input_popups().isEmpty();
 	for (const KeyEvent &q : std::as_const(quit_keys_)) {
+		// NOT FROM BEHIND AN OPEN POPUP. This loop is the first thing in the
+		// function, so it was matched before the popup stack was consulted
+		// at all -- and the comment on the Tab interception below names the
+		// shape it shares: "an interception before dispatch takes a key from
+		// the one widget that had a use for it."
+		//
+		// It costs the holder's own use case, 2026-10-23: "esc to exit
+		// possibly with confirmation" is set_quit_keys({Esc}) plus an
+		// ordinary closeEvent(), which is the desktop idiom and needs
+		// nothing new. Measured with exactly that:
+		//
+		//     Esc, nothing open       closeEvent asked once, window refused
+		//     Esc, a menu open        closeEvent asked, AND THE MENU STAYED
+		//     Esc, in a modal dialog  the dialog was rejected
+		//
+		// The middle row is the defect twice over: the key quit from behind
+		// a menu, and the menu it should have dismissed did not close.
+		//
+		// FALLING THROUGH rather than being swallowed, which is the
+		// difference from match_shortcut()'s guard. That one swallows a
+		// matching chord because Qt answers such a key by doing nothing;
+		// here the key has a meaning the popup itself provides -- Esc closes
+		// a menu -- so swallowing it would fix the quit and leave the menu
+		// open, which is half the measured fault.
+		if (popup_owns_keys) break;
 		const bool same_key = q.text.isEmpty()
 		    ? (q.qt_key != 0 && q.qt_key == k.qt_key)
 		    : (q.text == k.text);

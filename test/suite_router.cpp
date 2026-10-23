@@ -11836,6 +11836,108 @@ int suite_router() {
 		      "and the same key, once it is a quit key, is consumed not typed");
 	}
 
+	// ESC AS A QUIT KEY, WITH A CONFIRMATION, which is what the copyright
+	// holder asked for on 2026-10-23 -- "esc to exit possibly with
+	// confirmation" -- and which needs nothing new: set_quit_keys({Esc})
+	// plus an ordinary closeEvent() that calls ignore(). A quit key closes
+	// the WINDOW rather than ending the loop, so the handler runs and a
+	// refusal is honoured, exactly as a desktop close box behaves.
+	//
+	// What it DID need is that a quit key stop being matched from behind an
+	// open popup. The loop is the first thing in on_key(), so it ran before
+	// the popup stack was consulted at all. Measured with exactly the
+	// recipe above:
+	//
+	//     Esc, nothing open       closeEvent asked once, window refused
+	//     Esc, a menu open        closeEvent asked, AND THE MENU STAYED
+	//     Esc, in a modal dialog  the dialog was rejected
+	//
+	// The middle row is the defect twice over -- the key quit from behind a
+	// menu, and the menu it should have dismissed did not close -- and it
+	// is the row that makes Esc unusable as a quit key. The comment on the
+	// Tab interception names the shape: an interception before dispatch
+	// takes a key from the one widget that had a use for it.
+	//
+	// ALL THREE ROWS ARE HERE, because the two that were already right are
+	// what a careless fix breaks: swallowing the key instead of letting it
+	// fall through would stop the quit and leave the menu open, which is
+	// half the fault, and skipping the loop whenever any layer is up would
+	// take the dialog's Esc as well.
+	{
+		struct Guarded : QWidget {
+			int asked = 0;
+			bool allow = false;
+			void closeEvent(QCloseEvent *e) override {
+				++asked;
+				if (allow) e->accept(); else e->ignore();
+			}
+		};
+		Guarded win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *field = new QLineEdit;
+		v->addWidget(field);
+		auto *bar = new QMenuBar(&win);
+		v->setMenuBar(bar);
+		auto *file = bar->addMenu(QStringLiteral("&File"));
+		file->addAction(QStringLiteral("&New"));
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter qr(&win);
+		Qtty::set_current_window(&win);
+		qr.set_quit_keys({{Qt::Key_Escape, QString(), false, false, false}});
+		field->setFocus();
+		QCoreApplication::processEvents();
+
+		qr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(win.asked == 1 && win.isVisible(),
+		      "Esc as a quit key asks the window to close, and a closeEvent"
+		      " that refuses keeps the program up -- the confirmation an"
+		      " application already knows how to write");
+
+		win.asked = 0;
+		file->popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		const bool menu_was_open = file->isVisible();
+		qr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(menu_was_open,
+		      "the menu this asks about really opened, so the row below is"
+		      " not a key pressed at nothing");
+		CHECK(!file->isVisible() && win.asked == 0,
+		      "and Esc with a menu open dismisses the menu and does NOT ask"
+		      " the window to close, a quit key not being matched from"
+		      " behind a popup");
+
+		// The dialog arm, on its own router as the runtime makes one per
+		// window.
+		win.asked = 0;
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.setWindowModality(Qt::ApplicationModal);
+		auto *d_field = new QLineEdit;
+		(new QVBoxLayout(&dlg))->addWidget(d_field);
+		dlg.resize(GridMetrics::cells(20, 4));
+		dlg.show();
+		QCoreApplication::processEvents();
+		InputRouter dr(&dlg);
+		dr.set_quit_keys({{Qt::Key_Escape, QString(), false, false, false}});
+		Qtty::set_current_window(&dlg);
+		d_field->setFocus();
+		QCoreApplication::processEvents();
+		dr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(!dlg.isVisible() && win.asked == 0,
+		      "while Esc in a modal dialog rejects the dialog and leaves the"
+		      " window alone");
+		win.allow = true;
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// The splitter goes last and takes the guard with it, because it lays its
 	// panes out off the grid and always has: a 300px splitter with a one-cell
 	// handle splits evenly into 145/145, before any input is involved. That is

@@ -998,11 +998,31 @@ on a desktop. That was not true until the library was measured against
 this very practice -- the mouse route had been supplied and the keyboard
 one had not. A hover reveal and a drag still need a route you provide.
 
+**Esc to exit, with a confirmation, needs nothing this page has not
+already given you.** It is the desktop idiom and the same code:
+
+```cpp
+Qtty::set_quit_keys({{Qt::Key_Escape, {}, false, false, false}});
+```
+
+and an ordinary `closeEvent()` that asks and calls `ignore()` when the
+answer is no. A quit key closes the window rather than ending the loop, so
+your handler runs and your refusal is honoured -- exactly as a desktop
+close box behaves. Nothing about the terminal changes either half.
+
+**And `Esc` keeps the meanings it already had.** With a menu open it
+dismisses the menu and your window is not asked; in a modal dialog it
+rejects the dialog. A quit key is not matched from behind an open popup,
+which is what makes `Esc` usable as one at all -- measured all three ways,
+and the middle one was a defect until 2026-10-23.
+
 **If your application records shortcuts, drop the quit keys while it
 does.** A `QKeySequenceEdit` is the field that asks the user to press the
-chord they want, and under qtty the quit key is tested before anything is
-dispatched -- so `Ctrl+C`, the default, closes the window while they are
-pressing it. The field is drawn as focused and reads back nothing.
+chord they want, and under qtty the quit key is tested before the key is
+dispatched to a widget -- so `Ctrl+C`, the default, closes the window while
+they are pressing it. The field is drawn as focused and reads back nothing.
+(Before an open popup is the one thing it is NOT tested before, which is
+the paragraph above; a recorder is not in a popup.)
 
 ```cpp
 Qtty::set_quit_keys({});                       // while the recorder has focus

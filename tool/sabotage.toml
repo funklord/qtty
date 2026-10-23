@@ -6849,6 +6849,17 @@ count = 1
 check = "a form of four controls lists four stops, the composites themselves and not the widgets inside them"
 
 [[sabotage]]
+# A quit key matched from behind an open popup, which is how it was: the
+# loop is the first thing in on_key(), so Esc as a quit key asked the
+# window to close while a menu was open AND left the menu open. 8.508.
+name = "a quit key is matched from behind a popup"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (popup_owns_keys) break;"
+into = "\t\tif (false) break;"
+count = 1
+check = "and Esc with a menu open dismisses the menu and does NOT ask the window to close, a quit key not being matched from behind a popup"
+
+[[sabotage]]
 # The explicit mouse grab ignored, which is how it was: a click went to
 # whatever was under the pointer while a widget held grabMouse(), so the
 # grab changed nothing at all -- while the KEYBOARD grab beside it was
