@@ -3725,9 +3725,32 @@ int suite_backend() {
 				::ioctl(slave, TIOCSWINSZ, &ws);
 				::raise(SIGWINCH);
 				for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+				// ACCUMULATED RATHER THAN ONE READ, which every other
+				// byte-reading check in this fixture already does and this
+				// one did not. A single read() returns what happens to be
+				// available, not everything written: the backend puts the
+				// handover's title, its colour queries and this geometry
+				// query out in separate write(2) calls, so a reader that
+				// takes one chunk can stop before the last of them -- and
+				// anything written between the drain above and the read
+				// pushes the query out of the first chunk entirely.
+				//
+				// Measured as a real failure under `make check` on a loaded
+				// machine: 2378 checks of 2379 with nothing skipped, this
+				// check red on `written.contains("\033[16t")` while its
+				// sibling, which reads the sink rather than the wire, passed
+				// -- so the query HAD gone out and the reader missed it.
+				//
+				// The comfortable explanation was the 50 spins being too few
+				// for the signal to arrive, and it is disproved rather than
+				// merely unconfirmed: instrumented over four full runs at
+				// load 180, the resize was already reported before the first
+				// spin and 101 bytes arrived carrying both queries.
+				QByteArray written;
 				char out[4096];
-				const ssize_t got = ::read(master, out, sizeof(out));
-				const QByteArray written(out, got > 0 ? int(got) : 0);
+				ssize_t got;
+				while ((got = ::read(master, out, sizeof(out))) > 0)
+					written.append(out, int(got));
 
 				fflush(stdout);
 				::dup2(slave, 1);

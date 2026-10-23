@@ -8230,3 +8230,14 @@ find = "\t\tif (n == QLatin1String(\"qt_toolbar_ext_button\")) {"
 into = "\t\tif (false) {"
 count = 1
 check = "a toolbar whose actions do not fit marks the extension that holds them, which drew nothing at all and is the only route to what did not fit"
+
+[[sabotage]]
+# crop_placement stops clipping to the grid, so a placement scrolled off the
+# edge answers cells outside the terminal -- which is what the three pixel
+# tiers place by. 8.521.
+name = "crop_placement ignores the grid it is given"
+file = "src/graphics/graphics.cpp"
+find = "\tQRect visible = cell_rect.intersected(QRect(QPoint(0, 0), grid));"
+into = "\tQRect visible = cell_rect;"
+count = 1
+check = "crop_placement never answers cells outside the grid or a source outside the image, which is what the three pixel tiers place and sample by"

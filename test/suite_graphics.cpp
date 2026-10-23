@@ -5,6 +5,7 @@
 #include <QTextFragment>
 #include <QTextCursor>
 #include <cstdio>
+#include <iterator>
 
 using namespace Qtty;
 
@@ -2806,6 +2807,84 @@ int suite_graphics() {
 		      "and a wholly transparent one composes nothing at all");
 	}
 
+
+	// CROP_PLACEMENT AT ITS BOUNDARIES, as an invariant over a table rather
+	// than as a value per case. Three pixel tiers PLACE at what this returns
+	// -- kitty, sixel and iTerm2 -- so a `cells` rectangle outside the grid
+	// is drawn outside the terminal and a `source` outside the image is
+	// sampled off the end of the picture. Those two are the contract, and
+	// nothing asserted them: the existing checks pin particular answers for
+	// particular placements, which cannot catch a thirteenth case nobody
+	// thought of.
+	//
+	// THE INVARIANT ALONE IS VACUOUS and the two controls are what stop it
+	// passing. A function returning an empty rectangle for everything
+	// satisfies "inside the grid" perfectly, so the cases are split: ten
+	// that must come back EMPTY, and three that must come back with exactly
+	// the cells and the source named below. Measured against the tree as it
+	// stands rather than derived here, which is the same rule the sixel
+	// blend constants are pinned under.
+	{
+		struct Case { const char *what; QRect cell_rect; QSize image, grid;
+		              bool has_clip; QRect clip; QRect cells, source; };
+		const Case cases[] = {
+			{ "wholly right of the grid",  QRect(40, 0, 4, 2), QSize(40,38), QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "wholly below the grid",     QRect(0, 40, 4, 2), QSize(40,38), QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "wholly left of the grid",   QRect(-9, 0, 4, 2), QSize(40,38), QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "zero width cell_rect",      QRect(2, 2, 0, 2),  QSize(40,38), QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "zero height cell_rect",     QRect(2, 2, 4, 0),  QSize(40,38), QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "a null image",              QRect(2, 2, 4, 2),  QSize(0,0),   QSize(20,10), false, QRect(), QRect(), QRect() },
+			{ "a null grid",               QRect(2, 2, 4, 2),  QSize(40,38), QSize(0,0),   false, QRect(), QRect(), QRect() },
+			{ "clip misses the placement", QRect(2, 2, 4, 2),  QSize(40,38), QSize(20,10), true, QRect(10,8,2,1), QRect(), QRect() },
+			{ "clip is 0x0 inside it",     QRect(2, 2, 4, 2),  QSize(40,38), QSize(20,10), true, QRect(3,3,0,0),  QRect(), QRect() },
+			{ "clip off the grid",         QRect(2, 2, 4, 2),  QSize(40,38), QSize(20,10), true, QRect(30,30,4,2), QRect(), QRect() },
+			// And the three that must survive, which are the controls.
+			{ "scrolled off the top-left", QRect(-3,-1, 6, 3), QSize(60,57), QSize(20,10), false, QRect(),
+				QRect(0, 0, 3, 2), QRect(30, 19, 30, 38) },
+			{ "bigger than the grid",      QRect(-2,-2,40,40), QSize(400,380), QSize(20,10), false, QRect(),
+				QRect(0, 0, 20, 10), QRect(20, 19, 200, 95) },
+			{ "clipped to one cell",       QRect(2, 2, 4, 2),  QSize(40,38), QSize(20,10), true, QRect(3,3,1,1),
+				QRect(3, 3, 1, 1), QRect(10, 19, 10, 19) },
+		};
+		QStringList outside, wrong;
+		int empty_seen = 0, placed_seen = 0;
+		for (const Case &c : cases) {
+			const CroppedPlacement p =
+			    crop_placement(c.cell_rect, c.image, c.grid, c.has_clip, c.clip);
+			const QRect bounds(0, 0, c.grid.width(), c.grid.height());
+			const QRect pic(0, 0, c.image.width(), c.image.height());
+			if (!p.cells.isEmpty() && !bounds.contains(p.cells))
+				outside << QStringLiteral("%1 cells").arg(QLatin1String(c.what));
+			if (!p.source.isEmpty() && !pic.contains(p.source))
+				outside << QStringLiteral("%1 source").arg(QLatin1String(c.what));
+			if (p.cells != c.cells || p.source != c.source)
+				wrong << QStringLiteral("%1 gave %2,%3 %4x%5 from %6,%7 %8x%9")
+				    .arg(QLatin1String(c.what)).arg(p.cells.x()).arg(p.cells.y())
+				    .arg(p.cells.width()).arg(p.cells.height())
+				    .arg(p.source.x()).arg(p.source.y())
+				    .arg(p.source.width()).arg(p.source.height());
+			if (c.cells.isEmpty()) ++empty_seen; else ++placed_seen;
+		}
+		printf("info: crop_placement over %d boundary case(s): %d must be"
+		       " empty, %d must be placed; outside the grid or the image %d,"
+		       " wrong %d\n", int(std::size(cases)), empty_seen, placed_seen,
+		       int(outside.size()), int(wrong.size()));
+		if (!outside.isEmpty())
+			printf("      outside: %s\n", qPrintable(outside.join(QStringLiteral("; "))));
+		if (!wrong.isEmpty())
+			printf("      wrong: %s\n", qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(outside.isEmpty(),
+		      "crop_placement never answers cells outside the grid or a"
+		      " source outside the image, which is what the three pixel"
+		      " tiers place and sample by");
+		CHECK(wrong.isEmpty(),
+		      "and each boundary case answers exactly what it should, which"
+		      " is what stops the invariant above passing for a function"
+		      " that returns nothing at all");
+		CHECK(empty_seen == 10 && placed_seen == 3,
+		      "and the table keeps both kinds, an all-empty table being the"
+		      " shape that makes the first check vacuous");
+	}
 
 	return fails;
 }

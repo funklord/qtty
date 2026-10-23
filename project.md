@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2376 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2379 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46219,3 +46219,103 @@ second assumed `arrowType` was set, since Qt's own extension button does
 set it in some versions; printing `arrowType` and `features` showed
 otherwise. Section 0d says the instrument has its own bugs and that they
 read as findings -- both of these did.
+
+### 8.521 crop_placement's boundaries, pinned as an invariant (2026-10-23)
+
+**A probe that found no defect, and a contract that was unasserted
+anyway.** Thirteen boundary cases were put through `crop_placement` --
+wholly off each edge, degenerate cell rectangles, a null image, a null
+grid, a placement bigger than the grid, and four clip arrangements
+including a 0x0 clip and one that misses the placement entirely. Every one
+was already correct, including the two that have to do arithmetic: a 6x3
+placement at -3,-1 answers three cells by two with the source advanced 30
+pixels and 19, and a 40x40 placement answers the whole grid from
+20,19 200x95.
+
+**AND THE FIRST VERSION OF THIS ENTRY WAS WRONG ABOUT WHY IT WAS WORTH
+ADDING, which the sabotage run corrected.** It said the contract was
+unasserted. Removing the grid intersection reddens TEN checks, eight of
+them pre-existing -- "a placement above the grid starts at row 0, never
+negative", "a placement entirely off the grid is dropped", "past the
+bottom keeps only the visible rows", "past the right edge keeps only the
+visible columns" and four more -- so grid clipping was already well
+defended, by value, from the tiers that consume it.
+
+**What is actually new is the degenerate half and the FORM.** Three pixel
+tiers place at what this returns -- kitty, sixel and iTerm2 -- so a
+`cells` rectangle outside the grid is drawn outside the terminal and a
+`source` outside the image is sampled off the end of the picture. The
+eight checks above pin particular answers for particular placements, and
+nothing exercised a null grid, a null image, a zero-width or zero-height
+cell rectangle, a clip that misses the placement, a 0x0 clip or a clip off
+the grid. The table adds those seven and states the two containments as an
+invariant over all thirteen, which is the form that can catch a
+fourteenth case nobody thought of.
+
+**The correction is the transferable part.** `evidence.md` says a passing
+check is not evidence until you know what it inspected; this is that
+pointed the other way -- an ABSENT check assumed, where the sabotage run
+named eight that were already there. The number of checks an entry
+reddens is the cheapest available census of what defends a behaviour, and
+it is printed on every run.
+
+**The invariant alone is vacuous, which is the whole design of the
+check.** A function returning an empty rectangle for everything satisfies
+"inside the grid" perfectly. So the table is split and the split is
+asserted: ten cases that must come back EMPTY, three that must come back
+with exactly the cells and the source named, and a third check that the
+table still holds both kinds -- because an all-empty table is the shape
+that would make the first check pass for ever. The expected rectangles
+were measured against the tree rather than recomputed in the check, which
+is the rule the sixel blend constants are already pinned under.
+
+**One sabotage entry, and only one, because the other direction was
+already covered.** Removing the grid intersection reddens the invariant;
+removing the clip intersection was already an entry from 8.502.
+
+### 8.522 A pty check that read once where its siblings loop (2026-10-23)
+
+**The gate caught a real failure while 8.521 was being landed, and it was
+not in the change being landed.** `count-check` reported 2378 of 2379
+with nothing skipped -- which reads exactly like a check having
+disappeared, and section 0c already records that shape -- and the cause
+was a genuine red: *a resize re-asks for the pixel geometry*, on
+`written.contains("\033[16t")`. The uncommitted work at the time touched
+`project.md`, `suite_graphics.cpp` and `tool/sabotage.toml`, none of them
+that check or the library, so it was live at HEAD.
+
+**The comfortable explanation was the spin count, and it is DISPROVED
+rather than merely unconfirmed.** The fixture raises SIGWINCH and spins a
+fixed fifty `processEvents()` before reading, where the rest of this suite
+waits on a condition with a bound -- so "fifty was too few under load"
+is the story that writes itself. Instrumented over four full runs at load
+180: the resize was already reported BEFORE the first spin, every time,
+with 101 bytes on the wire carrying both queries. The spins are ample and
+are left alone.
+
+**What is actually anomalous is the read.** This was the only
+byte-reading check in that fixture taking a SINGLE `::read()`; every
+sibling accumulates in a loop until the descriptor is dry. A single read
+returns what happens to be available rather than everything written --
+the backend puts the handover's title, its colour queries and the
+geometry query out in separate `write(2)` calls -- and anything written
+between the drain and the read pushes the query out of the first chunk
+altogether. The sibling check that reads the SINK rather than the wire
+passed in the failing run, which says the query had gone out and the
+reader missed it.
+
+**It is corrected because a single read is wrong whatever caused that
+run**, and that is the honest claim: the loop is what the fixture's other
+checks do, it cannot be defeated by chunking, and no measurement here
+pins the failing run to a specific cause. Three instrument faults on the
+way, two of them section 0d's own warnings earning their place again: a
+diagnostic `printf` went into the pseudo-terminal and vanished, which is
+the trap that fixture's header records costing it eleven checks once
+before; and running the `backend` suite alone shows two failures
+regardless, because two of its checks depend on state earlier suites
+leave -- so a single-suite run cannot measure this at all.
+
+**And the count was the instrument that found it.** A short count with no
+skips is what `count-check` exists to print, and section 0c's own entry
+on hand counts now has three causes rather than two: a skip, a capture
+that merges stderr into stdout, and a check that really failed.
