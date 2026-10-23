@@ -264,17 +264,27 @@ AnsiBackend::AnsiBackend() {
 	// light terminal both halves of that invert. An invalid QColor is how
 	// this says the terminal did not answer, so a terminal that says nothing
 	// leaves the old behaviour exactly as it was.
-	set_terminal_ground(
-	    caps_.fg_known ? QColor(caps_.fg[0], caps_.fg[1], caps_.fg[2])
-	                   : QColor(),
-	    caps_.bg_known ? QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2])
-	                   : QColor());
+	publish_ground();
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
 	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
 	watch_clipboard();
 }
 
 AnsiBackend::~AnsiBackend() { suspend(); }
+
+QColor AnsiBackend::reported_fg() const {
+	return caps_.fg_known ? QColor(caps_.fg[0], caps_.fg[1], caps_.fg[2])
+	                      : QColor();
+}
+
+QColor AnsiBackend::reported_bg() const {
+	return caps_.bg_known ? QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2])
+	                      : QColor();
+}
+
+void AnsiBackend::publish_ground() {
+	set_terminal_ground(reported_fg(), reported_bg());
+}
 
 Capabilities AnsiBackend::capabilities() const {
 	Capabilities c;
@@ -283,15 +293,13 @@ Capabilities AnsiBackend::capabilities() const {
 	c.unicode_placements = use_placeholders(caps_, depth_);
 	c.cell_px = caps_.cell_px;                      // invalid until it answers
 	c.background_known = caps_.bg_known;
-	if (caps_.bg_known)
-		c.background = QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2]);
+	if (caps_.bg_known) c.background = reported_bg();
 	// Reported independently of the background, because the two replies are
 	// independent: a terminal that answers OSC 11 and ignores OSC 10 exists,
 	// and the pair is what Qtty::color_scheme() needs before it will answer
 	// anything but Unknown.
 	c.foreground_known = caps_.fg_known;
-	if (caps_.fg_known)
-		c.foreground = QColor(caps_.fg[0], caps_.fg[1], caps_.fg[2]);
+	if (caps_.fg_known) c.foreground = reported_fg();
 
 	// These four were fields nobody set and nobody read. They are answers
 	// about this backend now, and each is answerable because resume() asks
@@ -407,6 +415,36 @@ void AnsiBackend::query_geometry() {
 	(void)n;                           // a terminal that will not answer is fine
 }
 
+// And ask again for the GROUND -- OSC 11 for the background, OSC 10 for the
+// foreground. The same two the startup query carries, and the answer comes
+// back the same way the geometry's does: on stdin, through the string-sequence
+// branch of decode_one(), which hands it to scan_caps().
+//
+// It is asked at each handover rather than once, because a terminal's
+// background is not a constant and every reader of it treats the stored
+// answer as current. A desktop theme toggle, a profile switch, or the editor
+// a shell-out ran leaving the scheme changed, all end with every translucent
+// edge composited against a ground that is gone -- and with section 6's
+// contrast check measuring a terminal that no longer exists.
+//
+// Both halves, always, because they abstain together: TerminalGround says so
+// in as many words, a real background under a guessed foreground being the
+// one combination that can come out unreadable. Asking for one would let the
+// pair drift apart across a handover, which is worse than the stale pair it
+// replaces.
+//
+// Wrapped for tmux exactly as the startup query is. An unwrapped OSC 11
+// inside tmux is answered by TMUX with its own background, so the two asks
+// would reach different responders and the ground would appear to move at
+// the first handover on every multiplexed session. Where passthrough is off
+// the wrapper is eaten, nothing answers, and the stored pair stands -- which
+// is the right answer for a tmux that will not forward a query.
+void AnsiBackend::query_ground() {
+	if (!tty_out_) return;
+	const QByteArray q = QByteArrayLiteral("\033]11;?\033\\\033]10;?\033\\");
+	write_out(inside_tmux() ? tmux_wrap(q) : q);
+}
+
 void AnsiBackend::read_winch() {
 	char drain[64];
 	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
@@ -484,6 +522,16 @@ void AnsiBackend::read_winch() {
 		// drove a handover through suspend()/resume() is what disproved the
 		// claim, having been written to confirm it.
 		forget_uploads();
+		// AND THE GROUND, which is the fourth thing this route owes and was
+		// missing for exactly the reason the paragraph above sets out. The
+		// re-ask went into resume() first, which covers a shell-out and
+		// reaches nothing here: s_handovers moves only in
+		// qtty_cont_handler(), and a plain suspend/resume moves no counter,
+		// so this block does not fire for one and resume() does not fire for
+		// the other. A theme changed while the job was STOPPED -- which is
+		// where somebody goes to change it, their shell being in front of
+		// them -- would otherwise never be asked about again.
+		query_ground();
 	}
 
 	winsize ws{};
@@ -1040,6 +1088,20 @@ void AnsiBackend::resume() {
 	// shell-out reaches this and no counter, so read_winch()'s copy covers
 	// Ctrl+Z and nothing else.
 	if (!first_resume_) forget_partial_input();
+	// And the GROUND, which query_ground() argues for at length. It goes
+	// AFTER forget_partial_input() rather than before, and the reason is
+	// not that the order matters today: nothing between the two turns the
+	// event loop, so no reply can arrive in between and either order works.
+	// It is that the discard exists to throw away everything half-decoded,
+	// and a query whose answer it could reach would lose that answer
+	// silently -- so the two lines are kept in the order that cannot go
+	// wrong when somebody adds something between them.
+	//
+	// Not on the first resume, for the reason read_winch() is not: the
+	// constructor's caps_query() carries both OSC queries already, and
+	// asking again would spend a round trip to learn what collect_caps()
+	// has just been told.
+	if (!first_resume_) query_ground();
 	first_resume_ = false;
 }
 
@@ -2713,8 +2775,34 @@ bool AnsiBackend::decode_one() {
 			const int n = parse_string_sequence();
 			if (n < 0) return false;              // still arriving
 			if (n == 0) { pending_.remove(0, 1); return true; }   // over the cap
+			// What the ground was, so that a reply which moves it can be
+			// told from the many that do not. Compared as the PAIR
+			// capabilities() publishes rather than on caps_.bg_known and six
+			// bytes: the comparison then asks the same question an
+			// application would, and a terminal that re-answers with the
+			// colour it already gave -- which is every handover on a
+			// terminal whose theme did not change -- is correctly no news.
+			const QColor was_fg = reported_fg(), was_bg = reported_bg();
 			scan_caps(pending_.left(n), caps_);
 			pending_.remove(0, n);
+			if (reported_fg() != was_fg || reported_bg() != was_bg) {
+				// The global store, which is the half nothing updated.
+				// capabilities() recomputes from caps_ on every call, so an
+				// application saw the new ground immediately while
+				// Color::luminance() went on answering from the pair the
+				// constructor published -- one fact with two readers, one of
+				// which moved. The symptom is section 6's contrast check
+				// measuring a terminal that is no longer there, which it
+				// reports as violations in the application's colours.
+				publish_ground();
+				// And every upload, for the reason a changed cell size
+				// forgets them: the software-composite tier rasterises
+				// against the ground before uploading, and ImageEncodeKey
+				// does not carry it -- so a picture composited against the
+				// old background is a cache hit for ever.
+				forget_uploads();
+				last_pixel_size_ = QSize();
+			}
 			return true;
 		}
 		// SS3: ESC O <final>. F1 to F4 arrive this way from xterm and from

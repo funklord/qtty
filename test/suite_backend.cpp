@@ -2830,6 +2830,49 @@ int suite_backend() {
 		rec.clear();
 	}
 
+	// A GROUND THAT ARRIVES MID-RUN, which is the other half of the
+	// handover re-ask asserted against the live pty further down. The reply
+	// is an ordinary OSC string sequence, so it comes through the same
+	// branch of decode_one() as any other and `scan_caps()` takes it --
+	// that part worked before anything asked for it.
+	//
+	// WHAT IS ASSERTED IS THAT THE TWO READERS AGREE, not that either holds
+	// a particular colour, because one of them moved on its own:
+	// capabilities() recomputes from caps_ on every call, while
+	// set_terminal_ground() -- the global store Color::Default's luminance
+	// resolves through, and what section 6's contrast check runs on every
+	// emitted cell -- was called once, in the constructor. So a check
+	// written on the published background alone was green against the
+	// defect.
+	//
+	// A LIGHT ground, and this backend's descriptor 0 is a pipe rather than
+	// a terminal, so nothing was ever asked and nothing is known: the
+	// unanswered default for a Default background is the dark constant, and
+	// a dark reply would be a few luminance points from it.
+	feed("\033]11;rgb:eeee/eeee/eeee\033\\");
+	{
+		const Capabilities ground_caps = backend.capabilities();
+		const int ink = Color().luminance(false);
+		printf("info: a mid-run OSC 11 reply -> published %s, Default"
+		       " luminance %d\n",
+		       ground_caps.background_known
+		           ? qPrintable(ground_caps.background.name()) : "(unknown)",
+		       ink);
+		CHECK(ground_caps.background_known
+		      && ground_caps.background == QColor(0xee, 0xee, 0xee)
+		      && ink > 200,
+		      "a ground arriving mid-run moves both the published background"
+		      " and the ground every colour conversion reads");
+		CHECK(rec.keys.isEmpty() && rec.pastes.isEmpty(),
+		      "and the reply is not also typed into the application, which"
+		      " is what the string-sequence branch exists for");
+		// Put the global store back, because it outlives this backend and
+		// every later check in this binary runs against it. Invalid is
+		// where it stood: descriptor 0 is a pipe here, so the constructor
+		// published a pair it had never been told.
+		set_terminal_ground(QColor(), QColor());
+	}
+
 	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
 	// that carries a legitimate report carries this one, and the guard was
 	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims
@@ -4787,6 +4830,58 @@ int suite_backend() {
 					      " having popped it on the way out");
 				}
 
+				// THE GROUND, which is the third thing a handover gives
+				// back and the first that nothing ever asked for twice. It
+				// was read once, by the constructor's caps_query(), and
+				// every reader treats the stored answer as current: the
+				// half-block tier composites translucent edges against it,
+				// the software-composite tier fills its kept pixel buffer
+				// with it, and section 6's contrast check runs
+				// Color::luminance() on it for every emitted cell.
+				//
+				// A terminal's background is not a constant. A desktop theme
+				// toggle, a profile switch, or the editor a shell-out ran
+				// leaving the scheme changed, all end with qtty drawing
+				// against a ground that is gone -- and with
+				// Qtty::capabilities() handing an application a measurement
+				// from before the handover as a current fact.
+				//
+				// Asserted on the BYTES, as the title above is, because what
+				// is wrong is what the terminal is asked: a check written on
+				// a flag would be satisfied by a backend that set one and
+				// sent nothing.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					while (::read(master, eat, sizeof(eat)) > 0) { }
+					live.suspend();
+					live.resume();
+					QByteArray asked;
+					ssize_t n;
+					while ((n = ::read(master, eat, sizeof(eat))) > 0)
+						asked.append(eat, int(n));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(asked.contains("\033]11;?") && asked.contains("\033]10;?"),
+					      "a resume asks the terminal for its ground again,"
+					      " a handover being where a theme change hides");
+
+					// THE ANSWER IS ASSERTED ELSEWHERE, AND NOT BY
+					// CHOICE. Feeding this pty would be the natural way to
+					// finish the case here, and it hangs: `backend` is
+					// alive for the whole of this function with its own
+					// QSocketNotifier on descriptor 0, which the fixture
+					// has pointed at this pty, so two handlers wake on one
+					// byte and the one that loses the race calls read(0) on
+					// an empty blocking descriptor and never returns.
+					// Measured with a backtrace -- read_input() inside
+					// processEvents(), 45 seconds into the suite's own
+					// watchdog. The arrival half runs against the Feeder
+					// instead, which is the fixture built for exactly this
+					// and has one reader.
+				}
+
 				// C1 AND THE SEPARATORS, which the title's own sanitiser
 				// let through. It strips `c < 0x20 || c == 0x7f` -- C0 and
 				// DEL -- and the library's own is_control() in
@@ -4874,6 +4969,17 @@ int suite_backend() {
 					CHECK(after.contains("\033]2;back from a stop"),
 					      "and a SIGCONT puts it back too, which is the route"
 					      " a Ctrl+Z actually takes");
+					// AND THE GROUND, on this route rather than resume()'s.
+					// The two do not reach each other: s_handovers moves
+					// only in qtty_cont_handler(), so the block that fires
+					// here is skipped by a suspend/resume, and the call in
+					// resume() is skipped by a Ctrl+Z. A theme changed while
+					// the job was stopped is the case this covers, and it is
+					// the likelier of the two -- the user is looking at their
+					// shell when they change it.
+					CHECK(after.contains("\033]11;?"),
+					      "and asks the terminal for its ground again on that"
+					      " route too, which resume() cannot reach");
 				}
 
 				// The cursor record across the same handover, for an

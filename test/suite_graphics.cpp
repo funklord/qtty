@@ -2404,6 +2404,60 @@ int suite_graphics() {
 		      && QRgb(half_rast.pixels.pixel(plain) & 0xffffffu)
 		         == QRgb(qRgb(16, 20, 24) & 0xffffffu),
 		      "and is not enough to rasterise a cell, which needs the pair");
+
+		// THE KEPT PIXEL BUFFER, under a ground that moves. Every case above
+		// drives one frame through a fresh compositor, which is the one
+		// arrangement in which this cannot go wrong: the buffer is filled
+		// with the background and then repainted only where the damage says,
+		// so the fill is the only thing that ever writes an undamaged cell
+		// -- and on a first frame every cell is damaged.
+		//
+		// A ground that moved mid-run was unreachable until the backend
+		// learned to re-ask it at a handover, which is why a resize was the
+		// only thing that discarded the buffer. Two frames through ONE
+		// compositor, with a SMALL damage rectangle on the second, is the
+		// only shape that can ask the question: with no damage at all the
+		// rasteriser is handed the whole grid and repaints it by accident.
+		{
+			Ground rec;
+			rec.caps.graphics = Qtty::Capabilities::Sixel;
+			rec.caps.background_known = true;
+			rec.caps.background = QColor(0, 0, 0);
+			rec.caps.foreground_known = true;
+			rec.caps.foreground = QColor(255, 255, 255);
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(12, 4));
+			// One cell of text at the far corner from `plain`, so that
+			// changing it damages a rectangle the check reads outside of.
+			QLabel spot(QStringLiteral("a"), &win);
+			spot.move(0, 0);
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rec, &comp, &win);
+			Overlay ov;
+			ov.set_image(tint);
+			ov.set_rect(QRectF(1, 1, 4, 2));
+			ov.show();
+			sched.render_now();
+			const QRgb was = QRgb(rec.pixels.pixel(plain) & 0xffffffu);
+			// The terminal answers with a light background, which is the
+			// theme toggle the handover re-ask exists to catch, and one cell
+			// changes with it.
+			rec.caps.background = QColor(255, 255, 255);
+			rec.caps.foreground = QColor(0, 0, 0);
+			spot.setText(QStringLiteral("b"));
+			QCoreApplication::processEvents();
+			sched.render_now();
+			const QRgb now = QRgb(rec.pixels.pixel(plain) & 0xffffffu);
+			printf("info: an undamaged cell reads %06x before the ground"
+			       " moves and %06x after\n", unsigned(was), unsigned(now));
+			CHECK(lum(was) < 60 && lum(now) > 200,
+			      "a ground that moves discards the kept pixel buffer, an"
+			      " undamaged cell having nothing else left to repaint it");
+		}
 	}
 
 	// THE PRODUCER'S CLIP, in the mosaic tier. Like the placeholder tier it

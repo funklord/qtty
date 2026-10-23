@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2363 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2368 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -141,6 +141,19 @@ process group, and the kernel then discards the stop signal that check
 sends. Reproduced by making the condition true rather than by waiting for
 it -- `setsid --wait ./build-test/qtty-tests` gives 2055 passed, 0 failed,
 1 skipped, exit 0.
+
+**A SECOND CAUSE OF THE SAME SYMPTOM, and it is the instrument rather
+than the suite.** Captured with `2>&1` the hand count came out two short
+of `count-check` -- 2361 against 2363 -- and with no `FAIL` anywhere,
+which reads exactly like two checks having silently stopped running. They
+had not. stdout is block-buffered to a file and stderr is not, so a
+stderr write lands inside a flushed block and breaks the line it lands
+in: one `PASS:` ended up behind the pty fixture's restore sequence and
+another was split outright, so neither matched `^PASS`. The commands
+recorded in sections 0c, 0d and 7 say `2>/dev/null` for this reason. It cost
+two full baseline builds to establish, both of which found the library
+blameless -- HEAD's own PASS list and the changed library's were
+identical, which is the measurement that should have been taken first.
 
 **And `count-check` does not read the suite's exit status**, which this
 paragraph claimed it did. It counted the `PASS:` lines and nothing else,
@@ -1079,7 +1092,7 @@ Owned by the copyright holder:
 | **~~Should a late `set_font()` WORK rather than warn?~~ TAKEN on the holder's instruction 2026-10-23: it works -- 8.516.** The row's own cost analysis held: the re-measure is `GridMetrics::set()` and the re-lay is `InputRouter::on_resize()`, which already knows that a modal is centred and a popup anchored. What the row did not name is the three things the work turned up -- that a late call must REFUSE a bad font rather than take the program down as `setup()` does, that `is_tui_active()` is the wrong question for "is this late" (8.512's conflation, inherited from 8.414), and that the relayout must not fire with no backend driving, where `terminal_cells()` is invalid. Original row: It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should a composing frame loop count as a driven session, and how would it say so?** `is_tui_active()` is `s_tuiActive \|\| g_backend != nullptr`, so an application's own loop answers true when it constructs a backend and **false** when it only composes -- `render_once(win, buf)` into a buffer it writes out itself, which `application.h` names as a supported shape and `cell.h` describes as "no backend in the picture". The header's own sentence said a terminal session is driven "by exec(), or by an application's own frame loop", unqualified, and 8.512 corrected it; the behaviour is unchanged and now asserted. **The consequence is Overlay's and it is silent**: measured 2026-10-23, the overlay is registered (`visible_overlays()` is 1) and `render_once()` produces no placement and no inked cell, because overlays are composited in the frame path that reads `backend_->capabilities()` to pick a tier -- while `Overlay::publish()` reads the false flag and builds its GUI twin, a desktop window nobody can see under the platform `prepare_environment()` forces. Two remedies, both public-header changes: a way for such a loop to SAY it is driving a terminal, or `render_once()` compositing overlays itself -- it already takes a placements out-parameter, and overlays are section 5.7 as placements are, so the promise is arguably there already. Reachable only deliberately, which is why it is a question rather than a fix | 8.512, 8.153 |
-| **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
+| **~~Should the terminal's background be re-measured, and how?~~ TAKEN on the holder's instruction 2026-10-23, by the first of the three options: it is re-asked at each handover -- 8.517.** Two of the row's three cost claims were wrong by the time it was taken. The decoder had stopped discarding an OSC 11 reply -- `decode_one()` hands every string sequence to `scan_caps()`, which is additive by design -- so the published background was already live and nothing asked; and "leaving it costs the fallback tier only" was wrong in two places, the software-composite tier rasterising every `Color::Default` cell on the ground and section 6's contrast check reading it on every emitted cell. What the row did not have is that a reply was HALF-APPLIED: `set_terminal_ground()`, which `Color::Default`'s luminance resolves through, was called once in the constructor, so a fresh ground reached applications and never reached the colour conversions. **`DECSET 2031` is still open and still the holder's** -- it would cover a theme toggle with no handover, which this does not, and the arrival path is already ready for the unsolicited reply it produces. Original row: It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160, 8.517 |
 | **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` and `Ctrl+F4` close the tab or the dock the focus is in, under the conventions -- 8.492 and 8.494. Ctrl+W yields to a caret, where it is readline's rub-out; Ctrl+F4 is claimed by nothing and closes from a text field too.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | **~~Should there be a way to force a full repaint, and should `Ctrl+L` be it?~~ BOTH TAKEN** -- the mechanism in 8.318 and the binding in 8.493, on the holder's instruction 2026-10-22: `Ctrl+L` redraws under the conventions, and the row, the chord table, the help list and the guide moved with it. Original row: The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
 | **Which mark should a drop indicator carry?** A view draws `PE_IndicatorItemViewItemDrop` while something is dragged into it, and `Qtty::exec_drag()` makes that reachable -- its contract is to deliver the enter, move, leave and drop events. Measured: the between-rows form draws a ten-cell rule on BLANK cells and **nothing at all** over the items, and the on-item form touches nothing even on a clean buffer. The mechanism is not a bug -- `clear_run` in `cell_paint.cpp` refuses a horizontal rule into any run holding a non-blank cell, which exists because a rule landing on a label put a box-drawing glyph in place of every space. That rule is right for frames and rules, and a drop indicator is neither: it is feedback, and the cells it wants are the ones an item's name is in. **The remedy needs a MARK and the vocabulary has none free** -- reverse is selected, underline is current -- so which one a provisional drop carries is a visual convention. Related to the four-row mark cluster above and not the same question: that one asks what a drawn mark BECOMES, this asks which mark a state should be GIVEN. Asserted as it stands, so a producer added later reddens a check | 8.343 |
@@ -45885,3 +45898,123 @@ and was right to, since it could not see which commit it was running.
 `working-practice.md` asks whether a question has already been answered
 somewhere else under another name before it is deferred, and this one had
 been answered by a commit.
+
+### 8.517 The terminal's ground is re-asked at each handover (2026-10-23)
+
+**Section 0b's row, taken on the holder's instruction to pick another and
+do it.** OSC 11 was in the startup query and nowhere else, so the
+background every tier draws against was measured once -- and a terminal's
+background is not a constant. A desktop theme toggle, a profile switch, or
+the editor a `shell_out()` ran leaving the scheme changed all end with
+qtty compositing against a ground that is gone, with section 6's contrast
+check measuring a terminal that no longer exists, and with
+`Qtty::capabilities()` handing an application a measurement from before
+the handover as a current fact.
+
+**Re-asking at each handover, which the row names first and prices
+correctly.** `resume()` already re-measures the geometry, the title and
+the uploads for the same reason -- the terminal may have changed while it
+was somebody else's -- and the ground is as likely to have moved as the
+size. One query per handover, both halves of it, because
+`TerminalGround` says in as many words that the pair abstains together: a
+real background under a guessed foreground is the one combination that can
+come out unreadable, so asking for one would let the pair drift apart
+across a handover. It is wrapped for tmux exactly as the startup query is,
+and the reason is not symmetry: an unwrapped OSC 11 inside tmux is
+answered by TMUX with its own background, so the two asks would reach
+different responders and the ground would appear to move at the first
+handover of every multiplexed session.
+
+**The row's stated cost was already paid, and it was the only part of the
+row that had gone stale.** It says the re-ask "needs the decoder to stop
+discarding an OSC 11 reply". The decoder stopped doing that at some point
+before this work: `decode_one()`'s string-sequence branch hands every OSC,
+DCS, APC, PM and SOS sequence to `scan_caps()` and has done since the
+branch learned about the capability channel, and `scan_caps()` is additive
+by design -- its header says it "may be called again as more bytes arrive
+and again later for a reply that turns up during normal input".
+`capabilities()` recomputes from `caps_` on every call, so the published
+background was already live. Nothing asked, which is why nobody noticed
+that half of it worked.
+
+**And a reply was HALF-APPLIED, which is the defect the row did not
+have.** `set_terminal_ground()` -- the global store every colour
+conversion reads, and what `Color::Default`'s luminance resolves through
+-- was called in exactly one place, the constructor. So a ground arriving
+mid-run reached applications through `capabilities()` and never reached
+`Color::luminance()`: one fact, two readers, one of which moved. The
+symptom is section 6's contrast check running against the terminal the
+program started on, reporting violations in colours that are fine on the
+terminal the user is looking at and missing the ones that are not. The
+arrival path now compares the pair before and after `scan_caps()` and
+republishes when it moves, which is also what forgets the uploads --
+`ImageEncodeKey` carries `cell_px` and `font_px` and not the ground, so a
+picture the software tier composited against the old background would
+otherwise be a cache hit for ever. That is the same remedy, for the same
+reason, as a changed cell size three lines further up the same function.
+
+**The third reader is the compositor's kept pixel buffer, and it fails
+permanently rather than for one frame.** `pixels_` is filled with the
+background once and then repainted only where the damage says, so the fill
+is the only thing that ever writes an undamaged cell -- and it ran only
+when the grid resized, that being "the one thing that makes every pixel in
+it wrong at once". A moved ground is the second thing, and it was
+unreachable until this change, which is why the comment was true when it
+was written. Left alone it gives a frame in two backgrounds, split along
+whatever last happened to change. The buffer now remembers the background
+it was filled with and refills when that moves, exactly as it does for a
+size.
+
+**Five checks, and the shape of each is chosen against a cheaper one
+that would pass for the wrong reason.** The handover check asserts on the
+BYTES the terminal is sent, as the title's handover check beside it does,
+because a check written on a flag would be satisfied by a backend that set
+one and sent nothing -- and there are two of it, one per route, for the
+reason the next paragraph gives. Beside the arrival check sits a control
+that the reply did not ALSO arrive as keystrokes, which is the fault the
+string-sequence branch was written for and the one a new reader of this
+path would reintroduce. The arrival check asserts that the published
+background and `Color::Default`'s luminance AGREE after a reply, not that
+either has a particular value -- the published half moved on its own
+before this work, so a check on it alone was green against the defect. And
+the pixel-buffer check drives TWO frames through ONE compositor with a
+small damage rectangle on the second, because every other case in that
+fixture builds a fresh compositor per frame, which is the one arrangement
+where the fault cannot occur: with no damage at all the rasteriser is
+handed the whole grid and repaints it by accident.
+
+**AND IT WENT IN ON ONE OF THE TWO ROUTES FIRST, which the file it was
+written into warns about in as many words.** A handover reaches qtty two
+ways and only one of them is a call: a shell-out goes through
+`suspend()`/`resume()`, and a Ctrl+Z goes through `qtty_cont_handler()`,
+which runs `enter_terminal()` -- the part of `resume()` a signal handler
+may run -- and nudges the SIGWINCH pipe, so the restore work for that
+route lives in `read_winch()`. That block already carried three duties
+for exactly this reason, and the comment above them records the title
+having been fixed in `resume()` alone, going green in the suite, and
+leaving the chat example still showing the shell's title after a real
+Ctrl+Z and `fg`. The ground re-ask was written the same way and had the
+same gap, found by reading the other route rather than by anything
+failing. It is the likelier half, too: a user changing their terminal's
+theme is looking at their shell while they do it, which means they are
+stopped rather than shelled out.
+
+**`last_pixel_size_` looked like the same shape and is not**, which is
+worth recording because it is the obvious next suspicion. The kitty tile
+path deletes every placement when the pixel frame's size moves, and
+nothing resets that size on a handover -- but the compositor resets
+`prev_` there, so the next frame's damage is the whole screen, every tile
+is replaced, and the `delete_all` the stale size would have triggered has
+nothing left to delete. Checked rather than filed.
+
+**What is left for the holder is the other two options the row names**,
+neither of which this forecloses. `DECSET 2031` is a subscription --
+kitty, ghostty and foot send an unsolicited OSC 11 when the scheme changes
+-- and it would cover a theme toggle with no handover, which this does
+not: the arrival path is ready for it, since an unsolicited reply is
+decoded and published by exactly the lines above, so what 2031 needs is
+the capability detection and the mode in `kEnter`. Leaving it is no longer
+one of the three, the row's own argument for it having been that the cost
+falls on the fallback tier alone, which was wrong in two places: the
+software-composite tier rasterises every `Color::Default` cell on the
+ground, and the contrast check reads it on every emitted cell.

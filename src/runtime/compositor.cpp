@@ -1697,9 +1697,19 @@ void FrameScheduler::render_now() {
 		// A resized grid makes every pixel wrong at once, and there is no
 		// previous image to repair -- so the region becomes everything and
 		// the buffer is made afresh.
-		if (pixels_.size() != want) {
+		//
+		// A MOVED GROUND IS THE SECOND THING THAT DOES THAT, and until the
+		// backend learned to re-ask at a handover there was no way for it to
+		// happen, which is why only the size was tested. This buffer is
+		// filled with the background and then repainted only where the
+		// damage says, so every cell the damage does not reach keeps the old
+		// background -- for the rest of the run, the fill being the only
+		// thing that writes it. The visible result is a frame in two
+		// backgrounds, split along whatever last changed.
+		if (pixels_.size() != want || pixels_ground_ != ground.default_bg) {
 			pixels_ = QImage(want, QImage::Format_ARGB32_Premultiplied);
 			pixels_.fill(ground.default_bg);
+			pixels_ground_ = ground.default_bg;
 			pix = QRegion(0, 0, frame.cols(), frame.rows());
 		}
 		const QRect cells_r = pix.isEmpty()

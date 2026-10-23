@@ -877,9 +877,21 @@ private:
 	// have to be rasterised into it. Rasterising 200x60 measures 18.4 ms
 	// against section 11's 16 ms budget, so on the software-composite path
 	// the render is the cost and damage-limiting the TRANSMISSION saved none
-	// of it. Discarded when the grid resizes, which is the one thing that
-	// makes every pixel in it wrong at once.
+	// of it. Discarded when the grid resizes or the terminal's background
+	// moves, which are the two things that make every pixel in it wrong at
+	// once -- the second being invisible until the backend learned to re-ask
+	// the ground at a handover, and then permanent, because the fill is the
+	// only thing that ever writes an undamaged cell.
 	QImage pixels_;
+	// The background `pixels_` was filled with, so that a ground which moves
+	// is news. Kept beside the image rather than read back from it: a pixel
+	// sampled out of the buffer has whatever was composited over it, and the
+	// cell at 0,0 is the one an overlay is most likely to cover.
+	//
+	// Zero is a safe "never filled", not a colour: `qRgb()` sets the alpha
+	// byte, so every ground this is ever compared against has 0xff in its
+	// top octet and none of them can collide with it.
+	QRgb pixels_ground_ = 0;
 };
 
 } // namespace Qtty

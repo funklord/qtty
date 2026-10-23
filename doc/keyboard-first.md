@@ -2265,7 +2265,16 @@ cost -- the window title, the cell size if the window was resized while
 the child had it, and the whole screen, since leaving the alternate
 screen clears it.
 
-Three things are worth knowing.
+Four things are worth knowing.
+
+**The terminal's colours are measured again, so `Qtty::color_scheme()`
+may answer differently afterwards.** The child may have changed the
+scheme, and so may the user while it was up, so qtty asks the terminal
+for its background and foreground at every handover rather than trusting
+the pair it read at startup. The answer arrives a moment later, like
+everything else the terminal says. If your program paints itself from
+the scheme -- *Practice 14* above -- read it again after `shell_out()`
+returns rather than keeping what you decided at startup.
 
 **Use the body, not a pair of calls.** The terminal comes back even if
 the body throws, and there is no second call to forget. That is the only

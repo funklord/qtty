@@ -6262,8 +6262,14 @@ check = "and again after a shell-out it did not survive"
 [[sabotage]]
 name = "a SIGCONT leaves the upload map claiming the terminal still holds them"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tforget_uploads();\n\t}"
-into = "\t}"
+# Anchored on the comment line above the call rather than on the closing
+# brace below it. The brace form broke the moment this block gained a fourth
+# duty -- the ground re-ask of 8.517 -- because it depended on forget_uploads()
+# being the LAST statement in the block, which is not a property of the thing
+# being sabotaged. The bare call is not unique: two deeper copies of the same
+# line sit in decode_one().
+find = "\t\t// claim, having been written to confirm it.\n\t\tforget_uploads();\n"
+into = "\t\t// claim, having been written to confirm it.\n"
 count = 1
 check = "and again after a SIGCONT, which is the route a Ctrl+Z actually takes"
 
@@ -8115,3 +8121,47 @@ find = "\t\tconst QVariant v = fw->testAttribute(Qt::WA_InputMethodEnabled)\n\t\
 into = "\t\tconst QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);"
 count = 1
 check = "a window wider than the terminal scrolls to its focus and brings the WHOLE control in, not the one cell a plain QWidget calls its cursor"
+
+[[sabotage]]
+# resume() stops asking for the ground, so the background is what it was when
+# the program started and a theme changed during a shell-out is invisible.
+# 8.517.
+name = "a handover does not re-ask the ground"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!first_resume_) query_ground();\n\tfirst_resume_ = false;"
+into = "\tfirst_resume_ = false;"
+count = 1
+check = "a resume asks the terminal for its ground again, a handover being where a theme change hides"
+
+[[sabotage]]
+# The reply reaches caps_ and stops there, which is the state the tree was in:
+# capabilities() recomputes and the global store does not, so an application
+# is told the new ground while every colour conversion keeps the old one.
+# 8.517.
+name = "a fresh ground is published to applications and not to Color"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tpublish_ground();\n"
+into = ""
+count = 1
+check = "a ground arriving mid-run moves both the published background and the ground every colour conversion reads"
+
+[[sabotage]]
+# The kept pixel buffer goes back to being discarded on a resize alone, so a
+# ground that moves repaints only the damaged cells and the frame comes out in
+# two backgrounds. 8.517.
+name = "a moved ground does not discard the kept pixel buffer"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (pixels_.size() != want || pixels_ground_ != ground.default_bg) {"
+into = "\t\tif (pixels_.size() != want) {"
+count = 1
+check = "a ground that moves discards the kept pixel buffer, an undamaged cell having nothing else left to repaint it"
+
+[[sabotage]]
+# The Ctrl+Z route stops re-asking, leaving the re-ask in resume() -- which
+# covers a shell-out and cannot reach this one. 8.517.
+name = "a stopped job comes back without re-asking the ground"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tquery_ground();\n\t}\n"
+into = "\t}\n"
+count = 1
+check = "and asks the terminal for its ground again on that route too, which resume() cannot reach"

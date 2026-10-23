@@ -14,6 +14,7 @@
 #include <QSet>
 #include <QHash>
 #include <QRect>
+#include <QColor>
 #include <QVector>
 #include "../../qt_compat.h"
 
@@ -278,6 +279,21 @@ private:
 	ScrollSettle settle_;                         // section 5.7, sixel/iTerm2 only
 	QElapsedTimer clock_;
 	void query_geometry();                        // re-ask after a resize
+	void query_ground();                          // re-ask after a handover
+	// The ground as this backend reports it: the terminal's answer, or an
+	// invalid QColor where it did not answer. Three sites spelled this
+	// ternary out -- the constructor, capabilities() and nothing else that
+	// needed to agree with them -- and the TerminalGround comment in
+	// present() records what that costs: the next site copies the rule or
+	// never learns there was one.
+	QColor reported_fg() const;
+	QColor reported_bg() const;
+	// Hand the pair to the global store every colour conversion reads. It
+	// was called once, from the constructor, while capabilities() recomputed
+	// its own copy on every call -- so a ground that moved mid-run was
+	// published to applications and withheld from Color::luminance(), which
+	// section 6's contrast check runs on every emitted cell.
+	void publish_ground();
 	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	// The kitty upload-once cache, and the id the terminal holds each upload
