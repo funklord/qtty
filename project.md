@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2311 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2316 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,80 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.505 The two modalities are different rules (2026-10-23)
+
+**The lens again, and it has now paid three times from one sentence:** for
+every Qt mechanism this library replaces, compare the preconditions.
+`QShortcutMap` was 8.503 and the focus chain 8.504. This is modal
+blocking.
+
+`input_scope()` asked `QApplication::activeModalWidget()` and returned it.
+That names the topmost modal **whatever it is modal to**, and
+`QWidget::isModal()` is `windowModality() != Qt::NonModal` -- true for both
+kinds -- so nothing anywhere in the tree distinguished them.
+
+**Qt's rule is two rules.** `Qt::ApplicationModal` blocks every window;
+`Qt::WindowModal` blocks only where the two WINDOW CHAINS MEET --
+`QApplicationPrivate::isWindowBlocked()` walks every ancestor of the window
+against every ancestor of the modal and blocks on a match. So a
+window-modal dialog opened on one window took the keys of every other
+window in the application: a second window nothing could type into, which
+is 8.194's shape by a different route.
+
+**The first instrument measured the platform instead of the subject.** It
+asked whether a blocked window could still be activated, which is public
+and sounded decisive. Under the offscreen QPA it is not: with an
+APPLICATION-modal dialog up the blocked window activated anyway, and the
+modal's own parent activated under a window-modal child. Three rows of
+reassuring output about a question the instrument cannot see.
+
+What answers it is Qt's own platform path --
+`QWindowSystemInterface::handleKeyEvent`, which is where blocking is
+applied -- with a control, so the refusals are not a probe that delivered
+nothing:
+
+        case                   Qt                    here
+        control, no modal      a key reaches B       (instrument works)
+        WindowModal on A       reaches B             reached the DIALOG
+        WindowModal on A       A is blocked          blocked (right)
+        ApplicationModal       B is blocked          blocked (right)
+
+**THE ANCESTRY ESCAPE IS QT'S FIRST TEST AND IS NOT OPTIONAL.** A window
+the modal is an ancestor of is not blocked by it, or a `QMessageBox`
+opened from a modal dialog could never be typed into -- and this library
+shows one itself, `application.cpp` setting `ApplicationModal` on its box.
+It comes before the modality test because it holds for both. Writing the
+fix without it would have traded one lockout for another.
+
+**A modal lower in Qt's stack can block this window while the topmost does
+not**, two windows each being able to carry their own window-modal dialog,
+so the rest are found among the top-levels -- which is where the
+compositor already looks for the modals it draws. The order among several
+is that list's, which is not a stack order; it decides only which of two
+modals blocking one window gets the keys, and is written down rather than
+left to be discovered.
+
+**The compositor's two `isModal()` sites are right either way** and are
+left alone: one keeps a modal out of the window strip and the other hands
+it to the modal stack to draw. Both are about drawing, which does not turn
+on which windows are blocked.
+
+**2311 checks to 2316, and all four rows are asserted.** The two that were
+already right are the half that matters: a fix which merely stopped
+blocking everything would satisfy the new row and break the other three.
+The fixture asserts its premise first -- that Qt calls this dialog the
+active modal -- because that is exactly what made the old code look
+correct.
+
+**Two sabotage entries, and one re-anchored.** The new ones collapse the
+two modalities into one and remove the ancestry escape. The re-anchored
+one is 8.107's `input goes to the router's own window rather than the
+current one`, whose expression moved from the function's return to a local
+at the top: the per-window modal test needs the window before it can ask
+which modal blocks it. `--validate` found it, for the third day running.
+`--validate` passes over all 728.
 
 
 ### 8.504 A widget with a focus proxy was counted as a tab stop (2026-10-23)

@@ -7224,6 +7224,129 @@ int suite_router() {
 	}
 
 
+	// THE TWO MODALITIES ARE DIFFERENT RULES, not degrees of one. 8.505.
+	//
+	// input_scope() asked QApplication::activeModalWidget() and returned it,
+	// which names the topmost modal whatever it is modal TO. So a
+	// Qt::WindowModal dialog opened on one window took the keys of every
+	// other window in the application -- a second window nothing could type
+	// into, which is 8.194's shape by a different route.
+	//
+	// Qt's rule, measured through its own platform path on ordinary windows.
+	// QWindowSystemInterface rather than activateWindow(), because under the
+	// offscreen QPA activation honours no blocking at all: a first probe had
+	// an application-modal dialog up and the blocked window activated
+	// anyway, which measures the platform and not modality. With a control,
+	// so the refusals are not a probe that delivered nothing:
+	//
+	//     control, no modal     a key reaches window B
+	//     WindowModal on A      Qt: reaches B       here: reached the DIALOG
+	//     WindowModal on A      Qt: A is blocked    here: blocked (right)
+	//     ApplicationModal      Qt: B is blocked    here: blocked (right)
+	//
+	// ALL FOUR ROWS ARE HERE, and the two that were already right are the
+	// half that matters: a fix which merely stopped blocking everything
+	// would pass the first row and break the other three. The fourth case is
+	// the ancestry escape -- a box opened FROM a modal is not blocked by it,
+	// which is Qt's first test and which this library needs for itself,
+	// application.cpp showing an application-modal box of its own.
+	{
+		QWidget a;
+		a.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *a_field = new QLineEdit;
+		(new QVBoxLayout(&a))->addWidget(a_field);
+		a.resize(GridMetrics::cells(30, 5));
+		a.show();
+		QWidget b;
+		b.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *b_field = new QLineEdit;
+		(new QVBoxLayout(&b))->addWidget(b_field);
+		b.resize(GridMetrics::cells(30, 5));
+		b.show();
+		QCoreApplication::processEvents();
+
+		QDialog win_modal(&a);
+		win_modal.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *wm_field = new QLineEdit;
+		(new QVBoxLayout(&win_modal))->addWidget(wm_field);
+		win_modal.setWindowModality(Qt::WindowModal);
+		win_modal.resize(GridMetrics::cells(20, 4));
+		win_modal.show();
+		QCoreApplication::processEvents();
+
+		const auto type_at = [](InputRouter &r, QWidget *win, QWidget *field,
+		                        const char *ch) {
+			Qtty::set_current_window(win);
+			field->setFocus();
+			QCoreApplication::processEvents();
+			r.on_key({0, QString::fromLatin1(ch), false, false, false});
+			QCoreApplication::processEvents();
+		};
+
+		// The premise: Qt really has a modal up, and it is the window kind.
+		CHECK(QApplication::activeModalWidget() == &win_modal
+		      && win_modal.windowModality() == Qt::WindowModal,
+		      "a window-modal dialog is what Qt calls the active modal, so"
+		      " asking that question alone cannot tell the two apart");
+
+		InputRouter rb(&b);
+		type_at(rb, &b, b_field, "x");
+		CHECK(b_field->text() == QStringLiteral("x") && wm_field->text().isEmpty(),
+		      "a window-modal dialog on one window leaves another window"
+		      " typeable, rather than taking its keys");
+
+		InputRouter ra(&a);
+		wm_field->clear();
+		type_at(ra, &a, a_field, "p");
+		CHECK(a_field->text().isEmpty()
+		      && wm_field->text() == QStringLiteral("p"),
+		      "while the window it IS modal to is blocked, which is what"
+		      " window modality is for");
+
+		// A box opened FROM the modal: the modal is its ancestor, so it is
+		// not blocked by it.
+		QDialog box(&win_modal);
+		box.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *box_field = new QLineEdit;
+		(new QVBoxLayout(&box))->addWidget(box_field);
+		box.setWindowModality(Qt::ApplicationModal);
+		box.resize(GridMetrics::cells(18, 3));
+		box.show();
+		QCoreApplication::processEvents();
+		InputRouter rbox(&box);
+		type_at(rbox, &box, box_field, "z");
+		CHECK(box_field->text() == QStringLiteral("z"),
+		      "and a box opened FROM a modal is typeable, the modal being its"
+		      " ancestor -- which this library needs for the box it shows"
+		      " itself");
+		box.hide();
+		win_modal.hide();
+		QCoreApplication::processEvents();
+
+		// AN APPLICATION-MODAL DIALOG BLOCKS THE UNRELATED WINDOW, which is
+		// the row that keeps the fix honest: without it, "stop blocking
+		// everything" would satisfy every check above.
+		QDialog app_modal(&a);
+		app_modal.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *am_field = new QLineEdit;
+		(new QVBoxLayout(&app_modal))->addWidget(am_field);
+		app_modal.setWindowModality(Qt::ApplicationModal);
+		app_modal.resize(GridMetrics::cells(20, 4));
+		app_modal.show();
+		QCoreApplication::processEvents();
+		b_field->clear();
+		type_at(rb, &b, b_field, "y");
+		CHECK(b_field->text().isEmpty()
+		      && am_field->text() == QStringLiteral("y"),
+		      "an application-modal dialog blocks an unrelated window, so"
+		      " the fix is which modal blocks what rather than fewer of"
+		      " them blocking");
+		app_modal.hide();
+		a.hide();
+		b.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// A WHEEL NOTHING TAKES, INSIDE A MODAL. Branch coverage found this:
 	// the walk up the parent chain had never once run out of parents, and
 	// `if (w == top) break;` -- the line that stops it escaping the input

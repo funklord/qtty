@@ -247,9 +247,76 @@ bool InputRouter::is_popup_layer(const QWidget *w) {
 // arrow-key scroll fallback -- because the window manager that enforces that
 // on the desktop is not here and Qt's own modal blocking runs in the platform
 // layer we bypass with synthetic events.
+// Does this modal block that window? Qt's own rule, and the two modalities
+// are different rules rather than degrees of one.
+//
+// `Qt::ApplicationModal` blocks every window; `Qt::WindowModal` blocks only
+// where the two WINDOW CHAINS MEET -- QApplicationPrivate::isWindowBlocked()
+// walks every ancestor of the window against every ancestor of the modal and
+// blocks on a match. input_scope() asked QApplication::activeModalWidget()
+// and stopped there, which names the topmost modal whatever it is modal TO,
+// so a window-modal dialog opened on one window took the keys of every
+// other.
+//
+// Measured through Qt's own platform path -- QWindowSystemInterface, because
+// activateWindow() under the offscreen QPA honours no blocking at all and
+// measuring with it answers a question about the platform rather than about
+// modality -- and with a control, so the refusals are not a probe that never
+// delivered anything:
+//
+//     control, no modal      a key reaches window B
+//     WindowModal on A       Qt: reaches B        here: reached the DIALOG
+//     WindowModal on A       Qt: A is blocked     here: blocked (right)
+//     ApplicationModal       Qt: B is blocked     here: blocked (right)
+//
+// The second row is a lockout -- a second window nothing could type into --
+// which is 8.194's shape reached by a different route.
+//
+// THE ANCESTRY ESCAPE IS QT'S FIRST TEST AND IS NOT OPTIONAL. A window the
+// modal is an ancestor of is not blocked by it, or a QMessageBox opened from
+// a modal dialog could never be typed into -- and this library opens one
+// itself, application.cpp setting ApplicationModal on the box it shows. It
+// comes before the modality test because it holds for both.
+static bool modal_blocks(const QWidget *modal, const QWidget *w) {
+	if (!modal || !w || modal == w) return false;
+	// The chain is parentWidget()->window(), which is the widget-level
+	// spelling of QWindow::parent() falling back to transientParent(): a
+	// dialog's parent widget is the window it belongs to.
+	const auto up = [](const QWidget *x) -> const QWidget * {
+		QWidget *const p = x->parentWidget();
+		return p ? p->window() : nullptr;
+	};
+	for (const QWidget *x = w; x; x = up(x))
+		if (x == modal) return false;
+	// Asked as "not WindowModal" rather than "== ApplicationModal", so a
+	// modality Qt adds later blocks rather than leaks.
+	if (modal->windowModality() != Qt::WindowModal) return true;
+	for (const QWidget *x = w; x; x = up(x))
+		for (const QWidget *y = modal; y; y = up(y))
+			if (x == y) return true;
+	return false;
+}
+
 QWidget *InputRouter::input_scope() const {
-	QWidget *m = QApplication::activeModalWidget();
-	if (m) return m;
+	QWidget *const mine = cur_ ? cur_.data() : win_.data();
+	// WHICH MODAL BLOCKS THIS WINDOW, rather than whether one exists.
+	if (QWidget *m = QApplication::activeModalWidget())
+		if (modal_blocks(m, mine)) return m;
+	// A modal LOWER in the stack can block this window while the topmost one
+	// does not: two windows may each carry their own window-modal dialog, and
+	// activeModalWidget() names only the top of Qt's stack. The rest are
+	// found among the top-levels, which is where the compositor already looks
+	// for the modals it draws.
+	//
+	// The order among several is this list's, which is not a stack order --
+	// it matters only for a window blocked by two modals at once, and the
+	// keys go to one of them either way. Named rather than left to be
+	// discovered.
+	const auto tops = QApplication::topLevelWidgets();
+	for (QWidget *w : tops) {
+		if (w == mine || !w->isVisible() || !w->isModal()) continue;
+		if (modal_blocks(w, mine)) return w;
+	}
 	// cur_, not win_, once a compositor has told us the drawn window moved.
 	// win_ is the window this router was CONSTRUCTED with, and a router that
 	// never looked past it sent every key into the primary window however
@@ -269,7 +336,7 @@ QWidget *InputRouter::input_scope() const {
 	// the repair is delivered after the memory is gone. Every caller that
 	// dereferences this either checks it or sits behind one of the guards
 	// at the top of on_key(), on_mouse(), on_paste() and on_resize().
-	return cur_ ? cur_.data() : win_.data();
+	return mine;
 }
 
 void InputRouter::set_input_window(QWidget *w) {

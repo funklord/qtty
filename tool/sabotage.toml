@@ -1204,10 +1204,14 @@ check = "a menu wider than the terminal shows its item names"
 # The router keeping the window it was constructed with. Every key then
 # goes to the primary window whichever one is drawn, so text typed at a
 # second window appears in the first one, off screen. 8.107.
+#
+# Re-anchored 8.505: the expression moved from input_scope()'s return to a
+# local at the top of it, the per-window modal test needing the window
+# before it can ask which modal blocks it. Same edit, same fault.
 name = "input goes to the router's own window rather than the current one"
 file = "src/runtime/input_router.cpp"
-find = "\treturn cur_ ? cur_.data() : win_.data();"
-into = "\treturn win_.data();"
+find = "\tQWidget *const mine = cur_ ? cur_.data() : win_.data();"
+into = "\tQWidget *const mine = win_.data();"
 count = 1
 check = "on screen and not the one left behind"
 
@@ -6804,6 +6808,29 @@ find = "\t\tconst CellClip bound(dev, cells_of_rect(visible_rect(w), w,\n\t\t   
 into = "\t\tconst CellClip bound(dev, cells_of_rect(w->rect(), w, dev->origin));"
 count = 1
 check = "a cell-painted widget taller than its viewport is handed its whole rect and writes only the rows the viewport shows"
+
+[[sabotage]]
+# The two modalities treated as one, which is how it was: input_scope()
+# returned activeModalWidget() whatever it was modal TO, so a window-modal
+# dialog on one window took the keys of every other. 8.505.
+name = "a window-modal dialog blocks every window"
+file = "src/runtime/input_router.cpp"
+find = "\tif (modal->windowModality() != Qt::WindowModal) return true;"
+into = "\tif (true) return true;"
+count = 1
+check = "a window-modal dialog on one window leaves another window typeable, rather than taking its keys"
+
+[[sabotage]]
+# The ancestry escape removed, which is Qt's own first test: a window the
+# modal is an ancestor of is not blocked by it, and without that a box
+# opened FROM a modal cannot be typed into. This library shows one itself.
+# 8.505.
+name = "a box opened from a modal is blocked by it"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (x == modal) return false;"
+into = "\t\tif (false) return false;"
+count = 1
+check = "and a box opened FROM a modal is typeable, the modal being its ancestor -- which this library needs for the box it shows itself"
 
 [[sabotage]]
 # The focus-proxy test removed from tab_stop(), which is how it was: a
