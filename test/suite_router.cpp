@@ -1469,6 +1469,112 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// AN ACTION'S OWNER STATE, which this walk asked for widgets and not for
+	// actions. 8.506, and the same hole 8.503 closed in the enumerator
+	// beside this one.
+	//
+	// The inconsistency WITHIN the walk is the argument: its widget arm
+	// filters on visibility and enablement, so a BUTTON on the hidden page
+	// of a QStackedWidget claims no letter, while an ACTION on that same
+	// page claimed one. Measured: Alt+Z triggered an action on a page the
+	// user was not on, and Alt+Q one whose owner was disabled.
+	//
+	// QT IS NOT THE STANDARD HERE, and the check says so because the next
+	// reader will reach for it. A plain QAction's `&` gets no shortcut from
+	// Qt at all -- measured, QAction::shortcut() is empty where
+	// QPushButton's is "Alt+B" -- so Alt+letter reaching a toolbar action is
+	// qtty's own rule, wider than Qt's and documented as such. What makes it
+	// a defect is qtty's own terms: a key that activates something the user
+	// cannot see does something they cannot predict.
+	//
+	// THE MENU CARVE-OUT IS HALF THE CHECK, as it was for chords. A menu
+	// bar's "&File" is associated with the bar and a submenu's actions with
+	// the QMenu, which is hidden while closed -- so an owner test written as
+	// isVisible() silences every menu letter in every application. Alt+F
+	// must still open the menu, and that is asserted beside the refusals,
+	// because either alone is satisfied by the wrong implementation.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *stack = new QStackedWidget;
+		v->addWidget(stack);
+		auto *shown = new QWidget, *hidden = new QWidget;
+		auto *field = new QLineEdit;
+		(new QVBoxLayout(shown))->addWidget(field);
+		(new QVBoxLayout(hidden))->addWidget(new QLabel(QStringLiteral("off")));
+		stack->addWidget(shown);
+		stack->addWidget(hidden);
+		stack->setCurrentIndex(0);
+
+		int on_hidden = 0, on_disabled = 0, control = 0;
+		auto *zap = new QAction(QStringLiteral("&Zap"), hidden);
+		QObject::connect(zap, &QAction::triggered, [&] { ++on_hidden; });
+		hidden->addAction(zap);
+		auto *off = new QWidget(&win);
+		off->setEnabled(false);
+		auto *quell = new QAction(QStringLiteral("&Quell"), off);
+		QObject::connect(quell, &QAction::triggered, [&] { ++on_disabled; });
+		off->addAction(quell);
+		auto *go = new QAction(QStringLiteral("&Go"), shown);
+		QObject::connect(go, &QAction::triggered, [&] { ++control; });
+		shown->addAction(go);
+
+		auto *bar = new QMenuBar(&win);
+		v->setMenuBar(bar);
+		auto *file = bar->addMenu(QStringLiteral("&File"));
+		file->addAction(QStringLiteral("&New"));
+
+		win.resize(GridMetrics::cells(40, 10));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		field->setFocus();
+		QCoreApplication::processEvents();
+		CHECK(!hidden->isVisible() && !off->isEnabled() && !file->isVisible(),
+		      "the fixture has a hidden page, a disabled owner and a closed"
+		      " menu, so the refusals below are not a form that hid nothing");
+		r.on_key({Qt::Key_G, QStringLiteral("g"), false, true, false});
+		r.on_key({Qt::Key_Z, QStringLiteral("z"), false, true, false});
+		r.on_key({Qt::Key_Q, QStringLiteral("q"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(control == 1,
+		      "a letter on a visible enabled owner still answers");
+		CHECK(on_hidden == 0 && on_disabled == 0,
+		      "while an action on a hidden page claims no letter, nor one"
+		      " whose owner is disabled -- which is what this walk already"
+		      " did for a button and did not for an action");
+		r.on_key({Qt::Key_F, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(file->isVisible(),
+		      "and a menu bar's letter still opens its menu, a closed QMenu"
+		      " being hidden and not the question");
+		file->close();
+		QCoreApplication::processEvents();
+
+		// THE REPORT reads the same walk, so it invented a collision: a
+		// visible button and a hidden page's action claiming one letter,
+		// where only one of them can ever answer.
+		auto *clash = new QPushButton(QStringLiteral("&Zoom"));
+		shown->layout()->addWidget(clash);
+		clash->show();
+		QCoreApplication::processEvents();
+		CHECK(clash->isVisible(),
+		      "and the clashing button really is visible -- a child made on"
+		      " a parent that is already shown is not, until it is shown,"
+		      " which made the first version of this fixture vacuous");
+		bool accused_z = false;
+		for (const auto &c : mnemonic_conflicts(&win))
+			if (c.first == QLatin1Char('z')) accused_z = true;
+		CHECK(!accused_z,
+		      "so the conflict report no longer accuses an application of a"
+		      " collision between a button it can see and an action on a"
+		      " page it is not on");
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- the page's first table, row by row --------------------------------
 	//
 	// `doc/keyboard-first.md` opens with "What already works, unmodified" --
@@ -5292,7 +5398,19 @@ int suite_router() {
 		bar->setGeometry(0, 5 * ch, 30 * cw, ch);
 		QMenu *menu = bar->addMenu(QStringLiteral("&Save as"));
 		menu->addAction(QStringLiteral("nothing"));
+		// SHOWN, and it was not. A child made on a parent that is already
+		// visible is not itself visible until shown, and `host.show()` is
+		// forty lines above this -- so the bar was invisible and this check
+		// passed with a menu nobody could see claiming the letter. 8.506
+		// made an action's owner state part of the claim and the check
+		// failed, which is the fixture's premise being accidental rather
+		// than the rule being wrong: a hidden menu bar draws nothing, so a
+		// letter reaching it would activate something invisible.
+		bar->show();
 		QCoreApplication::processEvents();
+		CHECK(bar->isVisible(),
+		      "the menu bar this asks about is visible, which is what makes"
+		      " its letter a claim at all");
 		const int before_left = in_left, before_right = in_right;
 		field->setFocus();
 		QCoreApplication::processEvents();

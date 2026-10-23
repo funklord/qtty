@@ -813,6 +813,12 @@ struct MnemonicClaim {
 //
 // Tabs are deliberately NOT here; they are appended to the claims below,
 // under the conventions gate that is the reason they are a claim at all.
+// Declared with the chord enumerator, which owns them: the owner-state rule
+// is one rule, and a second spelling of it here is what this file's own
+// history says costs months.
+static QVector<const QWidget *> owners_of(const QAction *a);
+static bool owners_can_answer(const QVector<const QWidget *> &owners);
+
 static QVector<MnemonicClaim> mnemonic_candidates(QWidget *scope) {
 	QVector<MnemonicClaim> out;
 	if (!scope) return out;
@@ -825,6 +831,31 @@ static QVector<MnemonicClaim> mnemonic_candidates(QWidget *scope) {
 	QSet<const QObject *> counted;
 	for (QAction *a : mnemonic_actions(scope)) {
 		if (!a->isEnabled() || a->isSeparator()) continue;
+		// THE OWNER'S STATE, which this asked for widgets and not for
+		// actions -- the same hole 8.503 closed in shortcut_claims(), in the
+		// enumerator beside it. 8.506.
+		//
+		// The inconsistency is the sharpest argument for the fix: the widget
+		// arm below filters on `!w->isVisible() || !w->isEnabled()`, so a
+		// BUTTON on the hidden page of a QStackedWidget claims no letter,
+		// while an ACTION on that same page claimed one. Measured: Alt+Z
+		// triggered an action on a page the user was not on, and Alt+Q one
+		// whose owner was disabled.
+		//
+		// Qt is not the standard here and saying so matters. A plain
+		// QAction's `&` gets no shortcut from Qt at all -- measured,
+		// QAction::shortcut() is empty where QPushButton's is "Alt+B" -- so
+		// Alt+letter reaching a toolbar action is qtty's own rule, wider
+		// than Qt's and documented as such. What makes this a defect is
+		// qtty's own terms: a key that activates something the user cannot
+		// see is a key that does something they cannot predict.
+		//
+		// And mnemonic_conflicts() reads this walk, so it accused an
+		// application of a collision between a visible button and a hidden
+		// page's action -- measured, "'z': &Zap, &Zoom" -- where only one of
+		// the two can ever answer. That is 8.503's argument for putting the
+		// test in the enumerator rather than in the matcher, arriving again.
+		if (!owners_can_answer(owners_of(a))) continue;
 		if (counted.contains(a)) continue;
 		counted.insert(a);
 		out.append({mnemonic_of(a->text()), a, a->text(), -1, 0});

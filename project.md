@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2316 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2323 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,68 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.506 The same hole in the enumerator beside it (2026-10-23)
+
+**8.503 closed an owner-state hole in `shortcut_claims()`. There are two
+claim enumerators**, and the other one had it too. That is this tree's
+oldest lesson -- two walks of one tree is two chances to describe
+different programs -- arriving where the fix for one walk did not reach
+the other.
+
+`mnemonic_candidates()` filters WIDGETS on `!w->isVisible() ||
+!w->isEnabled()`, which is right because the widget IS the claimant, and
+filters ACTIONS on `a->isEnabled()` alone. So a BUTTON on the hidden page
+of a `QStackedWidget` claimed no letter while an ACTION on that same page
+claimed one. Measured: Alt+Z triggered an action on a page the user was
+not on, and Alt+Q one whose owner was disabled, with Alt+G on a visible
+owner as the control.
+
+**Qt is not the standard here, and the entry says so because the next
+reader will reach for it.** A plain `QAction`'s `&` gets no shortcut from
+Qt at all -- measured by reading the property rather than by sending a
+key: `QAction::shortcut()` is empty where `QPushButton::shortcut()` is
+`Alt+B`. So Alt+letter reaching a toolbar action is qtty's own rule, wider
+than Qt's and documented as such in the guide. What makes this a defect is
+qtty's own terms: a key that activates something the user cannot see does
+something they cannot predict. **The inconsistency inside one walk is the
+argument**, not a disagreement with Qt.
+
+**And `mnemonic_conflicts()` reads the same walk**, so it invented a
+collision: measured, `'z': &Zap, &Zoom` for a visible button and a hidden
+page's action, where only one of the two can ever answer. That is 8.503's
+reason for putting the test in the enumerator rather than the matcher,
+reached again.
+
+**The fix is the same function, not a second spelling of it.**
+`owners_can_answer()` and `widget_can_answer()` are forward-declared here
+and defined with the chord enumerator, so the popup carve-out comes with
+them: Alt+F still opens a menu bar's menu, a closed `QMenu` being hidden
+and not the question. Asserted beside the refusals, because either half
+alone is satisfied by the wrong implementation.
+
+**AN EXISTING CHECK FAILED, AND IT WAS THE FIXTURE.** *"A menu claiming
+the same letter still takes it from both buttons, near or far"* went red.
+Its menu bar is created forty lines after `host.show()`, and a child made
+on a parent that is already visible is not itself visible until shown --
+so that check had been passing with a menu bar **nobody could see**
+claiming the letter. The rule is right: a hidden menu bar draws nothing,
+so a letter reaching it would activate something invisible. The bar is
+shown now, and its visibility is asserted, which is what makes its letter
+a claim at all.
+
+**The same trap took my own probe first**, which is why I recognised it: a
+clashing button created on the shown page reported no conflict, and the
+reason was that the button was not visible either. The fixture asserts
+that premise now too.
+
+**2316 checks to 2323.** One sabotage entry added, one re-anchored --
+8.174's `a disabled action still claims its letter`, whose anchor spanned
+the two lines the new test now sits between. That is the fourth
+consecutive day `--validate` has caught an anchor a change of mine
+displaced, and each one was found by the gate rather than by me.
+`--validate` passes over all 729.
 
 
 ### 8.505 The two modalities are different rules (2026-10-23)

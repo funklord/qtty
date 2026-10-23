@@ -2255,10 +2255,14 @@ check = "an action whose toolbar button had no room still answers its letter"
 # Disabled actions counted as claimants. Qt reports an invisible action as
 # disabled, so this is also how an action the application hid comes back to
 # life and answers a key nobody expects.
+#
+# Re-anchored 8.506: the owner-state test went between the two lines it
+# spanned. Anchored on the one line it breaks, so the next thing to join
+# that loop does not displace it again.
 name = "a disabled action still claims its letter"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!a->isEnabled() || a->isSeparator()) continue;\n\t\tif (counted.contains(a)) continue;"
-into = "\t\tif (a->isSeparator()) continue;\n\t\tif (counted.contains(a)) continue;"
+find = "\t\tif (!a->isEnabled() || a->isSeparator()) continue;"
+into = "\t\tif (a->isSeparator()) continue;"
 count = 1
 check = "while an action the application hid answers nothing"
 
@@ -6843,6 +6847,19 @@ find = "\tif (w->focusProxy()) return false;"
 into = "\tif (false) return false;"
 count = 1
 check = "a form of four controls lists four stops, the composites themselves and not the widgets inside them"
+
+[[sabotage]]
+# The owner-state test removed from the MNEMONIC enumerator, the parallel of
+# the chord one below: an action on the hidden page of a QStackedWidget
+# claimed its letter, so Alt+Z triggered something the user could not see --
+# while a BUTTON on that same page claimed nothing, which is the
+# inconsistency inside one walk. 8.506.
+name = "a mnemonic claim ignores its action's owner"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!owners_can_answer(owners_of(a))) continue;\n\t\tif (counted.contains(a)) continue;"
+into = "\t\tif (false) continue;\n\t\tif (counted.contains(a)) continue;"
+count = 1
+check = "while an action on a hidden page claims no letter, nor one whose owner is disabled -- which is what this walk already did for a button and did not for an action"
 
 [[sabotage]]
 # An ACTION's owner state unread, which is how it was: a QAction on the page
