@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2389 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2392 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46547,48 +46547,55 @@ the maximum. A check whose subject is already at its ceiling cannot fail,
 and three of this session's checks have now had a first version in that
 state.
 
-### 8.527 A late keyboard-protocol reply is never acted on (2026-10-23)
+### 8.527 A late keyboard-protocol reply, and the harness it needed (2026-10-23)
 
-**Found by 8.526's lens and NOT fixed, because a fix here cannot be
-guarded yet.** Recorded with the reproduction so that whoever can test it
-does not have to find it again.
+**Written first as a finding that could not be fixed, then fixed, and this
+entry is rewritten rather than appended to.** The first version said the
+piece of work was the harness and not the branch. That was right, and the
+harness turned out to be eleven lines.
 
 **The defect.** `CSI ? <flags> u` is how a terminal says it speaks the
-kitty keyboard protocol, and `caps_.kbd_protocol` is set from it by
-`scan_caps()` -- including from a reply that arrives after
-`collect_caps()` has returned, which 8.526 establishes is the documented
-case rather than an exotic one. Two places push the flags onto the
-terminal's stack:
+kitty keyboard protocol, and `scan_caps()` sets `caps_.kbd_protocol` from
+it -- including from a reply arriving after `collect_caps()` has returned,
+which 8.526 establishes is the documented case rather than an exotic one.
+Two places pushed the flags and neither could act on a late answer: the
+constructor reads `caps_.kbd_protocol`, which was false when it ran, and
+`resume()` reads `g_kbd_wanted`, which only the constructor sets. So the
+reply was recorded and acted on NOWHERE -- not even at the next handover,
+which is what made this worse than the ground's version of the same
+fault. Meanwhile `Qtty::capabilities().keyboard_protocol` answered true
+the whole time, being recomputed from `caps_` on every call: the library
+reporting a protocol it had never switched on.
 
-    constructor:  if (tty_out_ && raw_ok_ && caps_.kbd_protocol) {
-                      g_kbd_wanted = true; write_out("\033[>1u"); }
-    resume():     if (tty_out_ && g_kbd_wanted) write_out("\033[>1u");
+**What it cost the user is every Ctrl+Shift+letter chord**, for the life
+of the program. That is the one thing the protocol exists for -- a control
+byte carries no shift bit, so without the flags pushed those chords cannot
+be expressed at all, and an application binding one is binding something
+no terminal can send.
 
-**And the second is gated on `g_kbd_wanted`, which only the first sets.**
-So a late reply is recorded in `caps_` and acted on NOWHERE -- not at the
-next handover either, which is what makes this worse than the ground's
-version of the same fault. `Qtty::capabilities().keyboard_protocol`
-answers true the whole time, because it is recomputed from `caps_` on
-every call, so the library reports a protocol it never switched on.
+**THE HARNESS WAS THE WORK, and it is one parameter.** `fatal_child()`
+wrote its preload BEFORE the fork, so the fence and the reply sat in the
+pty together and `collect_caps()` scanned both -- a reply that arrives
+after the negotiation was a case this suite could not stage at all, which
+is why the first version of this entry recorded a defect instead of fixing
+one. The parent is awake throughout: its wait loop polls `waitpid()` every
+millisecond, so a `late` payload written at an iteration count costs a
+comparison per loop. The fence goes in the preload, the keyboard reply 300
+ms later, well past the 100 ms probe window.
 
-**What it costs the user is every Ctrl+Shift+letter chord**, for the life
-of the program. That is the one thing the protocol exists for: a control
-byte carries no shift bit, so without the flags pushed those chords
-cannot be expressed at all, and an application binding one is binding
-something no terminal can send.
+**Two things were being found out at once and both are printed.** Whether
+a forked child of this suite can turn the event loop at all was as
+uncertain as the behaviour -- the notifier is what delivers a late reply,
+and the other children in this family never pump. Measured:
+`KBDLATE[early=0,now=1]`, so the child pumps, the reply lands, and
+`keyboard_protocol` was false when `resume()` returned and true
+afterwards. The same run showed `>1u` absent from the wire, which is the
+defect demonstrated rather than reasoned about.
 
-**Why it is recorded rather than fixed.** The fix is one branch in the
-`CSI ? u` arrival -- push when the reply is the first to say yes -- and
-the observable is the bytes on the wire, which needs a tty on stdout AND
-a feedable stdin. The Feeder's backend has stdout on this suite's own
-file, so it never pushes; the live pty fixture cannot be fed, two
-backends watching descriptor 0 hanging (8.517); and the child harness
-that already asserts this area on the wire -- `KBD[1]` and the push and
-pop -- writes its preload BEFORE the child starts, so the fence and the
-reply are both in the pty buffer and `collect_caps()` scans both. Making
-a reply genuinely late needs a timed write after the child is running,
-which is a change to a shared fixture rather than part of this.
-
-**So the piece of work is the harness, not the branch.** An unguarded fix
-is what this tree calls worse than none, and a sabotage entry whose check
-nothing reddens is worse still.
+**Three checks, and the first is a control doing two jobs**: that the
+reply really was late, and that it arrived at all. Without it a push that
+never happened and a reply that never came look identical. The third
+asserts the POP still follows the push, because `leave_terminal()` reads
+the same `g_kbd_wanted` this sets -- pushing without setting it would
+leave the flags on the terminal for whatever ran next, which is the one
+outcome here that could do harm rather than merely lose a chord.

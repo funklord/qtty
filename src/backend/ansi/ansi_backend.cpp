@@ -2526,6 +2526,29 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	if (final == 'u' && prefix == QByteArrayLiteral("?")) {
 		scan_caps(QByteArrayLiteral("\033[?") + params_to_bytes(params)
 		              + QByteArrayLiteral("u"), caps_);
+		// AND PUSH THE FLAGS, if this is the reply that first said the
+		// terminal has the protocol. Two places pushed them and neither
+		// could act on a late answer: the constructor reads
+		// caps_.kbd_protocol, which was false when it ran, and resume()
+		// reads `g_kbd_wanted`, which only the constructor sets -- so a
+		// reply arriving after collect_caps() returned was recorded and
+		// acted on NOWHERE, not even at the next handover.
+		//
+		// What that costs is every Ctrl+Shift+letter chord for the life of
+		// the program, which is the one thing this protocol exists for: a
+		// control byte carries no shift bit, so without the flags pushed
+		// those chords cannot be expressed at all. Meanwhile
+		// capabilities().keyboard_protocol answered TRUE throughout, being
+		// recomputed from caps_ on every call -- the library reporting a
+		// protocol it had never switched on.
+		//
+		// `g_kbd_wanted` is what leave_terminal() and enter_terminal() pop
+		// and re-push by hand, so setting it here is what makes a Ctrl+Z
+		// and an fg keep the flags afterwards.
+		if (tty_out_ && raw_ok_ && caps_.kbd_protocol && !g_kbd_wanted) {
+			g_kbd_wanted = true;
+			write_out("\033[>1u");
+		}
 		return true;
 	}
 	if (final == 'u' && prefix.isEmpty() && !params.isEmpty()) {

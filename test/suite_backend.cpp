@@ -151,9 +151,21 @@ struct Tty {
 // file, or every run of these checks leaves one behind; the parent waits a
 // bounded time before SIGKILL, scaled for valgrind below; and the read stops
 // at the first short read of a non-blocking master.
+// `late` is written to the terminal AFTER the child is running, roughly
+// `late_ms` milliseconds in, which is the one thing `preload` cannot express.
+// A preload is already in the pty when the child starts, so collect_caps()
+// reads it in the same breath as the fence and scans both -- and a reply that
+// arrives after the negotiation has returned is a case this suite could not
+// stage at all. 8.527 recorded that as the reason a defect went unfixed.
+//
+// The parent is awake for it: the wait loop below polls waitpid() every
+// millisecond, so the write costs a comparison per iteration and happens
+// whether or not the child is ready. A child that exits before it never sees
+// it, which is the caller's problem to avoid by staying alive.
 QByteArray fatal_child(bool screen, const std::function<void()> &body,
                        const QByteArray &preload = QByteArray(),
-                       bool *stopped = nullptr, int *wait_status = nullptr) {
+                       bool *stopped = nullptr, int *wait_status = nullptr,
+                       const QByteArray &late = QByteArray(), int late_ms = 0) {
 	const int master = posix_openpt(O_RDWR | O_NOCTTY);
 	if (master < 0) return QByteArray();
 	int slave = -1;
@@ -219,6 +231,10 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 	                   ? 1000 : 60000;
 	int status = 0;
 	for (int i = 0; i < patience; ++i) {
+		if (!late.isEmpty() && i == late_ms) {
+			const ssize_t w = ::write(master, late.constData(), late.size());
+			(void)w;
+		}
 		// WUNTRACED, because a child may STOP rather than exit -- a test of
 		// job control raises SIGTSTP on purpose. Without it such a child sits
 		// stopped until the kill below, and the run reads as a hang.
@@ -6320,6 +6336,73 @@ int suite_backend() {
 			      "the keyboard protocol");
 			CHECK(spoke.contains("\033[>1u"),
 			      "and qtty pushes the disambiguating flag onto its stack");
+			// A REPLY THAT ARRIVES AFTER THE NEGOTIATION, which no fixture
+			// here could stage until fatal_child() learned a timed write.
+			// The preload is the FENCE alone, so collect_caps() returns on
+			// it; the keyboard reply follows 300 ms later, well past the
+			// 100 ms probe window, and reaches the backend the way every
+			// other late reply does -- on stdin, through decode_one().
+			//
+			// The child has to stay alive for it and has to pump, since the
+			// notifier is what delivers it. Whether a forked child of this
+			// suite can turn the event loop at all is the thing being found
+			// out here as much as the behaviour is: KBDLATE[0] with the
+			// reply never seen would say the harness cannot stage this,
+			// which is its own answer and is printed either way.
+			{
+				const QByteArray late = fatal_child(true, [] {
+					{
+						Qtty::AnsiBackend backend;
+						Recorder rec;
+						backend.set_event_sink(&rec);
+						backend.resume();
+						const bool early =
+						    backend.capabilities().keyboard_protocol;
+						for (int i = 0; i < 1500; ++i) {
+							QCoreApplication::processEvents();
+							if (backend.capabilities().keyboard_protocol) break;
+							usleep(1000);
+						}
+						fprintf(stderr, "\nKBDLATE[early=%d,now=%d]\n",
+						        int(early),
+						        int(backend.capabilities().keyboard_protocol));
+						backend.suspend();
+					}
+					::_exit(0);
+				}, QByteArrayLiteral("\033[?62;4c"), nullptr, nullptr,
+				   QByteArrayLiteral("\033[?1u"), 300);
+				const int at = late.indexOf("KBDLATE[");
+				printf("info: late keyboard reply -> %s, pushes >1u %d"
+				       " <u %d\n",
+				       at < 0 ? "no marker at all"
+				              : late.mid(at, 26).constData(),
+				       int(late.contains("\033[>1u")),
+				       int(late.contains("\033[<u")));
+				// THE CONTROL FIRST, and it is two things at once: that the
+				// reply really was late -- not yet seen when resume()
+				// returned -- and that it arrived at all, which is what
+				// says the timed write and the child's pump both work.
+				// Without it a push that never happened and a reply that
+				// never came look identical.
+				CHECK(late.contains("KBDLATE[early=0,now=1]"),
+				      "a keyboard-protocol reply arriving after the"
+				      " negotiation is not seen by it and is seen"
+				      " afterwards");
+				CHECK(late.contains("\033[>1u"),
+				      "and the flags are pushed when it lands, which"
+				      " neither the constructor nor a resume could do -- the"
+				      " one reads a capability that was false and the other"
+				      " a flag only the one sets");
+				// AND POPPED, in that order, which is the half that would
+				// do harm: flags left pushed are flags the next program in
+				// that terminal inherits. The pop is leave_terminal()'s and
+				// it reads the same `g_kbd_wanted` this sets, so pushing
+				// without setting it would leave them on the terminal.
+				CHECK(late.indexOf("\033[<u") > late.indexOf("\033[>1u"),
+				      "and popped again afterwards, the pop reading the same"
+				      " flag the late push sets");
+			}
+
 			// AND POPS IT, which is the half that could do harm if it were
 			// missing: flags left pushed are flags the next program in that
 			// terminal inherits.

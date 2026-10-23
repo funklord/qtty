@@ -8299,3 +8299,14 @@ find = "\t\t\tif (colors_moved || renegotiate()) redraw();"
 into = "\t\t\tif (colors_moved) redraw();"
 count = 1
 check = "a capability arriving after the negotiation is negotiated again, rather than recorded and ignored"
+
+[[sabotage]]
+# A late keyboard-protocol reply is recorded and the flags are never pushed,
+# which is the state the tree was in: the constructor reads a capability that
+# was false and resume() reads a flag only the constructor sets. 8.527.
+name = "a late keyboard reply never pushes the flags"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (tty_out_ && raw_ok_ && caps_.kbd_protocol && !g_kbd_wanted) {\n\t\t\tg_kbd_wanted = true;\n\t\t\twrite_out(\"\\033[>1u\");\n\t\t}\n"
+into = ""
+count = 1
+check = "and the flags are pushed when it lands, which neither the constructor nor a resume could do -- the one reads a capability that was false and the other a flag only the one sets"
