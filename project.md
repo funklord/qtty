@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2353 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2355 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1090,7 +1090,7 @@ Owned by the copyright holder:
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | **~~Whether the "too small to be a picture" rule moves to the backend.~~ It has, and the row was right that it was one condition -- and wrong that nothing was left unmeasured.** The tier below read ONE PIXEL per half cell, so a 16x16 tick lost its left cell outright and a status light its right one; the substitution's area sampling moved with the rule, and the sampling change on its own reddened not one check of 2064. 8.383 | §7.2 |
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. 8.422 then mirrored `CE_HeaderLabel`, which this row had deferred as unmeasured -- and the measurement found 8.420 had BROKEN it, a heading being positioned to line up with the data it names. So the row's own deferral was the gap, and the commit that wrote it caused the fault it put off. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304, 8.420, 8.422 |
-| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
+| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index. **And a third, found by 8.515's gate: ToolTipText is in NO list `role_of()` searches**, so the role is not merely out-ranked by WindowText, it is not looked for -- which means the two obstacles are one fix rather than two, and neither can be taken without the other. Measured: ToolTipText and WindowText are both `#000000`, so listing it after WindowText does nothing and listing it before sends every body-text colour to black | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
 | **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
@@ -18391,6 +18391,51 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.515 Every authored role must be searchable, and one is not (2026-10-23)
+
+**The lens is today's "two lists that must move together", pointed at the
+pair that already cost a defect.** `ansi16_for_role()` authors an ANSI-16
+index per palette role; `role_of()` finds the role by searching three named
+lists. Authoring is half a rule -- a role the table spells and no list
+carries reaches a cell as the application's own 24 bits and is
+nearest-matched, which is the outcome the authored table exists to prevent.
+**That is 8.248 exactly**, five roles at once, found by a `QLabel` carrying
+`<a href>` coming out as `0x0000ff` with `authored_ansi16() == -1`.
+
+**Nothing gated it.** The nearest check reads the lists live rather than
+from a copy -- 8.248's own lesson -- but asserts something else.
+
+**Enumerated from the TABLE rather than from a list typed in the check**:
+every role Qt has, kept if `ansi16_for_role()` answers for it. 21 roles
+authored, and **one in no list: ToolTipText**.
+
+**It cannot simply be fixed, and the measurement is why.** ToolTipText's
+colour here is `#000000` -- byte-identical to WindowText's -- and
+`role_of()` keys on the colour, so it answers WindowText for that value
+whatever the lists say. Adding ToolTipText AFTER WindowText changes
+nothing; adding it BEFORE sends every body-text colour in the program to
+black, which on a dark terminal is invisible text. So the list cannot be
+completed independently of the tooltip question, which is section 0b's and
+the holder's.
+
+**So the gate carries the exception by name**, with that reason, and a
+SECOND unlisted role fails rather than joining it quietly. Section 0b's
+tooltip row has the finding too: it already named the colour collision as a
+second obstacle, and this is a third -- the role is not merely out-ranked,
+it is not looked for. The two are one fix rather than two, which makes the
+holder's decision cheaper rather than larger.
+
+**A companion check guards the gate's own population.** A partition
+assertion over a short population does not fail, it quietly stops
+covering -- which is what suite_cells' copy of this list did when 8.248
+took the lookup to sixteen roles and left the copy at eleven. So the count
+is asserted before the partition: the table must author at least twenty.
+
+**2353 checks to 2355.** One sabotage entry, `--only` proven: `Link`
+dropped from the ink list while the table still spells it, which is the
+role 8.248 was found by.
 
 
 ### 8.514 SIGPIPE is not restored, and that is the right answer (2026-10-23)

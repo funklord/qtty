@@ -2,6 +2,7 @@
 // contrast, and the wiring that makes theme() the source rendering reads.
 #include <qtty/qtty.h>
 #include "src/qt_compat.h"
+#include "src/cell_geometry.h"
 #include <QtWidgets>
 #include <cstdio>
 
@@ -69,6 +70,62 @@ int suite_theme() {
 	      && ansi16_for_role(QPalette::ButtonText) == 7,
 	      "the three body-text roles are all 7, leaving 15 for BrightText");
 	CHECK(ansi16_for_role(QPalette::BrightText) == 15, "BrightText is 15");
+
+	// EVERY AUTHORED ROLE IS SEARCHABLE, which is the invariant 8.248 cost
+	// and which nothing held. `ansi16_for_role()` authoring an index is only
+	// half a rule: `role_of()` has to be able to FIND the role, and it
+	// searches three named lists. A role the table spells and no list
+	// carries reaches a cell as the application's own 24 bits and is
+	// nearest-matched -- the outcome the authored table exists to prevent.
+	// 8.248 was exactly that, five roles at once, found by a QLabel
+	// carrying <a href> coming out as 0x0000ff with authored_ansi16() == -1.
+	//
+	// Enumerated from the TABLE rather than from a list typed here: every
+	// role Qt has, kept if `ansi16_for_role()` answers for it. A copy would
+	// rot the way the partition's copy in suite_cells did -- its own comment
+	// says 8.248 took the lookup to sixteen roles and left the copy at
+	// eleven, so "a partition assertion over a short population does not
+	// fail; it quietly stops covering".
+	//
+	// ONE EXCEPTION, NAMED, and the measurement is why it cannot simply be
+	// fixed. ToolTipText is authored 0 and sits in no list, and its colour
+	// here is #000000 -- byte-identical to WindowText's -- so `role_of()`
+	// keyed on the colour answers WindowText for it either way. Adding it
+	// AFTER WindowText changes nothing; adding it BEFORE would send every
+	// body-text colour in the program to black. So the list cannot be
+	// completed independently of the tooltip question, which is section 0b's
+	// and the holder's. Asserted as the single exception, so a SECOND
+	// unlisted role fails here rather than joining it quietly.
+	{
+		const QVector<QPalette::ColorRole> lists[] = {
+			ink_roles(), furniture_roles(), ground_roles() };
+		QStringList unlisted;
+		int authored = 0;
+		for (int i = 0; i < QPalette::NColorRoles; ++i) {
+			const auto r = QPalette::ColorRole(i);
+			if (ansi16_for_role(r) < 0) continue;
+			++authored;
+			bool found = false;
+			for (const auto &l : lists) if (l.contains(r)) found = true;
+			if (!found) unlisted << QString::number(i);
+		}
+		printf("info: the authored table spells %d role(s); %lld in no"
+		       " list\n", authored, (long long)unlisted.size());
+		CHECK(authored >= 20,
+		      "the table authors the whole palette it claims to, so the"
+		      " partition below is over a population and not over three"
+		      " roles that happened to answer");
+		// A NAMED LOCAL rather than a braced initialiser inside the
+		// CHECK: the style gate reads `QStringList{` as opening a block
+		// and wants the continuation a tab further in, which is the same
+		// shape 8.486 restructured for.
+		const QStringList expected{
+			QString::number(int(QPalette::ToolTipText)) };
+		CHECK(unlisted == expected,
+		      "and every role it authors is in a list role_of() searches,"
+		      " save ToolTipText -- whose colour is WindowText's here, so"
+		      " listing it could only do nothing or steal body text");
+	}
 	CHECK(ansi16_for_role(QPalette::Window) == 0
 	      && ansi16_for_role(QPalette::Base) == 0
 	      && ansi16_for_role(QPalette::Button) == 0,

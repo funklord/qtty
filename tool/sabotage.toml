@@ -6908,6 +6908,19 @@ check = "the Menu key honours every context-menu policy"
 # the propagation is defended by the check alone. 8.511.
 
 [[sabotage]]
+# A role dropped from the ink list while the authored table still spells it,
+# which is 8.248's defect exactly: role_of() cannot find it, the colour
+# reaches a cell as the application's own 24 bits, and the authored index
+# never applies. Link is the one 8.248 was actually found by -- a QLabel
+# carrying <a href> came out as 0x0000ff with authored_ansi16() == -1. 8.515.
+name = "an authored role is in no list role_of searches"
+file = "src/cell_geometry.h"
+find = "\t        QPalette::PlaceholderText, QPalette::Link,"
+into = "\t        QPalette::PlaceholderText,"
+count = 1
+check = "and every role it authors is in a list role_of() searches"
+
+[[sabotage]]
 # SIGPIPE restored with the rest, which is the change that reads as tidying
 # up and is not: flush_deferred_messages() runs after this block and writes
 # the held-back messages to stderr, so the default disposition in front of
