@@ -46546,3 +46546,49 @@ printed an unchanged value because the environment had already supplied
 the maximum. A check whose subject is already at its ceiling cannot fail,
 and three of this session's checks have now had a first version in that
 state.
+
+### 8.527 A late keyboard-protocol reply is never acted on (2026-10-23)
+
+**Found by 8.526's lens and NOT fixed, because a fix here cannot be
+guarded yet.** Recorded with the reproduction so that whoever can test it
+does not have to find it again.
+
+**The defect.** `CSI ? <flags> u` is how a terminal says it speaks the
+kitty keyboard protocol, and `caps_.kbd_protocol` is set from it by
+`scan_caps()` -- including from a reply that arrives after
+`collect_caps()` has returned, which 8.526 establishes is the documented
+case rather than an exotic one. Two places push the flags onto the
+terminal's stack:
+
+    constructor:  if (tty_out_ && raw_ok_ && caps_.kbd_protocol) {
+                      g_kbd_wanted = true; write_out("\033[>1u"); }
+    resume():     if (tty_out_ && g_kbd_wanted) write_out("\033[>1u");
+
+**And the second is gated on `g_kbd_wanted`, which only the first sets.**
+So a late reply is recorded in `caps_` and acted on NOWHERE -- not at the
+next handover either, which is what makes this worse than the ground's
+version of the same fault. `Qtty::capabilities().keyboard_protocol`
+answers true the whole time, because it is recomputed from `caps_` on
+every call, so the library reports a protocol it never switched on.
+
+**What it costs the user is every Ctrl+Shift+letter chord**, for the life
+of the program. That is the one thing the protocol exists for: a control
+byte carries no shift bit, so without the flags pushed those chords
+cannot be expressed at all, and an application binding one is binding
+something no terminal can send.
+
+**Why it is recorded rather than fixed.** The fix is one branch in the
+`CSI ? u` arrival -- push when the reply is the first to say yes -- and
+the observable is the bytes on the wire, which needs a tty on stdout AND
+a feedable stdin. The Feeder's backend has stdout on this suite's own
+file, so it never pushes; the live pty fixture cannot be fed, two
+backends watching descriptor 0 hanging (8.517); and the child harness
+that already asserts this area on the wire -- `KBD[1]` and the push and
+pop -- writes its preload BEFORE the child starts, so the fence and the
+reply are both in the pty buffer and `collect_caps()` scans both. Making
+a reply genuinely late needs a timed write after the child is running,
+which is a change to a shared fixture rather than part of this.
+
+**So the piece of work is the harness, not the branch.** An unguarded fix
+is what this tree calls worse than none, and a sabotage entry whose check
+nothing reddens is worse still.
