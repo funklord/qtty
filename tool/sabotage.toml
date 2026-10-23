@@ -8205,8 +8205,11 @@ check = "a partial OSC 4 answer is refused rather than mixed with the scheme alr
 # screen keeps the old ground until something unrelated repaints. 8.519.
 name = "a moved ground is published but never drawn"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\t\tif (colors_moved) redraw();\n"
-into = ""
+# Drops the COLOURS from the condition and leaves renegotiate(), so this stays
+# the ground's entry and 8.526's stays the negotiation's. The line gained a
+# second reason to draw in 8.526 and the old anchor went with it.
+find = "\t\t\tif (colors_moved || renegotiate()) redraw();"
+into = "\t\t\tif (renegotiate()) redraw();"
 count = 1
 check = "while a ground arriving mid-run asks for a frame itself, a publication nobody draws being a fix in a variable"
 
@@ -8285,3 +8288,14 @@ find = "\tif (drag_active()) drag_cancel();\n"
 into = ""
 count = 1
 check = "and a handover abandons it without a drop, the release that would have ended it having gone to whoever had the terminal"
+
+[[sabotage]]
+# The arrival path stops re-deriving the negotiated answers, which is the state
+# the tree was in: mode_ and depth_ were computed once in the constructor while
+# scan_caps() went on setting what they are computed from. 8.526.
+name = "a late capability is recorded and never negotiated"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (colors_moved || renegotiate()) redraw();"
+into = "\t\t\tif (colors_moved) redraw();"
+count = 1
+check = "a capability arriving after the negotiation is negotiated again, rather than recorded and ignored"

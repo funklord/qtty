@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2387 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2389 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46500,3 +46500,49 @@ first, since an unstarted drag cancels trivially.
 the Qt 5 arm**, which is not bookkeeping: `count-check` counts skips
 toward the total, so a check added inside that guard without them leaves
 the Qt 5 count short by two and reads as checks having disappeared.
+
+### 8.526 A capability that arrives after the negotiation (2026-10-23)
+
+**The interpretation lens from 8.519, pointed at a DERIVED answer rather
+than a stored one.** `mode_` and `depth_` are assigned in exactly one
+place, the constructor, while `scan_caps()` goes on setting the things
+they are computed from: `truecolor` from an XTGETTCAP reply, `kitty` from
+its APC reply, `sixel` from DA1. So a reply arriving after
+`collect_caps()` returned was recorded in `caps_` and ignored by the
+negotiation for the life of the program.
+
+**Late is the DOCUMENTED case here rather than an exotic one**, which is
+what makes this worth fixing rather than noting. `collect_caps()` returns
+the moment the DA1 fence lands and its window is a READINESS one -- the
+tmux measurement in the constructor says three probes answer 0, 1, 1 --
+and `scan_caps()` says of itself that it may be called "again later for a
+reply that turns up during normal input". The cell size already has a path
+for exactly that. The arrival was anticipated everywhere except in the two
+answers derived from it.
+
+**The symptom is a terminal drawn WORSE than it can be**: 256-colour SGR
+on a terminal that answered RGB, or the mosaic on one that holds pictures.
+Forgetting the uploads goes with it, because a changed tier means the
+terminal is holding pictures sent under the old one and `wire_id_` names
+placements the new tier will not place.
+
+**THE CHECK'S LEVER IS THE ENVIRONMENT OVERRIDE AND NOT A TERMINAL REPLY,
+which is measured rather than chosen.** This suite runs with
+`TERM=xterm-kitty` and a `COLORTERM`, so the negotiation already answers
+the top tier and TrueColor with no reply at all: measured, both were 4 and
+3 before AND after a kitty APC reply, so a check written on either would
+have been green whatever the code did. A reply cannot move what is already
+at the maximum, and a second `AnsiBackend` constructed in a stripped
+environment cannot be fed -- two backends watching descriptor 0 hang,
+which 8.517 recorded. `QTTY_GRAPHICS` moves what `negotiate_graphics()`
+returns, so it asks the question this change is about -- does the arrival
+path re-derive at all -- with a lever the process has. Measured, the tier
+goes 4 to 2 across the reply.
+
+**Two fixtures were built and discarded before that one**, and both failed
+for the same reason rather than for the code's: the first asserted the
+colour depth, the second the graphics tier from a kitty reply, and each
+printed an unchanged value because the environment had already supplied
+the maximum. A check whose subject is already at its ceiling cannot fail,
+and three of this session's checks have now had a first version in that
+state.

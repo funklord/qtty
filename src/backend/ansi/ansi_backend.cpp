@@ -290,6 +290,24 @@ void AnsiBackend::publish_ground() {
 // for a RE-ask -- a terminal that answered fully at startup and partially
 // after a handover has told us nothing new, and the built-in table is a
 // worse answer than the scheme it already gave.
+// What the negotiation makes of caps_ now. Both answers are derived rather
+// than stored facts, so re-deriving them is the whole of it -- and a terminal
+// that told us nothing new gets the same two values and no frame.
+//
+// Forgetting the uploads is not thoroughness either: a changed GRAPHICS tier
+// means the terminal is holding pictures sent under the old one, and the ids
+// in wire_id_ name placements the new tier will not place.
+bool AnsiBackend::renegotiate() {
+	const Capabilities::GraphicsMode was_mode = mode_;
+	const Capabilities::ColorDepth was_depth = depth_;
+	mode_ = negotiate_graphics(caps_);
+	depth_ = negotiate_color(caps_);
+	if (mode_ == was_mode && depth_ == was_depth) return false;
+	forget_uploads();
+	last_pixel_size_ = QSize();
+	return true;
+}
+
 void AnsiBackend::publish_palette() {
 	if (caps_.palette16.size() != 16) return;
 	for (QRgb c : caps_.palette16) if (c == 0) return;
@@ -2554,6 +2572,10 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	if (final == 'c') {
 		scan_caps(QByteArrayLiteral("\033[") + prefix + params_to_bytes(params)
 		              + QByteArrayLiteral("c"), caps_);
+		// DA1 names sixel, and some terminals send it unasked at startup --
+		// which is to say after the constructor has already negotiated. The
+		// string branch carries the argument.
+		if (renegotiate()) redraw();
 		return true;
 	}
 
@@ -2868,7 +2890,14 @@ bool AnsiBackend::decode_one() {
 			// re-answers a handover with the scheme it already gave --
 			// which is every handover on a terminal nobody retuned --
 			// costs nothing.
-			if (colors_moved) redraw();
+			// AND THE NEGOTIATED ANSWERS, which are derived from the same
+			// caps_ this reply just changed. A tcap reply names truecolor
+			// and a kitty APC reply names the graphics tier, and both were
+			// recorded and ignored: the two were computed once in the
+			// constructor. The symptom of each is a terminal drawn WORSE
+			// than it can be -- 256-colour SGR on a truecolour terminal,
+			// or the mosaic on one that holds pictures.
+			if (colors_moved || renegotiate()) redraw();
 			return true;
 		}
 		// SS3: ESC O <final>. F1 to F4 arrive this way from xterm and from

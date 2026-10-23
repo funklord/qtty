@@ -294,6 +294,15 @@ private:
 	// published to applications and withheld from Color::luminance(), which
 	// section 6's contrast check runs on every emitted cell.
 	void publish_ground();
+	// Re-derive the negotiated answers from caps_, and say whether either
+	// moved. They were computed ONCE, in the constructor, while scan_caps()
+	// goes on setting the things they are computed from -- truecolor from
+	// XTGETTCAP, kitty from its APC reply, sixel from DA1 -- so a reply that
+	// arrives after collect_caps() returned was recorded and ignored. That
+	// is not an exotic case: the fence is DA1 and the window is a READINESS
+	// one, which is why scan_caps() documents itself as callable again "for
+	// a reply that turns up during normal input".
+	bool renegotiate();
 	// And the palette, under the rule the constructor used to carry inline:
 	// all sixteen or none of them. It had ONE caller and the arrival path had
 	// none, so an OSC 4 reply that turned up mid-run was parsed into caps_

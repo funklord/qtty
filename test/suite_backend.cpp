@@ -3028,6 +3028,59 @@ int suite_backend() {
 		set_terminal_ground(QColor(), QColor());
 	}
 
+	// A CAPABILITY THAT ARRIVES AFTER THE NEGOTIATION, which is the same
+	// shape as the ground one above pointed at a DERIVED answer rather than
+	// a stored one. `mode_` and `depth_` were computed once, in the
+	// constructor, while scan_caps() goes on setting what they are computed
+	// from: truecolor from an XTGETTCAP reply, kitty from its APC reply,
+	// sixel from DA1.
+	//
+	// LATE IS THE DOCUMENTED CASE RATHER THAN AN EXOTIC ONE. collect_caps()
+	// returns the moment the DA1 fence lands and its window is a READINESS
+	// one -- which is why scan_caps() says of itself that it may be called
+	// "again later for a reply that turns up during normal input", and why
+	// the cell size already has a path for exactly that. The reply was
+	// recorded and the negotiation never looked again.
+	//
+	// The symptom is a terminal drawn WORSE than it can be: 256-colour SGR
+	// on a terminal that said RGB, or the mosaic on one that holds pictures.
+	{
+		// THE LEVER IS THE ENVIRONMENT OVERRIDE RATHER THAN A TERMINAL
+		// REPLY, and that is measured rather than chosen. This suite runs
+		// with TERM=xterm-kitty and a COLORTERM, so the negotiation already
+		// answers the TOP tier and TrueColor with no reply at all --
+		// measured, both were 4 and 3 before and after a kitty APC reply, so
+		// a check written on one would have been green either way. A reply
+		// cannot move what is already at the maximum, and a second
+		// AnsiBackend constructed in a stripped environment cannot be fed:
+		// two backends watching descriptor 0 hang, which the pty fixture
+		// below records.
+		//
+		// What is under test is that the arrival path RE-DERIVES the two
+		// negotiated answers at all -- they were computed once, in the
+		// constructor -- and QTTY_GRAPHICS moves what negotiate_graphics()
+		// returns, so it asks exactly that question with a lever this
+		// process has.
+		const QByteArray had_force = qgetenv("QTTY_GRAPHICS");
+		const Capabilities before = backend.capabilities();
+		qputenv("QTTY_GRAPHICS", "sixel");
+		feed("\033_Gi=31;OK\033\\");
+		const Capabilities after = backend.capabilities();
+		printf("info: the graphics tier went from %d to %d across a late"
+		       " reply, the colour depth %d to %d\n", int(before.graphics),
+		       int(after.graphics), int(before.color), int(after.color));
+		CHECK(before.graphics != after.graphics
+		      && after.graphics == Capabilities::Sixel,
+		      "a capability arriving after the negotiation is negotiated"
+		      " again, rather than recorded and ignored");
+		if (had_force.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+		else qputenv("QTTY_GRAPHICS", had_force);
+		feed("\033_Gi=31;OK\033\\");       // and back, for what follows
+		CHECK(rec.keys.isEmpty() && rec.pastes.isEmpty(),
+		      "and the reply is not also typed into the application, which"
+		      " is the fault the string-sequence branch exists for");
+	}
+
 	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
 	// that carries a legitimate report carries this one, and the guard was
 	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims
