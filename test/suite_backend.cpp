@@ -3854,11 +3854,32 @@ int suite_backend() {
 						return got;
 					};
 					const QByteArray still = emit_frame(QRect(0, 0, 4, 2));
+					const int owed_still = sx.deferred_ms();
 					const QByteArray moved = emit_frame(QRect(0, 2, 4, 2));
+					const int owed_moved = sx.deferred_ms();
 					fflush(stdout);
 					::dup2(keep_out, 1);
 					CHECK(still.contains("\033P0;1;0q"),
 					      "a still placement is emitted as real sixel");
+					// AND THE BACKEND SAYS IT IS OWED A FRAME, which is the
+					// half the compositor reads and which no check reached.
+					// Coverage named it: of the forty-two uncovered lines in
+					// ansi_backend.cpp, these two were the only ones not
+					// explained by the child-process blind spot, and the
+					// only use of deferred_ms() anywhere in the suite was a
+					// FAKE backend overriding it -- an interface asserted
+					// through a stand-in while its real implementation went
+					// unrun. The compositor turns this into `deferred`, which
+					// is what gets a settled placement its real pixels back
+					// rather than leaving it coarse until something else
+					// repaints.
+					printf("info: the sixel backend is owed %d ms after a"
+					       " still frame and %d after a moved one\n",
+					       owed_still, owed_moved);
+					CHECK(owed_still == 0 && owed_moved > 0,
+					      "and the backend asks for a later frame once a"
+					      " placement has moved, having nothing owed while"
+					      " it was still");
 					// BOTH halves, and the second is the one this was
 					// missing: "degrades to the mosaic" was asserted only as
 					// the ABSENCE of sixel, which an empty frame satisfies --

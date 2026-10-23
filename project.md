@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2394 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2395 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46629,3 +46629,92 @@ without the code under test, and the only one caught while writing it
 rather than afterwards. What made the difference was asking who produces
 the input the assertion reads: the parent does, unconditionally, so the
 assertion could not be about the request.
+
+### 8.529 What coverage cannot see here, and the one gap it found (2026-10-23)
+
+**`make coverage` reports `ansi_backend.cpp` at 95.24%, 840 of 882 lines,
+and about thirty of the forty-two it calls uncovered ARE covered.** The
+blind spot is `fatal_child()`: its children leave by `::_exit(0)`, which
+bypasses the atexit handler gcov writes its counters from, so every path
+reached only inside a forked child is reported unrun.
+
+**Two of them prove it rather than suggesting it.** Line 245 is the
+constructor's keyboard-flag push, which the `KBD[1]` check exercises and
+asserts on the wire; line 2549 is the late push added in 8.527, whose
+check asserts the same bytes and passes. Both are reported uncovered. The
+rest of the group is the same shape: `leave_terminal()`,
+`enter_terminal()`, the fatal and stop handlers and the signal re-raise
+helper -- every one of them a path that only a child takes.
+
+**So a line reported uncovered in this file may be covered by a
+child-based check, and the figure understates the file by roughly three
+per cent.** That is worth knowing before anyone reads it as a gap to
+close: §0c already warns that a reused coverage directory reports the
+union of every run, and this is the same instrument failing in the other
+direction. Fixing it would mean the child calling `__gcov_dump()` before
+`_exit()`, which is a build-conditional change to a shared fixture and is
+not what this entry is.
+
+**THREE LINES WERE NOT EXPLAINED BY IT, and one was a real gap.** The
+winch-pipe `fcntl` failure needs fault injection; the escape timer's
+re-check return exists for a race its own comment describes. The third
+was `AnsiBackend::deferred_ms()` -- and the only use of `deferred_ms()`
+anywhere in the suite was a FAKE backend overriding it, so the interface
+was asserted through a stand-in while the real implementation went unrun.
+The compositor turns it into `deferred`, which is what gets a settled
+sixel or iTerm2 placement its real pixels back rather than leaving it
+coarse until something unrelated repaints -- a symptom this project has
+already measured as "a scroll that ends and never sharpens".
+
+Measured now: 0 ms owed after a still frame, 100 after a moved one. That
+is the shape *an interface is only as wired as its least-used method*
+names, pointed at a method whose only caller is production code and whose
+only test was a double.
+
+### 8.530 Nine rescue timers that outlived their frames (2026-10-23)
+
+**The gate went red and the cause is not established; what IS established
+is undefined behaviour the hunt uncovered, and this entry says which is
+which.**
+
+**What was seen, once.** `make check`'s `test` target exited non-zero with
+the suite's output stopping inside `suite_runtime` after 1687 passes --
+no `FAIL` line, no message from the suite's own watchdog, and nothing
+reached `== backend ==`. `count-check` had run the same binary minutes
+earlier and passed at 2395.
+
+**Not reproduced in twenty-three attempts**: three full runs and twenty of
+`suite_runtime` alone, which is where it stopped. That is not evidence
+against it -- it is what intermittent means.
+
+**The comfortable explanation was the outer bound and the measurement
+weakened it.** The target wraps the suite in `timeout 300`, and the suite
+prints nothing when killed from outside, which fits the symptom exactly.
+Measured at load 131: 21.2 s wall, 8.29 s user. A wall-clock kill
+therefore needs a fourteen-fold slowdown, so the bound is not obviously
+what fired -- and the suite's OWN watchdog, which would have printed, did
+not.
+
+**What reading found instead.** Nine fixtures in `suite_router.cpp`
+rescued a possibly-hung drag with
+`QTimer::singleShot(2000, [&]{ ... })`, capturing a stack `bool` BY
+REFERENCE. In the passing case the drag ends promptly and the block
+exits, so each of those timers fires two seconds later holding a dangling
+reference. The `drag_active()` guard means it only writes when some
+OTHER drag is live -- which, with nine of them in one file and several
+drags among them, is reachable. Two harms follow: a write into a dead
+frame, which is undefined and can surface as a crash anywhere later, and
+a cancel of a drag that was not its own, which would fail an unrelated
+check.
+
+**Fixed as nine stack `QTimer`s**, whose destructors take the connection
+with them when the block exits, so the capture cannot outlive what it
+captures.
+
+**IT IS NOT CLAIMED AS THE CAUSE.** The crash was seen once and has not
+been reproduced, and this is undefined behaviour reached by reading rather
+than by a failing run. What can be said is that one of the nine was added
+earlier today, in 8.525, so the density of the hazard rose in the same
+session the crash appeared in -- which is a reason to fix it and not a
+proof of anything. If the exit returns with these gone, the record stands
+and the search starts again from here.

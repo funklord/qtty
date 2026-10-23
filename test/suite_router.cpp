@@ -6944,9 +6944,19 @@ int suite_router() {
 		// that it was NEEDED, and that is what the check asserts. If Escape
 		// works the timer finds no drag and does nothing.
 		bool needed_rescue = false;
-		QTimer::singleShot(2000, [&] {
+		// A STACK TIMER rather than singleShot(), because this one must not
+		// outlive the block. The lambda captures a local by reference and
+		// the drag normally ends promptly, so a fired-later timer wrote
+		// through a dangling reference into a dead frame -- and only when
+		// some OTHER drag happened to be active, which with five of these
+		// in one file is reachable. Destroying it here is what makes the
+		// capture safe: the connection goes with it.
+		QTimer rescue1;
+		rescue1.setSingleShot(true);
+		QObject::connect(&rescue1, &QTimer::timeout, [&] {
 			if (Qtty::drag_active()) { needed_rescue = true; Qtty::drag_cancel(); }
 		});
+		rescue1.start(2000);
 		const Qt::DropAction gave_up =
 		    Qtty::exec_drag(drag2, Qt::CopyAction | Qt::MoveAction);
 		QCoreApplication::processEvents();
@@ -7017,9 +7027,19 @@ int suite_router() {
 			// reason recorded there: a broken drag does not fail this, it
 			// HANGS the suite, and a hang produces neither a PASS nor a FAIL.
 			bool rescued = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue2;
+			rescue2.setSingleShot(true);
+			QObject::connect(&rescue2, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) { rescued = true; Qtty::drag_cancel(); }
 			});
+			rescue2.start(2000);
 			Qtty::exec_drag(drag3, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
 			printf("info: crossing between two targets gave %s\n",
@@ -7070,9 +7090,19 @@ int suite_router() {
 				r3.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
 			});
 			bool rescued2 = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue3;
+			rescue3.setSingleShot(true);
+			QObject::connect(&rescue3, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) { rescued2 = true; Qtty::drag_cancel(); }
 			});
+			rescue3.start(2000);
 			const Qt::DropAction refused =
 			    Qtty::exec_drag(drag4, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
@@ -7135,12 +7165,22 @@ int suite_router() {
 				sched.render_now();
 			});
 			bool needed_rescue = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue4;
+			rescue4.setSingleShot(true);
+			QObject::connect(&rescue4, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) {
 					needed_rescue = true;
 					Qtty::drag_cancel();
 				}
 			});
+			rescue4.start(2000);
 			const Qt::DropAction ended =
 			    Qtty::exec_drag(drag4, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
@@ -7209,9 +7249,19 @@ int suite_router() {
 				r4.on_mouse({QPoint(2, 0), 1, false, true, false, 0});
 			});
 			bool rescued3 = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue5;
+			rescue5.setSingleShot(true);
+			QObject::connect(&rescue5, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) { rescued3 = true; Qtty::drag_cancel(); }
 			});
+			rescue5.start(2000);
 			const Qt::DropAction took =
 			    Qtty::exec_drag(drag5, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
@@ -7291,9 +7341,19 @@ int suite_router() {
 				r5.on_mouse({QPoint(9, 3), 1, false, true, false, 0});
 			});
 			bool rescued4 = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue6;
+			rescue6.setSingleShot(true);
+			QObject::connect(&rescue6, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) { rescued4 = true; Qtty::drag_cancel(); }
 			});
+			rescue6.start(2000);
 			const Qt::DropAction nowhere =
 			    Qtty::exec_drag(drag6, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
@@ -16677,9 +16737,19 @@ int suite_router() {
 			r.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
 		});
 		bool rescued = false;
-		QTimer::singleShot(2000, [&] {
+		// A STACK TIMER rather than singleShot(), because this one must not
+		// outlive the block. The lambda captures a local by reference and
+		// the drag normally ends promptly, so a fired-later timer wrote
+		// through a dangling reference into a dead frame -- and only when
+		// some OTHER drag happened to be active, which with five of these
+		// in one file is reachable. Destroying it here is what makes the
+		// capture safe: the connection goes with it.
+		QTimer rescue7;
+		rescue7.setSingleShot(true);
+		QObject::connect(&rescue7, &QTimer::timeout, [&] {
 			if (Qtty::drag_active()) { rescued = true; Qtty::drag_cancel(); }
 		});
+		rescue7.start(2000);
 		const Qt::DropAction took =
 		    Qtty::exec_drag(drag, Qt::CopyAction | Qt::MoveAction);
 		QCoreApplication::processEvents();
@@ -16755,11 +16825,21 @@ int suite_router() {
 				r2.on_mouse({QPoint(5, 1), 1, false, true, false, 0});
 			});
 			bool rescued2 = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue8;
+			rescue8.setSingleShot(true);
+			QObject::connect(&rescue8, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) {
 					rescued2 = true; Qtty::drag_cancel();
 				}
 			});
+			rescue8.start(2000);
 			const Qt::DropAction stopped =
 			    Qtty::exec_drag(drag2, Qt::CopyAction | Qt::MoveAction);
 			QCoreApplication::processEvents();
@@ -16811,11 +16891,21 @@ int suite_router() {
 				r_late.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
 			});
 			bool rescued_late = false;
-			QTimer::singleShot(2000, [&] {
+			// A STACK TIMER rather than singleShot(), because this one must not
+			// outlive the block. The lambda captures a local by reference and
+			// the drag normally ends promptly, so a fired-later timer wrote
+			// through a dangling reference into a dead frame -- and only when
+			// some OTHER drag happened to be active, which with five of these
+			// in one file is reachable. Destroying it here is what makes the
+			// capture safe: the connection goes with it.
+			QTimer rescue9;
+			rescue9.setSingleShot(true);
+			QObject::connect(&rescue9, &QTimer::timeout, [&] {
 				if (Qtty::drag_active()) {
 					rescued_late = true; Qtty::drag_cancel();
 				}
 			});
+			rescue9.start(2000);
 			const Qt::DropAction ended =
 			    Qtty::exec_drag(drag_late,
 			                    Qt::CopyAction | Qt::MoveAction);
