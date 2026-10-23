@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2343 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2345 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,78 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.511 All five context-menu policies, and the one that cannot be sabotaged (2026-10-23)
+
+**The day's theme, run once more: a Qt property with more states than the
+code was known to handle.** `windowModality` had three and two were
+handled (8.505); `focusProxy` had one and none was (8.504).
+`Qt::ContextMenuPolicy` has **five**, the guide's row promises the Menu key
+honours it, and the suite covered **one** -- `CustomContextMenu`.
+
+**Measured, and all five were already right**, which is the correct design
+rather than luck: the synthesis sends a `QContextMenuEvent` and
+`QWidget::event()` applies the policy, so the states are Qt's to handle.
+
+        DefaultContextMenu    the widget's own handler, once
+        CustomContextMenu     the signal, and no handler
+        NoContextMenu         the PARENT's handler
+        PreventContextMenu    nothing at all, not even the parent
+        ActionsContextMenu    the menu Qt builds from the widget's actions
+
+**Two of them rest on something this library does.** `NoContextMenu` and
+`PreventContextMenu` differ only in whether the event reaches the parent,
+and that deferral is Qt's notify-level propagation of an ignored
+ContextMenu event -- which the synthesis gets because it delivers with
+`QApplication::sendEvent()`. A one-word change loses it, and four policies
+out of five carry on working, so only the `NoContextMenu` row can see it.
+
+**And `ActionsContextMenu` is the one where QT builds the menu**:
+`QWidget::event()` calls `QMenu::exec()` with the widget's actions -- a
+NESTED event loop entered from inside this router's own key dispatch, which
+is the hazard class 8.196 recorded. Measured: the menu reaches the popup
+stack, the compositor draws it, and Down then Return fires its action. The
+check is behind `QTTY_NESTED_LOOPS_USABLE` for the reason `qt_compat.h`
+gives, and driven from inside the loop by tries rather than by the clock.
+
+**THE PROPAGATION CANNOT BE SABOTAGED, and that is the entry worth
+keeping.** The breakage that would remove it is `target->event(&menu)`, and
+`QWidget::event()` is protected. The entry was written and run, and the
+harness answered
+
+        INCONCLUSIVE: the build failed:
+                      No check ran, so this says nothing about the one named.
+
+which is it refusing to call a failed compile a result -- the same
+distinction `evidence.md` draws about a check that cannot run. Reaching a
+protected member needs the fake-derived-class cast this very file paid
+undefined behaviour for once (8.68), so there is no honest breakage to
+write. The entry that stands instead sends the event to the WINDOW rather
+than the focused widget, a real fault of a different shape; the propagation
+is defended by the check alone, and this paragraph says so rather than
+leaving a reader to assume otherwise.
+
+**And the check it stands on had to be rewritten, because a sabotage could
+not name its failure.** It was written with the diagnostic alone as the
+failure message, so under the breakage it failed under a name no entry
+could match, and the harness answered *"the suite finished without the
+named check"* while reporting 2336 passes and 9 failures -- every check
+counted, the named one among them, failing by another name. That is the
+rule the custom-widget contract's own check already records in a comment:
+*"the same wording as far as the dash, so a sabotage spec can match it."*
+Shared wording now, and the entry reddens the named check and eight
+others.
+
+**And the nested-loop check prints a SKIP on Qt 5 rather than vanishing**,
+which is what the other fixtures behind that gate do and what keeps the two
+arms' totals equal: 2345 on Qt 6, and 2313 passing with 32 stepped over on
+Qt 5. A check compiled away silently makes `count-check`'s number a
+statement about one compiler's view of the suite. Caught by the arms
+disagreeing by exactly one.
+
+**2343 checks to 2345.** No code changed: five policies were right and four
+had no witness. `--validate` passes over all 735.
 
 
 ### 8.510 A title went out with C1 controls in it (2026-10-23)

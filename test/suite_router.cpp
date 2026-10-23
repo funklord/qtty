@@ -10581,6 +10581,176 @@ int suite_router() {
 			      "qtty took");
 			eater->removeEventFilter(&eaten);
 
+			// ALL FIVE CONTEXT-MENU POLICIES, driven by name. The guide's
+			// row promises the Menu key honours contextMenuPolicy, and the
+			// suite covered ONE of the five -- CustomContextMenu, in the
+			// table driver above. 8.511.
+			//
+			// Measured, and all five were already right. What they had was
+			// no witness, and two of them rest on something qtty does
+			// rather than on something Qt does: NoContextMenu and
+			// PreventContextMenu differ ONLY in whether the event reaches
+			// the parent, and that propagation is Qt's notify-level
+			// behaviour, which the synthesis gets because it delivers with
+			// QApplication::sendEvent(). Written as target->event() it
+			// would be lost -- a one-word change, silent in four policies
+			// out of five.
+			//
+			// ActionsContextMenu is the one where QT builds the menu:
+			// QWidget::event() calls QMenu::exec() with the widget's own
+			// actions, a NESTED event loop entered from inside this
+			// router's key dispatch -- the hazard class 8.196 recorded. It
+			// is behind the nested-loop gate for the reason qt_compat.h
+			// gives, and driven from inside the loop by tries rather than
+			// by the clock.
+			{
+				struct Host : QWidget {
+					int asked = 0;
+					void contextMenuEvent(QContextMenuEvent *e) override {
+						++asked;
+						e->accept();
+					}
+				};
+				struct Own : QLineEdit {
+					int asked = 0;
+					void contextMenuEvent(QContextMenuEvent *e) override {
+						++asked;
+						e->accept();
+					}
+				};
+				Host host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *hv = new QVBoxLayout(&host);
+				auto *own = new Own;
+				own->setText(QStringLiteral("text"));
+				hv->addWidget(own);
+				int custom = 0;
+				QObject::connect(own, &QWidget::customContextMenuRequested,
+				                 [&custom] { ++custom; });
+				host.resize(GridMetrics::cells(30, 8));
+				host.show();
+				QCoreApplication::processEvents();
+				InputRouter pr(&host);
+				Qtty::set_current_window(&host);
+				own->setFocus();
+				QCoreApplication::processEvents();
+
+				struct Row { Qt::ContextMenuPolicy p; int own, parent, sig; };
+				const Row rows[] = {
+					{ Qt::DefaultContextMenu, 1, 0, 0 },
+					{ Qt::CustomContextMenu,  0, 0, 1 },
+					{ Qt::NoContextMenu,      0, 1, 0 },
+					{ Qt::PreventContextMenu, 0, 0, 0 },
+				};
+				int wrong = 0;
+				QString first_bad;
+				for (const Row &row : rows) {
+					own->setContextMenuPolicy(row.p);
+					own->asked = host.asked = custom = 0;
+					pr.on_key({Qt::Key_Menu, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					if (own->asked == row.own && host.asked == row.parent
+					    && custom == row.sig)
+						continue;
+					++wrong;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("policy %1: own %2 parent"
+						                           " %3 signal %4, wanted"
+						                           " %5/%6/%7")
+						    .arg(int(row.p)).arg(own->asked).arg(host.asked)
+						    .arg(custom).arg(row.own).arg(row.parent)
+						    .arg(row.sig);
+				}
+				// THE SAME WORDING AS FAR AS THE PUNCTUATION, so a
+				// sabotage spec can match the failure as well as the pass
+				// -- which is the rule the custom-widget contract's own
+				// check records, and which this did not follow at first.
+				// Written with first_bad ALONE as the failure message, the
+				// check failed under a name no entry could name: the
+				// harness answered "the suite finished without the named
+				// check", having counted every one of them.
+				CHECK(wrong == 0,
+				      wrong == 0
+				        ? "the Menu key honours every context-menu policy:"
+				          " the widget's own handler, the custom signal, the"
+				          " PARENT for NoContextMenu, and nothing at all for"
+				          " PreventContextMenu"
+				        : QStringLiteral("the Menu key honours every"
+				                         " context-menu policy -- %1")
+				              .arg(first_bad).toUtf8().constData());
+				host.hide();
+				QCoreApplication::processEvents();
+			}
+
+#if QTTY_NESTED_LOOPS_USABLE
+			// The fifth policy, which needs a nested loop to observe.
+			{
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *hv = new QVBoxLayout(&host);
+				auto *own = new QLineEdit(QStringLiteral("text"));
+				hv->addWidget(own);
+				own->setContextMenuPolicy(Qt::ActionsContextMenu);
+				int fired = 0;
+				auto *sharpen = new QAction(QStringLiteral("&Sharpen"), own);
+				QObject::connect(sharpen, &QAction::triggered,
+				                 [&fired] { ++fired; });
+				own->addAction(sharpen);
+				own->addAction(new QAction(QStringLiteral("&Blur"), own));
+				host.resize(GridMetrics::cells(30, 8));
+				host.show();
+				QCoreApplication::processEvents();
+				InputRouter ar(&host);
+				Compositor ac(&host, &ar);
+				Qtty::set_current_window(&host);
+				own->setFocus();
+				QCoreApplication::processEvents();
+
+				int tries = 0, popups = -1;
+				bool drawn = false;
+				QTimer poke;
+				poke.setInterval(5);
+				QObject::connect(&poke, &QTimer::timeout, [&] {
+					if (++tries > 40) {
+						poke.stop();
+						QApplication::closeAllWindows();
+						return;
+					}
+					if (ar.input_popups().isEmpty()) return;
+					popups = int(ar.input_popups().size());
+					CellBuffer ab(30, 8);
+					ac.compose(ab);
+					drawn = ab.to_text().contains(QStringLiteral("Sharpen"));
+					poke.stop();
+					ar.on_key({Qt::Key_Down, QString(), false, false, false});
+					ar.on_key({Qt::Key_Return, QString(), false, false, false});
+				});
+				poke.start();
+				ar.on_key({Qt::Key_Menu, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				CHECK(popups == 1 && drawn && fired == 1,
+				      "and ActionsContextMenu opens the menu QT builds from"
+				      " the widget's actions -- on the popup stack, drawn,"
+				      " and reachable by key, through a nested QMenu::exec()"
+				      " inside this router's own dispatch");
+				host.hide();
+				QCoreApplication::processEvents();
+			}
+#else
+			// SKIPPED rather than compiled away silently, which is what the
+			// other nested-loop fixtures on this page do and for the
+			// count's sake: the two arms have the same total, and a check
+			// that simply vanishes on Qt 5 makes count-check's number a
+			// statement about one compiler's view of the suite.
+			printf("SKIP: and ActionsContextMenu opens the menu QT builds"
+			       " from the widget's actions -- on the popup stack, drawn,"
+			       " and reachable by key, through a nested QMenu::exec()"
+			       " inside this router's own dispatch"
+			       "\n      a nested QEventLoop does not run on Qt 5 in a"
+			       " process that has issued a stray quit -- project.md"
+			       " 8.464\n");
+#endif
+
 			// CTRL+Z IS AN ORDINARY KEY, which the guide's table says and
 			// nothing held. The backend clears ISIG so the driver no longer
 			// turns it into a suspend, and InputRouter binds nothing to it,

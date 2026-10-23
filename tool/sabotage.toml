@@ -6880,6 +6880,30 @@ count = 1
 check = "Esc closes the submenu and leaves its parent open -- one level out, not all of them"
 
 [[sabotage]]
+# The synthesised context-menu event sent to the WINDOW rather than to the
+# focused widget, so the menu belongs to the wrong control: the field's own
+# handler never runs and the window's does. 8.511.
+name = "a context-menu event goes to the window, not the focus"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQApplication::sendEvent(target, &menu);"
+into = "\t\tQApplication::sendEvent(target->window(), &menu);"
+count = 1
+check = "the Menu key honours every context-menu policy"
+
+# THE PROPAGATION ITSELF CANNOT BE SABOTAGED HERE, and the reason is worth
+# the lines. Qt::NoContextMenu means "handling is deferred to the widget's
+# parent", and that deferral is Qt's notify-level propagation of an ignored
+# ContextMenu event -- which the synthesis gets by delivering through
+# QApplication::sendEvent(). The breakage that would remove it is
+# `target->event(&menu)`, and QWidget::event() is PROTECTED: the entry was
+# written, and the run reported INCONCLUSIVE with the build failed, which is
+# the harness refusing to call a failed compile a result. Reaching a
+# protected member needs the fake-derived-class cast input_router.cpp
+# already paid undefined behaviour for once (8.68), so there is no honest
+# breakage to write. The entry above defends the check by a different fault;
+# the propagation is defended by the check alone. 8.511.
+
+[[sabotage]]
 # A quit key matched from behind an open popup, which is how it was: the
 # loop is the first thing in on_key(), so Esc as a quit key asked the
 # window to close while a menu was open AND left the menu open. 8.508.
