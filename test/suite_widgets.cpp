@@ -9944,6 +9944,70 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A TOOLBAR WHOSE ACTIONS DO NOT FIT, which on a terminal is the
+	// ORDINARY case rather than an edge one: eighty columns and five text
+	// actions overflow at once, where a desktop window is wide enough that
+	// most users never meet the button. Found by section 0d's method --
+	// render a configuration nothing exercises and read it -- and what it
+	// showed was `[Cut][Copy]` and nothing else, the `]` beside them being
+	// the toolbar's own frame corner rather than a control.
+	//
+	// Qt builds a QToolBarExtension holding every action that did not fit,
+	// and it drew NOTHING. Not the empty bracket pair the dock and calendar
+	// buttons gave before their marks: the button is one cell wide, too
+	// narrow for brackets, so an empty label left an empty cell and the
+	// three actions behind it were invisible as well as unreachable.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto bar_with_five = [] {
+			auto *tb = new QToolBar;
+			for (const char *a : {"Cut", "Copy", "Paste", "Find", "Undo"})
+				tb->addAction(QString::fromLatin1(a));
+			return tb;
+		};
+		const auto drawn = [&](QToolBar *tb, int cols) {
+			tb->setFixedSize(cols * cw, ch);
+			tb->show();
+			QCoreApplication::processEvents();
+			CellBuffer b(cols, 1);
+			render_once(*tb, b);
+			GridGuard::reset();
+			return b.to_text();
+		};
+		QToolBar *narrow = bar_with_five();
+		const QString tight = drawn(narrow, 12);
+		// The extension button and the actions it holds, read from Qt rather
+		// than from the picture: the mark is only worth drawing if it stands
+		// for a route, and a mark over an empty menu would be a lie the
+		// snapshot could not catch.
+		QToolButton *ext = nullptr;
+		for (QToolButton *b : narrow->findChildren<QToolButton *>())
+			if (b->objectName() == QLatin1String("qt_toolbar_ext_button"))
+				ext = b;
+		const int hidden = ext && ext->menu() ? ext->menu()->actions().size() : -1;
+		QToolBar *wide = bar_with_five();
+		const QString roomy = drawn(wide, 40);
+		printf("info: a five-action toolbar at 12 cells draws [%s] with %d"
+		       " action(s) behind the extension, and at 40 cells [%s]\n",
+		       qPrintable(tight.trimmed()), hidden, qPrintable(roomy.trimmed()));
+		CHECK(tight.contains(QStringLiteral("▸")),
+		      "a toolbar whose actions do not fit marks the extension that"
+		      " holds them, which drew nothing at all and is the only route"
+		      " to what did not fit");
+		CHECK(hidden == 3,
+		      "and the mark stands for a real route rather than decoration,"
+		      " the button holding every action that did not fit");
+		// THE CONTROL, and it is the half that stops the check passing for a
+		// style that marks every toolbar: a bar with room grows no extension
+		// button, so the mark must be absent there.
+		CHECK(!roomy.contains(QStringLiteral("▸"))
+		      && roomy.contains(QStringLiteral("Undo")),
+		      "while a toolbar with room draws every action and no mark at"
+		      " all");
+		delete narrow;
+		delete wide;
+	}
+
 	return fails;
 }
 

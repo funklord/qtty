@@ -8220,3 +8220,13 @@ find = "\t\t\t\t// frame right; this is what makes there be one.\n\t\t\t\tredraw
 into = ""
 count = 1
 check = "and so does a cell size, the uploads it forgets being what makes the next frame right rather than what makes there be one"
+
+[[sabotage]]
+# The toolbar's extension button loses its mark, so a toolbar whose actions do
+# not fit draws nothing where the only route to them is. 8.520.
+name = "a toolbar's extension button is unmarked again"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (n == QLatin1String(\"qt_toolbar_ext_button\")) {"
+into = "\t\tif (false) {"
+count = 1
+check = "a toolbar whose actions do not fit marks the extension that holds them, which drew nothing at all and is the only route to what did not fit"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2373 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2376 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46155,3 +46155,67 @@ scheduler is asserted to present NOTHING on a third `render_now()`, so the
 frame counted afterwards cannot be one the scheduler already owed. Without
 it the check passes against a scheduler that draws on every call, which is
 most of them.
+
+### 8.520 A toolbar's extension button gets a mark (2026-10-23)
+
+**Found by section 0d's own method, run as written: render a
+configuration nothing exercises, print what a terminal would show, and
+read it.** The batch was seven widgets that method had not covered --
+`QLCDNumber`, a tree with one expanded and one collapsed branch, a header
+with a sort indicator, a toolbar and a tab bar each too narrow for their
+contents, a `QDial` and a status bar with a size grip. Six came out
+correct and are worth recording as such: the LCD number renders readable
+digits rather than segment blobs, the tree's branches are `▾` and `▸`,
+the sort indicator draws, the dial becomes a line with its handle at the
+right fraction, and the size grip is absent, which is right for a control
+that does nothing on a terminal.
+
+**The seventh was the finding, and the picture understated it.** A
+five-action toolbar at twelve cells drew `[Cut][Copy]]` -- and the `]`
+was the toolbar's own frame corner, not a control. Qt builds a
+`QToolBarExtension` holding every action that did not fit, measured at
+three of the five, and it drew NOTHING: `PM_ToolBarExtensionExtent` is
+one cell, which is too narrow for this style's bracket pair, so an empty
+label left an empty cell. The dock widget's close and float buttons and
+the calendar's month arrows each came out as `[]` before they were given
+marks; this one had no mark AND no brackets, so there was nothing on
+screen at all.
+
+**It is the third widget in that family and the remedy was already
+written twice.** Reached by `objectName` rather than by `arrowType`, for
+the reason the calendar's arrows are: measured, this Qt leaves
+`arrowType` at `NoArrow` and gives the button a pixmap, so `features`
+carries no `Arrow` bit and the branch that would have answered cannot see
+it. The direction follows the toolbar, matching the vocabulary the rest
+of the function uses -- `▸` for a horizontal bar, `▾` for a vertical one.
+
+**Why it matters more here than on a desktop.** An overflowing toolbar is
+the ORDINARY case on a terminal rather than an edge one: eighty columns
+and five text actions overflow at once, where a desktop window is wide
+enough that most users never meet the button. That is the *who is in the
+condition* question working-practice.md asks, and the answer is
+everybody.
+
+**The keyboard half is NOT taken and is not mine.** The button is
+`Qt::NoFocus` -- measured -- so Tab cannot reach it, and
+`Qtty::pointer_only()` already names it, which is exactly what that API
+is for. Section 0b carries the question of whether the conventions should
+offer a key for Qt's own pointer-only furniture, and this is another
+instance for it rather than a reason to answer it here. What the mark
+buys meanwhile is real: qtty turns mouse reporting on, so a visible
+control is a clickable one, and an invisible control is neither.
+
+**Three checks, and the control is what makes them mean something.** A
+toolbar with room must draw every action and NO mark, which is what stops
+the pair passing against a style that marks every toolbar; and the count
+of actions behind the button is read from Qt rather than from the
+picture, because a mark over an empty menu would be a lie the snapshot
+could not catch.
+
+**And the probe was checked before it was believed, twice.** The first
+reading blamed the extension button for the `]`; rendering the button
+alone showed it inking nothing, which moved the `]` to the frame. The
+second assumed `arrowType` was set, since Qt's own extension button does
+set it in some versions; printing `arrowType` and `features` showed
+otherwise. Section 0d says the instrument has its own bugs and that they
+read as findings -- both of these did.

@@ -35,6 +35,7 @@
 #include <QAbstractItemView>
 #include <QLineEdit>
 #include <QToolButton>
+#include <QToolBar>
 #include <QWidget>
 #include <QCoreApplication>
 #include <QFontMetricsF>
@@ -362,6 +363,36 @@ static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget
 			return QStringLiteral("◂");
 		if (n == QLatin1String("qt_calendar_nextmonth"))
 			return QStringLiteral("▸");
+		// A TOOLBAR'S EXTENSION BUTTON, which is the third widget along in
+		// this family and the one where the cost is highest. It appears when
+		// a toolbar's actions do not fit and holds every one that did not --
+		// measured, a five-action toolbar at twelve cells shows two and puts
+		// three behind this button -- so it is the only route to them, and
+		// it drew NOTHING. Not the empty bracket pair the dock and calendar
+		// buttons gave: `PM_ToolBarExtensionExtent` is one cell, which is
+		// too narrow for the brackets, so an empty label left an empty cell
+		// and a terminal user had no way to know the three actions existed.
+		//
+		// On a terminal an overflowing toolbar is the ORDINARY case rather
+		// than an edge one, which is what makes this worth a mark: eighty
+		// columns and five text actions overflow at once, where a desktop
+		// window is wide enough that most users never see the button.
+		//
+		// Reached by objectName for the reason the calendar's arrows are:
+		// this Qt gives the button a PIXMAP and leaves arrowType at NoArrow,
+		// so `features` carries no Arrow bit and the branch above cannot see
+		// it. Measured -- arrowType 0, features 0x0, text empty, icon
+		// present.
+		//
+		// The direction follows the toolbar, matching the vocabulary the
+		// rest of this function uses: a horizontal bar overflows to the
+		// right and a vertical one downwards.
+		if (n == QLatin1String("qt_toolbar_ext_button")) {
+			const auto *bar =
+			    qobject_cast<const QToolBar *>(w->parentWidget());
+			return bar && bar->orientation() == Qt::Vertical
+			    ? QStringLiteral("▾") : QStringLiteral("▸");
+		}
 	}
 	QString text = strip_mnemonic(tb->text);
 	// An icon-only action, which is the common toolbar shape and had nothing
