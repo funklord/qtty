@@ -26,6 +26,23 @@ static int fails = 0;
                          else { printf("FAIL: %s\n      condition: %s\n", \
                                        m, #c); ++fails; } } while (0)
 
+// A backend whose handover count a check can move, for the three blocks below
+// that ask what a handover ends. Declared here rather than inside one of them
+// because all three need it.
+namespace {
+struct Handing : Qtty::ITerminalBackend {
+	int handed = 0;
+	QSize size() const override { return QSize(20, 6); }
+	Qtty::Capabilities capabilities() const override { return Qtty::Capabilities(); }
+	void present(const Qtty::CellBuffer &, const QRegion &) override {}
+	void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
+	void set_event_sink(Qtty::ITerminalEventSink *) override {}
+	void suspend() override {}
+	void resume() override {}
+	int handovers() const override { return handed; }
+};
+} // namespace
+
 int suite_router() {
 	fails = 0;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -17080,6 +17097,58 @@ int suite_router() {
 		      " click after it is a click rather than a double nobody made");
 	}
 
+	// A LEAVE HANDLER THAT REPAINTS, DURING THE HANDOVER ITSELF. Clearing
+	// the hover sends Leave, which is application code -- and it now runs
+	// from inside Compositor::compose(), which did not previously reach a
+	// widget's handlers at that point. The ordinary shape of such a handler
+	// is a hover highlight giving itself up, so that is what this drives.
+	//
+	// It has to be EAGER rather than deferred to the next mouse event, which
+	// is the obvious safer design and does not work: the whole defect is a
+	// user who shells out and never moves the pointer again, so a clear that
+	// waits for a mouse event never happens. Compose already sends paint and
+	// resize events to application code while building a frame, so a Leave
+	// there is in keeping rather than new in kind.
+	//
+	// There is no re-entrancy guard in the frame path -- measured, nothing in
+	// compositor.cpp tracks that it is composing -- so a handler that called
+	// Qtty::redraw() from here would recurse. That predates this and is not
+	// what an ordinary handler does; what is pinned here is the ordinary one.
+	{
+		struct Repainting : QWidget {
+			int leaves = 0;
+			using QWidget::QWidget;
+			void leaveEvent(QEvent *) override { ++leaves; update(); }
+		};
+		Handing back_end;
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 6));
+		auto *hot = new Repainting(&win);
+		hot->setGeometry(0, 0, 8 * cw, ch);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		FrameScheduler sched(&back_end, &comp, &win);
+		Qtty::set_current_window(&win);
+		router.on_mouse({QPoint(2, 0), 1, true, false, false,
+		                 0, 0, false, false, false});
+		QCoreApplication::processEvents();
+		const bool was_hovered = hot->underMouse();
+		back_end.handed = 1;
+		sched.render_now();
+		QCoreApplication::processEvents();
+		printf("info: a repainting Leave handler ran %d time(s) during the"
+		       " handover; underMouse %d -> %d\n", hot->leaves,
+		       int(was_hovered), int(hot->underMouse()));
+		CHECK(was_hovered && hot->leaves == 1 && !hot->underMouse(),
+		      "a Leave handler that repaints runs once during the handover"
+		      " and the frame completes, the hover being given up through"
+		      " the path that sends it rather than by clearing a member");
+		Qtty::set_current_window(nullptr);
+	}
+
 	// A BUTTON HELD ACROSS A HANDOVER, which section 0b carried as a question
 	// and deferred on a cost that had stopped being real. A press sets the
 	// router's grab and only a release clears it; a handover takes the
@@ -17094,17 +17163,6 @@ int suite_router() {
 	// routers from an internal header, which 8.516 established for a late
 	// font. `forget_mouse_grabs()` is that shape, so nothing public moved.
 	{
-		struct Handing : ITerminalBackend {
-			int handed = 0;
-			QSize size() const override { return QSize(20, 6); }
-			Capabilities capabilities() const override { return Capabilities(); }
-			void present(const CellBuffer &, const QRegion &) override {}
-			void set_cursor(std::optional<QPoint>, CursorShape) override {}
-			void set_event_sink(ITerminalEventSink *) override {}
-			void suspend() override {}
-			void resume() override {}
-			int handovers() const override { return handed; }
-		};
 		Handing back_end;
 		QWidget win;
 		win.setAttribute(Qt::WA_DontShowOnScreen);

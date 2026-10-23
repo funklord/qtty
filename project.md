@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2384 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2385 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46422,6 +46422,33 @@ and the entry reddens it now. Three checks of mine have been written this
 session whose first version could not fail for the reason they name; only
 this one was caught by a tool rather than by a failing run, which is the
 difference between a discipline and luck.
+
+**CLEARING THE HOVER RUNS APPLICATION CODE INSIDE A FRAME, which is an
+exposure this change introduced and which is now pinned.** A `Leave` is
+application code, and it now goes out from inside `Compositor::compose()`,
+which did not previously reach a widget's handlers at that point. The
+ordinary shape of such a handler is a hover highlight giving itself up, so
+that is what the check drives: it runs once, the hover is given up, and the
+frame completes.
+
+**It has to be EAGER, and the safer-looking design does not work.**
+Deferring the clear to the next mouse event is the obvious way to keep
+application code out of the frame, and it cannot fix this: the whole defect
+is a user who shells out and never moves the pointer again, so a clear that
+waits for a mouse event never happens. Compose already sends paint and
+resize events to application code while building a frame, so a `Leave`
+there is in keeping rather than new in kind.
+
+**There is no re-entrancy guard in the frame path**, measured -- nothing in
+`compositor.cpp` tracks that it is composing -- so a handler that called
+`Qtty::redraw()` from a `Leave` would recurse. That predates this change
+and is reachable from the paint and resize events compose already sends; it
+is recorded rather than acted on, since guarding the frame path is a
+decision about it rather than a defect in this.
+
+**The existing hover entry covers the new check as well**, which is why no
+fourth was added: removing the clear sends no `Leave`, so the handler never
+runs and both checks go red.
 
 **AND THE DOUBLE-CLICK CHECK CALLS THE UNIT RATHER THAN DRIVING A RENDER,
 which is a correction rather than a shortcut.** The first version built a
