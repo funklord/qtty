@@ -6849,6 +6849,19 @@ count = 1
 check = "a form of four controls lists four stops, the composites themselves and not the widgets inside them"
 
 [[sabotage]]
+# The key handed to the BOTTOM of the popup stack rather than the top. With
+# a submenu open that is the parent menu, so Esc closes both at once and a
+# user walking out of a nested menu lands at the top instead of one level
+# back. Nothing asserted the out direction until 8.509, so this breakage
+# had no witness.
+name = "a key goes to the bottom of the popup stack"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQWidget *p = open.last();                 // topmost"
+into = "\t\tQWidget *p = open.first();                 // topmost"
+count = 1
+check = "Esc closes the submenu and leaves its parent open -- one level out, not all of them"
+
+[[sabotage]]
 # A quit key matched from behind an open popup, which is how it was: the
 # loop is the first thing in on_key(), so Esc as a quit key asked the
 # window to close while a menu was open AND left the menu open. 8.508.

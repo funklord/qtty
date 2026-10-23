@@ -5856,6 +5856,109 @@ int suite_router() {
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
 
+	// ---- and the way back OUT, which nothing here asked about -------------
+	//
+	// The block above drives a submenu IN -- Down, Right, Return -- and the
+	// copyright holder's question of 2026-10-23 names both directions:
+	// "nested menus, enter/esc to go in and out". Measured, the out
+	// direction works completely and needed no code; what it had was no
+	// check, so the next change to this routing would not have said so --
+	// which is the sentence the block above opens with, owed to the other
+	// half. 8.509.
+	//
+	// ONE LEVEL, which is the whole of it. Esc closes the submenu and
+	// leaves the parent open with its own item still highlighted, so a user
+	// lands where they were rather than at the top. That rests on
+	// key_target() handing the key to `open.last()` -- the TOPMOST popup --
+	// and Qt's own QMenu::keyPressEvent closing only the menu it reaches. A
+	// key_target() that answered with the bottom of the stack would close
+	// both at once and no check would have noticed.
+	//
+	// THE FRAME IS ASSERTED TOO, because the popup stack shrinking and the
+	// cells being redrawn are two things: a submenu the compositor still
+	// draws after it has closed is a menu the user can see and cannot use.
+	// Measured both ways round -- with the submenu open the frame carries
+	// its item, and after one Esc it carries the parent's and not the
+	// submenu's.
+	//
+	// ENTER OPENS ONE AS WELL AS RIGHT, which the block above does not say.
+	// Right is Qt's documented key and Enter is what a TUI user presses;
+	// both reach QMenu::keyPressEvent, and asserting only one of them makes
+	// the other an accident.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 10));
+		QMenu menu(&host);
+		menu.addAction(QStringLiteral("Plain"));
+		QMenu *sub = menu.addMenu(QStringLiteral("More"));
+		sub->addAction(QStringLiteral("Deep"));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter br(&host);
+		Compositor bc(&host, &br);
+		const auto frame_has = [&](const QString &needle) {
+			CellBuffer b(40, 10);
+			bc.compose(b);
+			return b.to_text().contains(needle);
+		};
+		const auto key = [&br](int k) {
+			br.on_key({k, QString(), false, false, false});
+			QCoreApplication::processEvents();
+		};
+
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		key(Qt::Key_Down);
+		key(Qt::Key_Down);
+		CHECK(menu.activeAction()
+		      && menu.activeAction()->text() == QStringLiteral("More"),
+		      "the walk reaches the submenu's item, which is the premise of"
+		      " everything below");
+		key(Qt::Key_Return);
+		CHECK(sub->isVisible() && br.input_popups().size() == 2,
+		      "Enter opens a submenu as Right does, which is the key a"
+		      " terminal user reaches for");
+		CHECK(frame_has(QStringLiteral("Deep"))
+		      && frame_has(QStringLiteral("Plain")),
+		      "and both menus are drawn while both are open");
+
+		key(Qt::Key_Escape);
+		CHECK(br.input_popups().size() == 1 && !sub->isVisible()
+		      && menu.isVisible(),
+		      "Esc closes the submenu and leaves its parent open -- one"
+		      " level out, not all of them");
+		CHECK(menu.activeAction()
+		      && menu.activeAction()->text() == QStringLiteral("More"),
+		      "with the parent's own item still highlighted, so going back"
+		      " out lands where you were");
+		CHECK(!frame_has(QStringLiteral("Deep"))
+		      && frame_has(QStringLiteral("Plain")),
+		      "and the frame no longer draws the submenu, the stack"
+		      " shrinking and the cells being redrawn being two things");
+
+		key(Qt::Key_Escape);
+		CHECK(br.input_popups().isEmpty() && !menu.isVisible()
+		      && !frame_has(QStringLiteral("Plain")),
+		      "and a second Esc closes the parent, leaving no menu drawn");
+
+		// LEFT is Qt's other way back, and asserting it keeps a fix for one
+		// from silently being a fix for only that one.
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		key(Qt::Key_Down);
+		key(Qt::Key_Down);
+		key(Qt::Key_Right);
+		CHECK(sub->isVisible(), "Right still opens it");
+		key(Qt::Key_Left);
+		CHECK(br.input_popups().size() == 1 && !sub->isVisible()
+		      && menu.isVisible(),
+		      "and Left goes one level out as Esc does");
+		menu.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- the menu idiom an application actually writes: exec(), which runs
 	// a NESTED event loop, re-entered from inside contextMenuEvent() -- so
 	// the loop starts while the router is still dispatching the press that

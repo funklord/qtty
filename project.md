@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2332 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2341 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,49 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.509 The way back out of a nested menu, which nothing asked about (2026-10-23)
+
+**The holder's question of 2026-10-23 names both directions** -- "nested
+menus, enter/esc to go in and out" -- and section 17.2's submenu block
+drives only the way IN: Down, Right, Return. Measured, the way out works
+completely and needed no code. What it had was no check.
+
+        submenu open            frame carries its item and the parent's
+        Enter on a submenu item opens it, 2 popups   (as Right does)
+        Esc                     1 popup, parent open, ITS ITEM STILL LIT
+        Esc, frame              the submenu's item gone, the parent's kept
+        Esc again               no popups, nothing drawn
+        Left                    one level out, as Esc
+
+So this is a harness entry rather than a fix, and it earns its place by
+the sentence the block above it opens with: *"this suite exists so the
+next change to that routing says so."* That was owed to the other half.
+
+**What it rests on, and what the sabotage breaks.** `key_target()` hands
+the key to `open.last()` -- the TOPMOST popup -- and Qt's own
+`QMenu::keyPressEvent` closes only the menu it reaches. Pointed at
+`open.first()` instead, Esc closes both menus at once: a user walking out
+of a nested menu lands at the top rather than one level back. That entry
+reddens the named check **and four others**, including `Return in the
+submenu fires its item` which existed before -- so the stack's order was
+load-bearing for the way in as well, and only the way in could see it.
+
+**The frame is asserted separately from the stack**, because the popup
+list shrinking and the cells being redrawn are two things: a submenu the
+compositor still draws after it has closed is a menu a user can see and
+cannot use. Measured both ways round rather than once.
+
+**Enter is asserted beside Right.** Right is Qt's documented key and Enter
+is what a terminal user presses; both reach `QMenu::keyPressEvent`, and
+asserting only one of them leaves the other an accident.
+
+**2332 checks to 2341**, and three hypotheses were refuted on the way --
+the frame after a close, `Left` as the other way out, and Enter as an
+opener all already worked. **Both remaining parts of the holder's question
+are therefore done**, and measured rather than asserted: nested menus, and
+Enter/Esc in and out. The Esc-to-exit half was 8.508.
 
 
 ### 8.508 Esc as a quit key, and the popup it quit from behind (2026-10-23)
