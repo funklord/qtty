@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2323 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2328 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,51 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.507 The keyboard grab was honoured and the mouse grab was not (2026-10-23)
+
+**8.506 found a hole in the enumerator beside the one 8.503 fixed. This
+is the same shape in the input path:** `grabKeyboard()` is honoured,
+`grabMouse()` was ignored, and `mouseGrabber()` appeared nowhere in
+`src/`.
+
+The keyboard arm's comment makes the argument for both: the offscreen
+plugin refuses the grab and says so on stderr, which is what made it look
+like a platform limit, but **Qt records the grabber regardless**, so
+`QWidget::keyboardGrabber()` is an honest answer and the router can simply
+ask. Every word of that applies to the mouse, which is what makes this an
+oversight rather than a decision.
+
+**Measured, with the control that says the probe discriminates:**
+
+        grab held, click over another widget    the other widget got it
+        grab released, the same click           the other widget got it
+
+Identical -- so holding the grab changed nothing at all. Qt, through its
+own platform path and with the same control:
+
+        no grab, click over another widget      the other widget: 1 press
+        grab held, the same click               the GRABBER: 1 press
+
+**THE WHEEL DOES NOT FOLLOW THE GRAB, and measuring that is what decided
+where the fix goes.** The obvious placement is beside the implicit grab,
+where `target` is settled -- and `target` is settled before the wheel
+branch reads it. Qt was measured first: with the grab held, a notch over
+another widget reached THAT widget, identically to the no-grab control. So
+the obvious placement would have sent every notch to the grabber, a defect
+introduced by the fix for one. The grab is read under `!m.wheel &&
+!m.wheel_x`, and the wheel case is asserted beside the press.
+
+Two sabotage entries follow from that, anchored on the same line with
+opposite breakages: `if (false)` ignores the grab and reddens the press
+check, `if (true)` lets the wheel follow it and reddens the wheel check.
+Each `--only` proven.
+
+**2323 checks to 2328**, including the keyboard arm's own ownership rule
+asserted for the mouse: a grab in a window this router does not own takes
+nothing from the window it does. That is separate code, so it is a
+separate check rather than an inference. `--validate` passes over all 731.
 
 
 ### 8.506 The same hole in the enumerator beside it (2026-10-23)

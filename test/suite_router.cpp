@@ -15675,6 +15675,118 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a MOUSE grab, the same question one mechanism along ---------------
+	//
+	// grabMouse() is the keyboard grab's twin and the router ignored it
+	// entirely, while honouring the keyboard one directly above for reasons
+	// that apply word for word: the offscreen plugin refuses the grab and
+	// Qt records the grabber regardless, so mouseGrabber() is an honest
+	// answer. The asymmetry is what makes it an oversight. 8.507.
+	//
+	// Measured before, with a control that says the probe discriminates: a
+	// click over another widget reached that widget whether or not the grab
+	// was held -- identical, so holding it changed nothing. Qt, through its
+	// own platform path and with the same control, sends that click to the
+	// GRABBER.
+	//
+	// AND THE WHEEL DOES NOT FOLLOW THE GRAB, which was measured rather
+	// than assumed and decided where the fix goes. With the grab held, Qt
+	// sent a notch over another widget to THAT widget, identically to the
+	// no-grab control. A fix that set the target before the wheel branch
+	// would have sent every notch to the grabber -- a defect introduced by
+	// the fix for one -- so the wheel case is asserted here beside the
+	// press.
+	{
+		struct Counter : QLabel {
+			int presses = 0, releases = 0, wheels = 0;
+			using QLabel::QLabel;
+			void mousePressEvent(QMouseEvent *) override { ++presses; }
+			void mouseReleaseEvent(QMouseEvent *) override { ++releases; }
+			void wheelEvent(QWheelEvent *) override { ++wheels; }
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 6));
+		auto *holder = new Counter(QStringLiteral("holder"), &host);
+		holder->setGeometry(0, 0, 10 * cw, ch);
+		auto *elsewhere = new Counter(QStringLiteral("elsewhere"), &host);
+		elsewhere->setGeometry(0, 2 * ch, 10 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter mr(&host);
+		Qtty::set_current_window(&host);
+
+		const auto click = [&mr](int x, int y) {
+			Qtty::MouseEvent down;
+			down.cell = QPoint(x, y);
+			down.button = 1;
+			down.press = true;
+			mr.on_mouse(down);
+			Qtty::MouseEvent up;
+			up.cell = QPoint(x, y);
+			up.button = 1;
+			up.release = true;
+			mr.on_mouse(up);
+			QCoreApplication::processEvents();
+		};
+
+		holder->grabMouse();
+		QCoreApplication::processEvents();
+		CHECK(QWidget::mouseGrabber() == holder,
+		      "Qt records a mouse grabber even where the platform refuses"
+		      " the grab, which is what lets the router ask");
+		click(2, 2);
+		CHECK(holder->presses == 1 && holder->releases == 1
+		      && elsewhere->presses == 0,
+		      "a click over another widget goes to the widget holding the"
+		      " mouse grab, not to the one under the pointer");
+
+		// THE WHEEL, with the grab still held.
+		click(2, 2);                     // settle, then count only the notch
+		holder->wheels = elsewhere->wheels = 0;
+		Qtty::MouseEvent notch;
+		notch.cell = QPoint(2, 2);
+		notch.wheel = -1;
+		mr.on_mouse(notch);
+		QCoreApplication::processEvents();
+		CHECK(elsewhere->wheels == 1 && holder->wheels == 0,
+		      "while a wheel does NOT follow the grab, which is Qt's own"
+		      " answer and is why the grab is read after the wheel branch");
+
+		holder->releaseMouse();
+		QCoreApplication::processEvents();
+		holder->presses = elsewhere->presses = 0;
+		click(2, 2);
+		CHECK(elsewhere->presses == 1 && holder->presses == 0,
+		      "and with the grab released the click goes back to the widget"
+		      " under the pointer, which is the control saying the grab was"
+		      " what moved it");
+
+		// A grab in a window this router does not own takes nothing from
+		// the window it does -- the keyboard arm's own rule, asserted here
+		// because the two are separate code.
+		QWidget other_window;
+		other_window.setAttribute(Qt::WA_DontShowOnScreen);
+		other_window.resize(GridMetrics::cells(10, 3));
+		auto *stranger = new Counter(QStringLiteral("stranger"),
+		                             &other_window);
+		stranger->setGeometry(0, 0, 10 * cw, ch);
+		other_window.show();
+		QCoreApplication::processEvents();
+		stranger->grabMouse();
+		QCoreApplication::processEvents();
+		elsewhere->presses = 0;
+		click(2, 2);
+		CHECK(elsewhere->presses == 1 && stranger->presses == 0,
+		      "and a mouse grab in a window this router does not own takes"
+		      " nothing from the window it does");
+		stranger->releaseMouse();
+		other_window.hide();
+		host.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- a layer that opens with nothing focused ---------------------------
 	//
 	// Qt gives a window its first tab stop when the window ACTIVATES, and

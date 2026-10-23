@@ -6849,6 +6849,30 @@ count = 1
 check = "a form of four controls lists four stops, the composites themselves and not the widgets inside them"
 
 [[sabotage]]
+# The explicit mouse grab ignored, which is how it was: a click went to
+# whatever was under the pointer while a widget held grabMouse(), so the
+# grab changed nothing at all -- while the KEYBOARD grab beside it was
+# honoured. 8.507.
+name = "an explicit mouse grab is ignored"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!m.wheel && !m.wheel_x) {\n\t\tif (QWidget *g = QWidget::mouseGrabber())"
+into = "\tif (false) {\n\t\tif (QWidget *g = QWidget::mouseGrabber())"
+count = 1
+check = "a click over another widget goes to the widget holding the mouse grab, not to the one under the pointer"
+
+[[sabotage]]
+# The WHEEL made to follow the grab, which is the defect the fix for the
+# one above would have introduced if it had set the target before the wheel
+# branch. Qt was measured not to redirect a wheel: with the grab held, a
+# notch over another widget reached that widget. 8.507.
+name = "a wheel follows the mouse grab"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!m.wheel && !m.wheel_x) {\n\t\tif (QWidget *g = QWidget::mouseGrabber())\n\t\t\tfor (QWidget *p = g; p; p = p->parentWidget())"
+into = "\tif (true) {\n\t\tif (QWidget *g = QWidget::mouseGrabber())\n\t\t\tfor (QWidget *p = g; p; p = p->parentWidget())"
+count = 1
+check = "while a wheel does NOT follow the grab, which is Qt's own answer and is why the grab is read after the wheel branch"
+
+[[sabotage]]
 # The owner-state test removed from the MNEMONIC enumerator, the parallel of
 # the chord one below: an action on the hidden page of a QStackedWidget
 # claimed its letter, so Alt+Z triggered something the user could not see --

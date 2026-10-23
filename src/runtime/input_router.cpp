@@ -3358,6 +3358,44 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	// release clears it.
 	if (!grab_.isNull() && (m.motion || m.release)) target = grab_;
 
+	// AN EXPLICIT MOUSE GRAB, which an application asks for with
+	// grabMouse() and which this router ignored entirely -- while honouring
+	// the KEYBOARD grab forty lines above, for reasons that apply word for
+	// word to this one. 8.507.
+	//
+	// The offscreen plugin refuses the grab and says so on stderr; Qt
+	// records the grabber anyway, so QWidget::mouseGrabber() is an honest
+	// answer and the router can simply ask. That is the keyboard arm's own
+	// argument, and the asymmetry is what makes this an oversight rather
+	// than a decision.
+	//
+	// Measured before, with the control that says the probe discriminates:
+	//
+	//     grab held, click over another widget   the other widget got it
+	//     grab released, same click              the other widget got it
+	//
+	// -- identical, so holding the grab changed nothing at all. Qt, through
+	// its own platform path and with the same control:
+	//
+	//     no grab, click over another widget     the other widget: 1 press
+	//     grab held, same click                  the GRABBER: 1 press
+	//
+	// NOT THE WHEEL, and that was measured rather than assumed -- it is why
+	// this sits after the implicit grab and is guarded here rather than
+	// folded into `target` above. Qt's mouse grab does not redirect a
+	// wheel: with the grab held, a notch over another widget reached THAT
+	// widget, identically to the no-grab control. Setting the target before
+	// the wheel branch would have sent every notch to the grabber, which is
+	// a defect introduced by the fix for one.
+	//
+	// Inside this router's window only, the same ownership rule the
+	// keyboard grab and the focus repairs follow.
+	if (!m.wheel && !m.wheel_x) {
+		if (QWidget *g = QWidget::mouseGrabber())
+			for (QWidget *p = g; p; p = p->parentWidget())
+				if (p == win_) { target = g; break; }
+	}
+
 	// From `screen`, not from `px`. The first version of the scroll fix
 	// corrected the hit test and left this line alone, so the right widget
 	// received an event whose own position was five rows above itself --
