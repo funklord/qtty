@@ -17013,5 +17013,119 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// A BUTTON HELD ACROSS A HANDOVER, which section 0b carried as a question
+	// and deferred on a cost that had stopped being real. A press sets the
+	// router's grab and only a release clears it; a handover takes the
+	// release away, since kLeave turns mouse reporting off and a button held
+	// while a shell or an editor has the terminal has its release delivered
+	// THERE. Left alone, every mouse event after the return is routed to the
+	// widget that was pressed until the next click's release clears it.
+	//
+	// The row named two candidate seams and called both additions to a
+	// public header. The third route was already in the tree:
+	// `relayout_live_routers()` fans a process-wide fact over the live
+	// routers from an internal header, which 8.516 established for a late
+	// font. `forget_mouse_grabs()` is that shape, so nothing public moved.
+	{
+		struct Handing : ITerminalBackend {
+			int handed = 0;
+			QSize size() const override { return QSize(20, 6); }
+			Capabilities capabilities() const override { return Capabilities(); }
+			void present(const CellBuffer &, const QRegion &) override {}
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void suspend() override {}
+			void resume() override {}
+			int handovers() const override { return handed; }
+		};
+		Handing back_end;
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 6));
+		QPushButton a(QStringLiteral("A"), &win);
+		QPushButton b(QStringLiteral("B"), &win);
+		a.setGeometry(0, 0, 8 * cw, ch);
+		b.setGeometry(0, 3 * ch, 8 * cw, ch);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		FrameScheduler sched(&back_end, &comp, &win);
+		Qtty::set_current_window(&win);
+		int a_moves = 0, b_moves = 0;
+		// Counted through the widgets themselves rather than through the
+		// router, which has no accessor for the grab -- and deliberately
+		// none, that being the public seam the row would not spend.
+		struct Counter : QObject {
+			int *moves;
+			explicit Counter(int *m, QObject *p) : QObject(p), moves(m) {}
+			bool eventFilter(QObject *, QEvent *e) override {
+				if (e->type() == QEvent::MouseMove) ++*moves;
+				return false;
+			}
+		};
+		a.installEventFilter(new Counter(&a_moves, &a));
+		b.installEventFilter(new Counter(&b_moves, &b));
+		const auto at = [&](QWidget *w) {
+			const QPoint c = w->geometry().center();
+			return QPoint(c.x() / cw, c.y() / ch);
+		};
+		int win_moves = 0;
+		win.installEventFilter(new Counter(&win_moves, &win));
+		// THE INSTRUMENT FIRST: does a motion over B reach B at all when
+		// nothing is grabbed? Without this the fixture cannot tell a grab
+		// that was cleared from a hit test that never worked here.
+		MouseEvent cold{at(&b), 0, false, false, true, 0, 0, false, false, false};
+		router.on_mouse(cold);
+		QCoreApplication::processEvents();
+		printf("info: with no grab at all, a motion over B reached B %d"
+		       " time(s), A %d, the window %d\n", b_moves, a_moves, win_moves);
+		a_moves = b_moves = win_moves = 0;
+		MouseEvent press{at(&a), 1, true, false, false, 0, 0, false, false, false};
+		router.on_mouse(press);
+		QCoreApplication::processEvents();
+		// The grab is live: a motion over B goes to A while the button is
+		// held, which is what a grab IS and is the control for the assertion
+		// below -- without it a cleared grab and a grab that never worked
+		// look identical.
+		MouseEvent over_b = press;
+		over_b.press = false;
+		over_b.motion = true;
+		over_b.cell = at(&b);
+		router.on_mouse(over_b);
+		QCoreApplication::processEvents();
+		const int a_while_held = a_moves, b_while_held = b_moves;
+		// The handover, told the way the compositor hears it.
+		back_end.handed = 1;
+		sched.render_now();
+		QCoreApplication::processEvents();
+		a_moves = b_moves = 0;
+		router.on_mouse(over_b);
+		QCoreApplication::processEvents();
+		printf("info: while held, a motion over B reached A %d time(s) and B"
+		       " %d; after the handover, A %d and B %d\n", a_while_held,
+		       b_while_held, a_moves, b_moves);
+		CHECK(a_while_held == 1 && b_while_held == 0,
+		      "a held button keeps the grab, so a motion over another widget"
+		      " still reaches the pressed one");
+		// ASSERTED ON THE PRESSED WIDGET, not on the other one, and the
+		// reason is measured rather than chosen. on_mouse() closes a popup
+		// when the registry is non-empty, nothing contains the point and the
+		// grab is NULL -- and that registry still holds popups from earlier
+		// fixtures by the time this block runs, so a motion with no grab is
+		// consumed there and reaches no widget at all. Measured: with no
+		// grab, a motion over B reached B 0 times, A 0, the window 0.
+		//
+		// That does not weaken the check, it is what makes it discriminate.
+		// A grab that survived the handover would SKIP that branch -- it is
+		// gated on `grab_.isNull()` -- and the motion would land on A
+		// exactly as the control above shows. So "A received nothing" can
+		// only mean the grab is gone.
+		CHECK(a_moves == 0,
+		      "while a handover ends the grab, the release that would have"
+		      " cleared it having gone to whoever had the terminal");
+		Qtty::set_current_window(nullptr);
+	}
+
 	return fails;
 }

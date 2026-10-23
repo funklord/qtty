@@ -8241,3 +8241,14 @@ find = "\tQRect visible = cell_rect.intersected(QRect(QPoint(0, 0), grid));"
 into = "\tQRect visible = cell_rect;"
 count = 1
 check = "crop_placement never answers cells outside the grid or a source outside the image, which is what the three pixel tiers place and sample by"
+
+[[sabotage]]
+# The compositor stops clearing the grab, so a button held across a handover
+# keeps every later mouse event pointed at the widget it was pressed on.
+# 8.523.
+name = "a handover leaves the mouse grab set"
+file = "src/runtime/compositor.cpp"
+find = "\t\tforget_mouse_grabs();\n"
+into = ""
+count = 1
+check = "while a handover ends the grab, the release that would have cleared it having gone to whoever had the terminal"

@@ -7,6 +7,7 @@
 //   section 8.3: input outside activeModalWidget() is dropped before dispatch.
 #include "qtty/runtime.h"
 #include "late_font.h"
+#include "handover.h"
 #include "qtty/drag.h"
 #include "qtty/windows.h"
 #include "qtty/grid.h"
@@ -169,6 +170,15 @@ void set_quit_keys(const QVector<KeyEvent> &keys) {
 // the process rather than of whichever router happens to be last.
 void relayout_live_routers(QSize cells) {
 	for (InputRouter *r : std::as_const(s_live_routers)) r->on_resize(cells);
+}
+
+// The grab a handover ended. handover.h carries the argument; what it costs
+// here is one line per router, and a router with no grab is already in the
+// state this puts it in.
+void InputRouter::forget_mouse_grab() { grab_ = nullptr; }
+
+void forget_mouse_grabs() {
+	for (InputRouter *r : std::as_const(s_live_routers)) r->forget_mouse_grab();
 }
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {

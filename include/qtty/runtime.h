@@ -610,7 +610,16 @@ private:
 	// QPointer because a press can destroy its own target -- a button that
 	// closes a dialog -- and the release then arrives for a widget that is
 	// gone.
+	//
+	// A HANDOVER ALSO ENDS IT, because the release is not coming: kLeave
+	// turns mouse reporting off, so a button held while the terminal is
+	// somebody else's has its release delivered to the shell. Cleared
+	// through the internal fan-out in src/runtime/handover.h rather than by
+	// anything public -- a friend declaration and a private method add no
+	// API, which is what section 0b's row on this deferred for.
 	QPointer<QWidget> grab_;
+	void forget_mouse_grab();
+	friend void forget_mouse_grabs();
 	// The widget the pointer is over, so that Enter and Leave can be sent
 	// when it changes. The platform layer normally does this -- the same
 	// reason the right-press context menu is synthesised here -- and without

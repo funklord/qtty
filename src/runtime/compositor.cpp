@@ -2,6 +2,7 @@
 // FrameScheduler (section 5.4 steps 1-4, simplified per section 16.1 F9: full render + diff
 // beats damage tracking at these sizes).
 #include "qtty/runtime.h"
+#include "handover.h"
 #include "qtty/windows.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
@@ -1607,6 +1608,22 @@ void FrameScheduler::render_now() {
 		prev_.reset();
 		prev_overlays_.clear();
 		live_overlay_ids_ = 0;
+		// AND THE MOUSE GRAB, which is the one piece of handover state that
+		// is not this scheduler's. A press sets it and only a release clears
+		// it, and the handover took the release away -- kLeave turns mouse
+		// reporting off, so a button held while a shell or an editor had the
+		// terminal has its release delivered there. Left alone, every mouse
+		// event after the return goes to the widget that was pressed until
+		// the next click's release happens to clear it.
+		//
+		// Through the internal fan-out in handover.h rather than through
+		// `router_`, which is this class's private member: the fan-out
+		// reaches every live router, and "the terminal changed hands" is a
+		// property of the process rather than of whichever router a
+		// particular scheduler holds. handover.h carries the rest of the
+		// argument, including why the public seam section 0b weighed is not
+		// needed.
+		forget_mouse_grabs();
 	}
 	const QSize cells = backend_->size();
 	// A terminal with no cells has no frame to be given. Without this the

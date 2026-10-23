@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2379 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2381 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1090,7 +1090,7 @@ Owned by the copyright holder:
 | **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item, and 8.488 and 8.489 correcting the CARET and the CLICK, which Qt places and reads at the font's advance. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **~~Should a late `set_font()` WORK rather than warn?~~ TAKEN on the holder's instruction 2026-10-23: it works -- 8.516.** The row's own cost analysis held: the re-measure is `GridMetrics::set()` and the re-lay is `InputRouter::on_resize()`, which already knows that a modal is centred and a popup anchored. What the row did not name is the three things the work turned up -- that a late call must REFUSE a bad font rather than take the program down as `setup()` does, that `is_tui_active()` is the wrong question for "is this late" (8.512's conflation, inherited from 8.414), and that the relayout must not fire with no backend driving, where `terminal_cells()` is invalid. Original row: It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
-| **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
+| **~~Should a handover tell the ROUTER, and through which seam?~~ FIXED 2026-10-23 without spending either seam -- 8.523, and the decision this row reserved is MOOT rather than taken.** The row's cost was that both candidates were additions to a public header. A third route was already in the tree: `relayout_live_routers()` fans a process-wide fact over the live routers from an INTERNAL header, which 8.516 established one record earlier, so `forget_mouse_grabs()` needed only a private method and a friend declaration -- no API. `Compositor::compose()` already compares the backend's handover count against its own copy, so the news was where it was needed. Original row: A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, 8.523, and the lens in 8.411 |
 | **Should a composing frame loop count as a driven session, and how would it say so?** `is_tui_active()` is `s_tuiActive \|\| g_backend != nullptr`, so an application's own loop answers true when it constructs a backend and **false** when it only composes -- `render_once(win, buf)` into a buffer it writes out itself, which `application.h` names as a supported shape and `cell.h` describes as "no backend in the picture". The header's own sentence said a terminal session is driven "by exec(), or by an application's own frame loop", unqualified, and 8.512 corrected it; the behaviour is unchanged and now asserted. **The consequence is Overlay's and it is silent**: measured 2026-10-23, the overlay is registered (`visible_overlays()` is 1) and `render_once()` produces no placement and no inked cell, because overlays are composited in the frame path that reads `backend_->capabilities()` to pick a tier -- while `Overlay::publish()` reads the false flag and builds its GUI twin, a desktop window nobody can see under the platform `prepare_environment()` forces. Two remedies, both public-header changes: a way for such a loop to SAY it is driving a terminal, or `render_once()` compositing overlays itself -- it already takes a placements out-parameter, and overlays are section 5.7 as placements are, so the promise is arguably there already. Reachable only deliberately, which is why it is a question rather than a fix | 8.512, 8.153 |
 | **~~Should the terminal's background be re-measured, and how?~~ TAKEN on the holder's instruction 2026-10-23, by the first of the three options: it is re-asked at each handover -- 8.517.** Two of the row's three cost claims were wrong by the time it was taken. The decoder had stopped discarding an OSC 11 reply -- `decode_one()` hands every string sequence to `scan_caps()`, which is additive by design -- so the published background was already live and nothing asked; and "leaving it costs the fallback tier only" was wrong in two places, the software-composite tier rasterising every `Color::Default` cell on the ground and section 6's contrast check reading it on every emitted cell. What the row did not have is that a reply was HALF-APPLIED: `set_terminal_ground()`, which `Color::Default`'s luminance resolves through, was called once in the constructor, so a fresh ground reached applications and never reached the colour conversions. **`DECSET 2031` is still open and still the holder's** -- it would cover a theme toggle with no handover, which this does not, and the arrival path is already ready for the unsolicited reply it produces. Original row: It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160, 8.517 |
 | **~~Should the conventions offer a key for Qt's own pointer-only furniture?~~ TAKEN for two of the five, 2026-10-22 on the holder's instruction: `Ctrl+W` and `Ctrl+F4` close the tab or the dock the focus is in, under the conventions -- 8.492 and 8.494. Ctrl+W yields to a caret, where it is readline's rub-out; Ctrl+F4 is claimed by nothing and closes from a text field too.** What is left is the other three, which have no candidate chord between them: a dock's FLOAT button, a `QSplitter`'s handle (which answers no key even with the focus forced onto it, so a convention binding is the only route there could be) and a sortable header.  Original row: Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
@@ -46319,3 +46319,59 @@ leave -- so a single-suite run cannot measure this at all.
 skips is what `count-check` exists to print, and section 0c's own entry
 on hand counts now has three causes rather than two: a skip, a capture
 that merges stderr into stdout, and a check that really failed.
+
+### 8.523 A handover ends the mouse grab (2026-10-23)
+
+**Section 0b's row on this deferred for a cost that had stopped being
+real, which is the case working-practice.md asks to measure before
+deliberating.** The row named the defect correctly -- a press sets
+`InputRouter::grab_` and only a release clears it, and a handover takes
+the release away, since `kLeave` turns mouse reporting off and a button
+held while a shell or an editor has the terminal has its release
+delivered there. Left alone, every mouse event after the return is routed
+to the widget that was pressed until the next click's release happens to
+clear it.
+
+**What it deferred on was the seam.** It said the router cannot hear
+about a handover, named two candidates -- a public accessor on
+`Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` --
+and called both "additions to a PUBLIC header for a one-click symptom",
+which is the holder's trade rather than a session's.
+
+**There is a third route and the tree was already using it.**
+`relayout_live_routers()` fans a process-wide fact over the live routers
+from an INTERNAL header, which 8.516 established two records earlier for
+a late font change. `forget_mouse_grabs()` in `src/runtime/handover.h` is
+the same shape: a private method on `InputRouter` and a friend
+declaration, which add no API, called from `Compositor::compose()` --
+which already asks the backend for its handover count and compares it
+against a copy of its own, so the news is where it is needed and nothing
+new has to notice it. **The decision the row was reserving is therefore
+moot rather than taken**: no public seam was spent, so there was nothing
+to choose between.
+
+That is the habit working-practice.md records, arriving by its other
+route as well: *before deferring something as a design question, check
+whether the project has already decided it somewhere else under a
+different name.* It had, one record earlier, and the deferral was eleven
+days older than the answer.
+
+**The check is asserted on the PRESSED widget rather than on the other
+one, and the reason is measured.** `on_mouse()` closes a popup when the
+registry is non-empty, nothing contains the point and the grab is NULL --
+and that registry still holds popups from earlier fixtures by the time
+this block runs, so a motion with no grab is consumed there and reaches
+no widget at all: measured, a cold motion over the second button reached
+it 0 times, the first 0, the window 0. That does not weaken the check,
+it is what makes it discriminate -- a grab that survived the handover
+would SKIP that branch, being gated on `grab_.isNull()`, and the motion
+would land on the pressed widget exactly as the control shows. So "the
+pressed widget received nothing" can only mean the grab is gone.
+
+**The control is the half that cost two readings.** While the button is
+held, a motion over the other widget must still reach the pressed one --
+that is what a grab IS -- and without it a cleared grab and a hit test
+that never worked in this fixture look identical. The first version of
+the check asserted that the OTHER widget received the motion instead,
+which is a different mechanism altogether and failed for a reason that
+had nothing to do with the code under test.
