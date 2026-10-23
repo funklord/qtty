@@ -4241,6 +4241,14 @@ int suite_render(bool record) {
 			++r;
 		}
 
+		// THIS CALL NOW APPLIES as well as storing, since 8.516: setup()
+		// has run by the time any suite does, so the grid is re-measured
+		// here and put back by the set_font(QString(), 0) a dozen lines
+		// down. The relayout half does not fire -- terminal_cells() is
+		// invalid with no backend driving -- so the blast radius is
+		// GridMetrics and the application font, both restored. Said here
+		// because a reader of a precedence check should not have to deduce
+		// that it moves the grid.
 		Qtty::set_font(QStringLiteral("Noto Mono"), 20);
 		const QFont from_app = Qtty::grid_font_request();
 		if (from_app.family() == QStringLiteral("Noto Mono")

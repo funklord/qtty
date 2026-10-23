@@ -6299,13 +6299,13 @@ into = "\tpaste_.clear();"
 count = 1
 check = "a paste left open when the terminal was handed over does not swallow"
 
-[[sabotage]]
-name = "a font chosen too late is stored and nothing says so"
-file = "src/grid/grid_style.cpp"
-find = "\tif (is_tui_active())\n\t\tqWarning(\"qtty: set_font(%s, %d) after setup() has no effect"
-into = "\tif (false)\n\t\tqWarning(\"qtty: set_font(%s, %d) after setup() has no effect"
-count = 1
-check = "a font chosen after setup() says it has no effect"
+# RETIRED 8.516, superseded rather than dropped. 8.414's entry broke the
+# warning that said a late set_font() "has no effect", and both the warning
+# and the check naming it are gone: the call applies now. The entry above,
+# "a font chosen after setup is stored and ignored", breaks the same thing
+# one step further on -- the application of it -- and names a check that
+# exists. Kept as this note because an entry that simply vanishes leaves a
+# reader wondering whether the behaviour went with it.
 
 [[sabotage]]
 name = "a paste close with no open is reported as a paste of nothing"
@@ -6943,6 +6943,62 @@ find = "\t\tsigaction(SIGTSTP, &g_prev_tstp, nullptr);\n\t\tsigaction(SIGCONT, &
 into = "\t\t(void)g_prev_tstp;\n\t\t(void)g_prev_cont;"
 count = 1
 check = "a backend going out of scope puts the job-control signal back as it found it"
+
+[[sabotage]]
+# A late set_font() stored and not applied, which is how it was before
+# 8.516: setup() is the only reader, so the application chose a font and the
+# grid kept the old one. This is the whole feature removed.
+name = "a font chosen after setup is stored and ignored"
+file = "src/grid/grid_style.cpp"
+find = "\tif (apply_font_now()) return;"
+into = "\tif (true) return;"
+count = 1
+check = "and the grid was re-measured from the font chosen during the run"
+
+[[sabotage]]
+# The windows not re-laid, which is the half a warning could never have
+# done: the grid is re-measured and every window keeps the pixel size it
+# had, so the terminal's cell count no longer matches what is drawn. 8.516.
+name = "a late font re-measures but does not re-lay"
+file = "src/runtime/application.cpp"
+find = "\trelayout_live_routers(cells);"
+into = "\t(void)cells;"
+count = 1
+check = "so the window comes out the terminal's cell count times the NEW cell"
+
+[[sabotage]]
+# A refused font taken anyway, which setup() answers with qFatal and the
+# late path must not: the check that catches this is the one asserting a
+# program is still running afterwards. Pointed at the refusal's own return,
+# so the bad font reaches GridMetrics. 8.516.
+name = "a late font the grid cannot be laid on is taken"
+file = "src/runtime/application.cpp"
+find = "\t\t         qPrintable(f.family()), qPrintable(problem));\n\t\treturn false;"
+into = "\t\t         qPrintable(f.family()), qPrintable(problem));"
+count = 1
+check = "a font the grid cannot be laid on is refused by a late set_font()"
+
+[[sabotage]]
+# The refused family left in the statics, so the next re-measure picks it
+# back out and refuses again -- and grid_font_request() answers with a font
+# the grid is not laid on, which is what an application reads back. 8.516.
+name = "a refused family lingers in the statics"
+file = "src/grid/grid_style.cpp"
+find = "\ts_font_family = had_family;"
+into = "\t(void)had_family;"
+count = 1
+check = "and the refused family does not linger in the statics"
+
+[[sabotage]]
+# The enforcer left holding the old font. It reacts to FontChange, and
+# setFont() raises one, so the undo is immediate: every widget goes back to
+# the family the grid is no longer measured against. 8.516.
+name = "the font enforcer keeps the old base"
+file = "src/runtime/application.cpp"
+find = "\tif (s_fonts) s_fonts->base = f;"
+into = "\t(void)s_fonts;"
+count = 1
+check = "and a widget carries the new size too, the font enforcer having been told"
 
 [[sabotage]]
 # Synchronised output left open by the restore string, which is how it was:

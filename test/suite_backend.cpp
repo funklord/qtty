@@ -3448,36 +3448,69 @@ int suite_backend() {
 				      "and is told a TUI is running, which is what Overlay"
 				      " reads to leave the compositing to the runtime");
 
-				// AND A FONT CHOSEN TOO LATE SAYS SO. setup() reads
-				// set_font()'s two statics and nothing else does, so a call
-				// afterwards stored a family nobody would ask for again: the
-				// application chose a font, the grid kept the old one, and
-				// there was nothing to attribute it to. grid.h has said
-				// "before setup()" all along, and a precondition nothing
-				// enforces is one the next person meets rather than reads.
+				// AND A FONT CHOSEN TOO LATE IS APPLIED, which 8.414
+				// recorded as the holder's half and 8.516 took on their
+				// instruction. It used to say "no effect" and stop there:
+				// setup() read set_font()'s two statics and nothing else
+				// did, so a call afterwards stored a family nobody would
+				// ask for again.
 				//
-				// HERE because this is where a TUI is demonstrably running
-				// -- the check above is the control for the guard's own
-				// condition, which is `is_tui_active()`. In a GUI build, or
-				// before setup(), the call is legitimate and must stay
-				// silent.
+				// HERE because this is where a TUI is demonstrably running,
+				// which is what makes the relayout observable at all --
+				// terminal_cells() is the backend's size and is invalid
+				// without one.
+				//
+				// THE REFUSAL IS THE HALF THAT MATTERS MOST. setup() ends a
+				// bad font with qFatal, and the late path must not: a font
+				// picker in a preferences dialog cannot be allowed to kill
+				// a running program. So the grid keeps what it has, the
+				// sentence names the font, and the statics forget it -- or
+				// the next legitimate call would pick the refused family
+				// back out of them.
 				//
 				// Reset afterwards the way suite_render already does, since
 				// these statics outlive the check and setup() reads them.
 				{
 					QtMessageHandler prev_h = qInstallMessageHandler(keep_message);
 					g_said.clear();
+					const int cw0 = GridMetrics::cw(), ch0 = GridMetrics::ch();
+
 					Qtty::set_font(QStringLiteral("Some Mono"), 12);
-					const QString late = g_said;
+					const QString refused = g_said;
 					g_said.clear();
+					const bool held = GridMetrics::cw() == cw0
+					               && GridMetrics::ch() == ch0;
+					const QFont after_refusal = Qtty::grid_font_request();
+
+					Qtty::set_font(QStringLiteral("DejaVu Sans Mono"), 24);
+					const QString taken = g_said;
+					g_said.clear();
+					const bool moved = GridMetrics::cw() != cw0
+					                || GridMetrics::ch() != ch0;
+
 					Qtty::set_font(QString(), 0);          // as it was
+					const bool back = GridMetrics::cw() == cw0
+					               && GridMetrics::ch() == ch0;
 					g_said.clear();
 					qInstallMessageHandler(prev_h);
-					CHECK(late.contains(QStringLiteral("set_font"))
-					      && late.contains(QStringLiteral("no effect")),
-					      "a font chosen after setup() says it has no effect "
-					      "rather than storing a family nothing will read "
-					      "again");
+
+					CHECK(held && refused.contains(QStringLiteral("Some Mono"))
+					      && refused.contains(QStringLiteral("unchanged")),
+					      "a font the grid cannot be laid on is refused by a"
+					      " late set_font() rather than ending the program,"
+					      " and the grid keeps what it had");
+					CHECK(after_refusal.family()
+					      != QStringLiteral("Some Mono"),
+					      "and the refused family does not linger in the"
+					      " statics, where the next re-measure would pick it"
+					      " up and refuse again");
+					CHECK(moved && taken.isEmpty(),
+					      "while a font it CAN be laid on moves the metrics,"
+					      " and says nothing -- the call having worked");
+					CHECK(back,
+					      "and choosing nothing puts the measured default"
+					      " back, which is what makes this check leave the"
+					      " grid as it found it");
 				}
 
 				// The resize half, which is the reason this is tied to input

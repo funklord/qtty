@@ -259,6 +259,82 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// ---- a font chosen DURING a run re-lays every window ------------------
+	//
+	// Section 0b asked whether a late set_font() should work rather than
+	// warn, and named the cost: cw and ch size every widget, so making it
+	// work means re-measuring and then re-laying every window. 8.516 took
+	// it on the holder's instruction, and this is the half the warning
+	// could never have -- the window has to come out the same size in CELLS
+	// and a different size in pixels.
+	//
+	// Driven from inside exec() by a repeating timer, which is the pattern
+	// the backend-seam fixture above establishes and for its reason: a
+	// zero-timer fires before app.exec() and the run never ends.
+	//
+	// A BIGGER font deliberately. The offscreen platform refuses to shrink a
+	// window below its layout's minimum and says so, so a smaller font would
+	// measure the clamp rather than the relayout -- which is the kind of
+	// fixture that passes on the safe side of its own hazard.
+	{
+		NullBackend backend(QSize(40, 12));
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		auto *body = new QLabel(QStringLiteral("body"));
+		v->addWidget(body);
+		const int cw0 = GridMetrics::cw(), ch0 = GridMetrics::ch();
+
+		bool changed = false;
+		QSize cells_before, cells_after, px_after;
+		int cw1 = 0, ch1 = 0, widget_px = 0;
+		QTimer tick;
+		tick.setInterval(10);
+		QObject::connect(&tick, &QTimer::timeout, qApp, [&] {
+			if (!changed) {
+				cells_before = Qtty::terminal_cells();
+				Qtty::set_font(QStringLiteral("DejaVu Sans Mono"), 24);
+				changed = true;
+				return;                   // let the resize settle a tick
+			}
+			cw1 = GridMetrics::cw();
+			ch1 = GridMetrics::ch();
+			cells_after = Qtty::terminal_cells();
+			px_after = win.size();
+			// A WIDGET's font, which is the only thing that witnesses
+			// FontEnforcer being told. It holds a copy of the base and
+			// reacts to FontChange -- and setFont() raises one -- so a
+			// stale base puts every widget straight back to the family the
+			// grid is no longer measured against. Asserted on the widget
+			// rather than on QApplication::font(), because the enforcer
+			// runs between the two.
+			widget_px = body->font().pixelSize();
+			QCoreApplication::quit();
+		});
+		tick.start();
+		exec(*qApp, win, backend);
+		tick.stop();
+		Qtty::set_font(QString(), 0);              // leave the grid as found
+		QCoreApplication::processEvents();
+
+		CHECK(cells_before == QSize(40, 12) && cells_after == cells_before,
+		      "a font change does not move the terminal's cell count, which"
+		      " is the premise: the window is the same size in cells and a"
+		      " different size in pixels");
+		CHECK(cw1 > cw0 && ch1 > ch0,
+		      "and the grid was re-measured from the font chosen during the"
+		      " run, rather than stored for a reader that had already run");
+		CHECK(px_after == QSize(40 * cw1, 12 * ch1),
+		      "so the window comes out the terminal's cell count times the"
+		      " NEW cell, which is the re-laying the warning could not do");
+		CHECK(widget_px == 24,
+		      "and a widget carries the new size too, the font enforcer"
+		      " having been told -- left holding its old base it would put"
+		      " every widget back on the FontChange setFont() raises");
+		CHECK(GridMetrics::cw() == cw0 && GridMetrics::ch() == ch0,
+		      "and the grid is back as this check found it, so nothing after"
+		      " it is measuring a font this one chose");
+	}
+
 	// ----------------- whether the terminal is dark, which Qt cannot say
 	//
 	// The premise first, because the whole function rests on it: Qt's own

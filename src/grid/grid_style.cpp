@@ -6,6 +6,7 @@
 #include "qtty/application.h"      // terminal_focused(), for the focus mark
 #include "../cell_geometry.h"
 #include "../standard_icons.h"
+#include "../runtime/late_font.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
 // never included. It compiled because something else drags it in -- and that
 // is luck rather than a fact about this file: Qt 6 MOVED QAction from
@@ -799,6 +800,8 @@ static QString s_font_family;
 static int s_font_pixels = 0;
 
 void set_font(const QString &family, int pixel_size) {
+	const QString had_family = s_font_family;
+	const int had_pixels = s_font_pixels;
 	s_font_family = family;
 	s_font_pixels = pixel_size;
 	// AND SAY SO WHEN IT IS TOO LATE TO MATTER. setup() reads these two and
@@ -808,15 +811,29 @@ void set_font(const QString &family, int pixel_size) {
 	// setup()" all along, and an unenforced precondition is one the next
 	// person meets rather than reads.
 	//
-	// A WARNING RATHER THAN A RE-MEASURE, which is the smaller half of the
-	// question deliberately. Doing it properly means re-laying every window
-	// -- cw and ch size every widget in the program -- and that is recorded
-	// in 0b with its cost rather than decided here. The style sibling in
-	// application.cpp chose the other way for its own case and says why.
-	if (is_tui_active())
-		qWarning("qtty: set_font(%s, %d) after setup() has no effect -- the"
-		         " grid was measured when setup() ran, so choose the font"
-		         " before it", qPrintable(family), pixel_size);
+	// AND APPLIED WHEN IT IS LATE, which 8.414 recorded as the holder's half
+	// and 8.516 took on their instruction. The warning this replaces said
+	// the call "has no effect", which was true and is the thing that was
+	// wrong: the style sibling in application.cpp meets the same shape for
+	// QStyle and makes the late call WORK, on the stated grounds that doing
+	// it afterwards is an ordinary thing for a Qt program to want. A font
+	// picker in a preferences dialog is equally ordinary.
+	//
+	// THE STATICS GO BACK IF IT IS REFUSED, which is what makes a bad choice
+	// cost nothing. apply_font_now() declines a font the grid cannot be laid
+	// on -- warning rather than the qFatal setup() uses, since a combo box
+	// must not be able to kill a running program -- and then these two have
+	// to forget it as well, or the next legitimate re-measure would pick the
+	// refused family out of the statics and refuse again.
+	// ASKED OF setup(), not of the session. is_tui_active() is what 8.414
+	// used and 8.512 showed to be a different question: a program composing
+	// its own frames has no backend, so that flag is false while setup() has
+	// run -- and the call would have gone back to being stored and ignored
+	// in silence, in the one configuration the header names as supported.
+	if (!setup_has_run()) return;         // setup() will read the statics
+	if (apply_font_now()) return;
+	s_font_family = had_family;
+	s_font_pixels = had_pixels;
 }
 
 // Path to the family it holds, so a file is registered ONCE however often

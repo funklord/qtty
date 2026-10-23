@@ -6,6 +6,7 @@
 //       and track the popups' z-order for the compositor.
 //   section 8.3: input outside activeModalWidget() is dropped before dispatch.
 #include "qtty/runtime.h"
+#include "late_font.h"
 #include "qtty/drag.h"
 #include "qtty/windows.h"
 #include "qtty/grid.h"
@@ -155,6 +156,19 @@ void set_quit_keys(const QVector<KeyEvent> &keys) {
 	s_quit_default = keys;
 	for (InputRouter *r : std::as_const(s_live_routers))
 		r->set_quit_keys(keys);
+}
+
+// The metrics moved, so every window is the wrong size in pixels while being
+// the right size in cells. on_resize() is what corrects that, and it already
+// carries the rule this must not get wrong a second time: a modal is centred
+// and clamped and a popup is anchored, so neither is resized to the terminal.
+// See src/runtime/late_font.h for the one caller.
+//
+// A fan-out over the live routers for set_quit_keys()'s own reason: a session
+// may have several, and "the cell is a different size now" is a property of
+// the process rather than of whichever router happens to be last.
+void relayout_live_routers(QSize cells) {
+	for (InputRouter *r : std::as_const(s_live_routers)) r->on_resize(cells);
 }
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {

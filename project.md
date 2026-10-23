@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2355 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2363 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1076,7 +1076,7 @@ Owned by the copyright holder:
 |---|---|
 | **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- a push button, a check box, a radio and a tab -- with 8.487 finishing it on a menu bar item, a heading and a menu item, and 8.488 and 8.489 correcting the CARET and the CLICK, which Qt places and reads at the font's advance. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
-| **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
+| **~~Should a late `set_font()` WORK rather than warn?~~ TAKEN on the holder's instruction 2026-10-23: it works -- 8.516.** The row's own cost analysis held: the re-measure is `GridMetrics::set()` and the re-lay is `InputRouter::on_resize()`, which already knows that a modal is centred and a popup anchored. What the row did not name is the three things the work turned up -- that a late call must REFUSE a bad font rather than take the program down as `setup()` does, that `is_tui_active()` is the wrong question for "is this late" (8.512's conflation, inherited from 8.414), and that the relayout must not fire with no backend driving, where `terminal_cells()` is invalid. Original row: It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should a composing frame loop count as a driven session, and how would it say so?** `is_tui_active()` is `s_tuiActive \|\| g_backend != nullptr`, so an application's own loop answers true when it constructs a backend and **false** when it only composes -- `render_once(win, buf)` into a buffer it writes out itself, which `application.h` names as a supported shape and `cell.h` describes as "no backend in the picture". The header's own sentence said a terminal session is driven "by exec(), or by an application's own frame loop", unqualified, and 8.512 corrected it; the behaviour is unchanged and now asserted. **The consequence is Overlay's and it is silent**: measured 2026-10-23, the overlay is registered (`visible_overlays()` is 1) and `render_once()` produces no placement and no inked cell, because overlays are composited in the frame path that reads `backend_->capabilities()` to pick a tier -- while `Overlay::publish()` reads the false flag and builds its GUI twin, a desktop window nobody can see under the platform `prepare_environment()` forces. Two remedies, both public-header changes: a way for such a loop to SAY it is driving a terminal, or `render_once()` compositing overlays itself -- it already takes a placements out-parameter, and overlays are section 5.7 as placements are, so the promise is arguably there already. Reachable only deliberately, which is why it is a question rather than a fix | 8.512, 8.153 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
@@ -18391,6 +18391,110 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.516 A font chosen after setup() is applied (2026-10-23)
+
+**Section 0b's row, taken on the holder's instruction to pick one and do
+it.** 8.414 made a late `set_font()` say it had no effect, and left the
+other half recorded: `cw` and `ch` size every widget, so making the call
+work means re-measuring and then re-laying every window.
+
+**The row's cost analysis held.** The re-measure is the five steps
+`setup()` already takes -- `grid_font_request()`, measure,
+`GridMetrics::set()`, the application font, `FontEnforcer`'s base -- and
+the re-lay is `InputRouter::on_resize()`, which already carries the rule
+this must not spell twice: a modal is centred and clamped and a popup is
+anchored, so neither is resized to the terminal. The upload caches
+invalidate by construction, `image_key()` carrying `font_px`.
+
+**REFUSED RATHER THAN FATAL, which the row did not name and which is the
+decision in the work.** `setup()` ends a font whose metrics are not
+integral with `qFatal`, and that is right at startup: a grid that cannot
+be laid is not a program that should carry on. It is wrong here. The call
+comes from a running application -- very likely a font picker in a
+preferences dialog -- and a combo box must not be able to kill it. So the
+grid keeps what it has, the sentence names the font, and `set_font()` puts
+its two statics back: a refused call leaves nothing of itself behind,
+including the family it was asked to remember. Without that last part the
+next legitimate re-measure would pick the refused family out of the
+statics and refuse again.
+
+**AND `is_tui_active()` IS THE WRONG QUESTION, which this inherited from
+8.414 and 8.512 had already diagnosed.** "Is this call late" means "has
+`setup()` run", and those are different: a program composing its own
+frames through `render_once()` has no backend, so the flag is false while
+`setup()` has very much run -- and a font chosen then went straight back to
+being stored and ignored in silence, in a configuration the header names
+as supported. Measured: with the flag as the gate, the probe's late call
+changed nothing at all. `setup_has_run()` is the gate now.
+
+**And the relayout must not fire without a terminal.**
+`terminal_cells()` is the backend's size and is an invalid `QSize` when
+nothing is driving, which `setup_has_run()` does not exclude. Measured
+before the guard: every window was resized to 0x0, and what saved it was
+the layout refusing to shrink below its minimum -- luck rather than a
+rule. Nothing is owed there anyway: such a program sizes its own frame and
+reads `GridMetrics` itself.
+
+**A full repaint as well as a resize**, which the row also did not name.
+Every cell on screen was drawn at the old metrics and the diff compares
+cells rather than pixels, so an unchanged glyph is a cell the next frame
+would leave alone at a size the terminal no longer uses. `redraw()`
+(8.318) is the call that exists for it.
+
+**2355 checks to 2363.** The refusal, the statics forgetting a refused
+family, a good font moving the metrics in silence, and the restore are
+four checks where there was one asserting the old warning. The relayout is
+four more, driven from inside `exec()` by a repeating timer -- the
+backend-seam fixture's own pattern -- with a BIGGER font deliberately,
+since the offscreen platform refuses to shrink a window below its layout
+minimum and a smaller one would measure the clamp rather than the
+relayout.
+
+**And the enforcer needed a witness of its own.** The entry that leaves
+`FontEnforcer` holding its old base passed against broken code at first:
+the check it named asserts the METRICS moved, which happens whether or not
+the enforcer is told. What witnesses it is a WIDGET's font -- the enforcer
+holds a copy of the base and reacts to `FontChange`, and `setFont()` raises
+one, so a stale base puts every widget straight back to the family the grid
+is no longer measured against. Asserted on the widget rather than on
+`QApplication::font()`, because the enforcer runs between the two.
+
+**AND QT 5 DOES NOT TELL THE WIDGETS, which only the second arm could
+say.** With the enforcer's base updated, Qt 6's `setFont()` raises a
+`FontChange` on the existing widgets and the filter corrects each to the
+new base. Qt 5 does not: measured, the application font read back as 24
+while a label in a shown window stayed at **16**, which would draw text at
+the old size into the new cells. The check went green on Qt 6 and red on
+Qt 5, which is the arms earning their keep -- a single-configuration run
+would have shipped it.
+
+The remedy is a synthetic `FontChange` to every widget rather than a second
+copy of the enforcer's rule, which is its event filter: the alternative is
+spelling "take the base, keep the widget's own bold and italic" twice. Its
+idempotence guard is what makes that safe to send to everything -- the
+filter compares family and size and returns when they match, the same
+argument that stops its own `setFont()` recursing.
+
+**That line's only witness is the Qt 5 arm, and this says so rather than
+leaving it to be discovered.** No sabotage entry removes the fan-out,
+because on Qt 6 removing it changes nothing: that build raises the event
+itself, so the check stays green and an entry would report a guard it had
+not tested. The defender is the other configuration.
+
+**Five sabotage entries, and 8.414's is retired rather than dropped** --
+it broke the warning, and both the warning and the check naming it are
+gone. The note stays in the spec, because an entry that simply vanishes
+leaves a reader wondering whether the behaviour went with it.
+
+**One existing test gained a side effect and a comment saying so.**
+`suite_render`'s font-precedence check calls `set_font("Noto Mono", 20)`
+and asks what `grid_font_request()` answers; that call now re-measures the
+grid as well, and is put back a dozen lines later. The relayout half does
+not fire there, no backend driving, so the blast radius is `GridMetrics`
+and the application font. A reader of a precedence check should not have
+to deduce that it moves the grid.
 
 
 ### 8.515 Every authored role must be searchable, and one is not (2026-10-23)

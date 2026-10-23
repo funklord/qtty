@@ -2,6 +2,8 @@
 // section 5 architecture: AnsiBackend -> InputRouter -> Compositor -> FrameScheduler.
 #include "qtty/application.h"
 #include "terminal_owner.h"
+#include "late_font.h"
+#include <QPointer>
 #include "title_keeper.h"
 #include "url_opener.h"
 #include "qtty/grid.h"
@@ -389,6 +391,22 @@ public:
 		return false;                            // never consume
 	}
 };
+
+// The one in play, so a font chosen after setup() can tell it. See
+// apply_font_now() below; setup() sets this where it builds the enforcer.
+static QPointer<FontEnforcer> s_fonts;
+
+// WHETHER setup() HAS RUN, which is the question "is this call late?"
+// actually asks. 8.414 used is_tui_active() for it, and 8.512 showed why
+// that is a different question: a program driving its own frame loop through
+// render_once() has no backend, so the flag is false while setup() has very
+// much run -- and a font chosen then would have been stored and ignored in
+// silence, which is the defect 8.414 set out to end.
+//
+// Not reset anywhere. setup() running is a one-way door for the process: it
+// measures the grid every widget is then sized against, and nothing undoes
+// that.
+static bool s_setup_done = false;
 
 } // namespace
 
@@ -828,6 +846,15 @@ void setup(QApplication &app) {
 	fonts->base = f;
 	fonts->setParent(&app);
 	app.installEventFilter(fonts);
+	// KEPT, so a font chosen later can reach it. The alternative was
+	// findChildren<FontEnforcer *>(), which does not compile: the class
+	// carries no Q_OBJECT -- deliberately, it being file-local to this
+	// translation unit -- and findChildren static-asserts on that. A
+	// QPointer rather than a raw one because the enforcer is parented to
+	// the application and an application can be destroyed and rebuilt in
+	// one process, which this library's own suite does hundreds of times.
+	s_fonts = fonts;
+	s_setup_done = true;
 	// THE APPLICATION'S OWN STYLE BECOMES THE BASE, which is what design.md
 	// section 12 promises -- "an app's custom style is not lost, it becomes
 	// GridStyle's proxy base" -- and what a hardwired Fusion here did not do.
@@ -947,6 +974,109 @@ static bool s_tuiActive = false;
 // compositing (overlay.cpp), so the false answer built a GUI twin window for
 // a session whose frames qtty was already drawing.
 bool is_tui_active() { return s_tuiActive || g_backend != nullptr; }
+
+// Qtty's own, so grid_style.cpp can ask whether a set_font() call is late.
+// Defined here rather than beside the flag it reads: the flag lives in the
+// anonymous namespace with FontEnforcer, where a definition would have
+// internal linkage and the one call site would not link -- which is how the
+// first attempt was caught.
+bool setup_has_run() { return s_setup_done; }
+
+// A font chosen AFTER setup(), applied rather than merely reported. 8.516,
+// taking the half 8.414 left to section 0b on the holder's instruction.
+//
+// The same five steps setup() takes, in the same order, because they are one
+// sequence and a second spelling of it is this tree's most expensive habit:
+// ask grid_font_request() (which reads the statics set_font() just wrote),
+// measure, GridMetrics::set(), the application font, the enforcer's base.
+//
+// REFUSED RATHER THAN FATAL, which is the one place this must NOT copy
+// setup(). There, a font whose metrics are not integral ends the program --
+// right at startup, since a grid that cannot be laid is not a program that
+// should carry on. Here the call comes from a running application, very
+// likely a font picker in a preferences dialog, and killing it over a bad
+// choice in a combo box is not a trade anybody would take. So the grid keeps
+// what it has, the sentence says which font and why, and false tells the
+// caller to put its statics back -- a refused call leaves nothing of itself
+// behind, including the family it was asked to remember.
+//
+// The substitution and leading warnings are deliberately NOT repeated. They
+// are startup advice about a font the program is stuck with; this caller can
+// simply choose another, and a preferences dialog that emits two lines per
+// keystroke of a font name is worse than one that emits none.
+bool apply_font_now() {
+	if (!qApp) return false;
+	const QFont f = grid_font_request();
+	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
+		qWarning("qtty: the grid needs a font with integral metrics, so"
+		         " \"%s\" was not taken: %s -- the grid is unchanged",
+		         qPrintable(f.family()), qPrintable(problem));
+		return false;
+	}
+	const QFontMetrics fm(f);
+	// THE GUARD IS GridMetrics::set()'s OWN, and it is why this is checked
+	// here as well: a cell of zero divides into everything the grid computes
+	// (8.478), and a font that passes grid_font_problem() with a zero
+	// advance is not a case anybody has met -- but the late path is the one
+	// that must not take the program down, so it declines instead.
+	const int cw = fm.horizontalAdvance(u'M'), ch = fm.height();
+	if (cw <= 0 || ch <= 0) {
+		qWarning("qtty: \"%s\" measures %dx%d, which is not a cell -- the"
+		         " grid is unchanged", qPrintable(f.family()), cw, ch);
+		return false;
+	}
+	GridMetrics::set(cw, ch);
+	qApp->setFont(f);
+	// The enforcer holds a COPY, so it has to be told. Left stale it would
+	// put every widget back to the old family on the next FontChange -- and
+	// setFont() above raises one, so the undo would be immediate.
+	if (s_fonts) s_fonts->base = f;
+	// AND EVERY WIDGET IS TOLD, because Qt 5 does not tell them. Measured
+	// after the base was updated: on Qt 6 setFont() above raises a
+	// FontChange on the existing widgets and the enforcer corrects each one
+	// to the new base, and on Qt 5 it does not -- the application font read
+	// back as 24 while a label in a shown window stayed at 16, which would
+	// draw text at the old size into the new cells.
+	//
+	// A synthetic FontChange rather than a second copy of the enforcer's
+	// rule: the rule is its event filter, and the alternative is spelling
+	// "take the base, keep the widget's own bold and italic" twice. Its
+	// idempotence guard is what makes this safe to send to everything -- the
+	// filter compares family and size and returns when they already match,
+	// which is the same argument that stops its own setFont() recursing.
+	const auto widgets = QApplication::allWidgets();
+	for (QWidget *w : widgets) {
+		QEvent fc(QEvent::FontChange);
+		QApplication::sendEvent(w, &fc);
+	}
+	// And the windows, which are the right size in CELLS and the wrong size
+	// in pixels until somebody multiplies again. The terminal has not
+	// changed, so the cell count is the one it already reported.
+	//
+	// ONLY WHERE A TERMINAL IS ANSWERING. terminal_cells() is the backend's
+	// size and is an INVALID QSize when nothing is driving -- which
+	// setup_has_run() does not exclude, that being 8.512's whole point: a
+	// program composing its own frames through render_once() has run setup()
+	// and has no backend. Measured before this guard: the relayout resized
+	// every window to 0x0, and what saved it was the layout refusing to
+	// shrink below its minimum, which is luck rather than a rule.
+	//
+	// Nothing is owed in that case anyway. Such a program sizes its own
+	// frame and reads GridMetrics for itself; resizing its windows to a
+	// terminal qtty is not driving would be answering for somebody else.
+	const QSize cells = terminal_cells();
+	if (cells.isEmpty()) return true;
+	relayout_live_routers(cells);
+	// AND A FULL REPAINT, not merely a frame. Every cell on the screen was
+	// drawn at the old metrics, and the diff compares cells rather than
+	// pixels -- so a cell whose glyph has not changed is a cell the next
+	// frame would leave alone, at a size the terminal no longer uses.
+	// redraw() is the call that exists for exactly this (8.318), and the
+	// row in section 0b that asked for a late font named the resize and not
+	// this; it is the half re-laying does not cover.
+	redraw();
+	return true;
+}
 
 // Asked of the backend while a run is in progress, and nothing outside one.
 //
