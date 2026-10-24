@@ -17,6 +17,31 @@
 
 namespace Qtty {
 
+// What the terminal turned out to be, as negotiated (section 5.7).
+//
+// SEVERAL OF THESE MOVE DURING A RUN, so an application reads them again
+// rather than caching what it was told at startup. They are answers from the
+// terminal, and a terminal answers late and answers twice: `collect_caps()`
+// returns the moment its fence arrives and its window is a readiness one, so
+// a reply can land afterwards, and a HANDOVER asks the colour questions again
+// because a theme toggle, a profile switch or the editor a `shell_out()` ran
+// can all have moved them.
+//
+// Which ones, and what moves them:
+//
+//   color, graphics       a late XTGETTCAP, kitty or DA1 reply re-runs the
+//                         negotiation (8.526)
+//   background,           re-asked at every handover and republished when
+//   foreground            the answer differs (8.517)
+//   cell_px               re-asked on every SIGWINCH, a font-size change in
+//                         the terminal moving it without moving the cell
+//                         count
+//   unicode_placements    derived from the two above
+//
+// The rest are settled once the terminal has answered. `Qtty::color_scheme()`
+// is derived from the ground pair, so it moves with them -- doc/
+// keyboard-first.md says so where an application is told to read it again
+// after `shell_out()`.
 struct Capabilities {
 	enum ColorDepth { Mono, Ansi16, Xterm256, TrueColor };
 	ColorDepth color        = Ansi16;

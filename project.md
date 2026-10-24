@@ -46761,3 +46761,35 @@ is the only thing worth knowing about them.
 names anything at all, which is the same lesson 8.414's family recorded
 when `drop_target`'s loop was 100 per cent of lines with its
 `acceptDrops()` test never false.
+
+### 8.532 The contract the capability work changed (2026-10-24)
+
+**Five of `Capabilities`' fields can now move during a run and the public
+headers did not say so.** Before 8.517 they effectively could not: the
+ground was asked once, the depth and tier were negotiated once in the
+constructor, and only `cell_px` had a documented late path. After 8.517,
+8.518, 8.526 and 8.527 the colour depth, the graphics tier, the background
+and the foreground all move -- and nothing an application reads said a
+word about it.
+
+**That is a contract this session changed rather than a gap it found**,
+which is why the correction belongs with it. An application that read
+`Qtty::capabilities()` once at startup and kept the background was right
+before and is wrong now: it holds a measurement of the terminal the
+program started on, and will composite every translucent edge against a
+ground that has moved.
+
+`Capabilities` in `backend.h` now names which fields move and what moves
+each -- a late XTGETTCAP, kitty or DA1 reply for the two negotiated ones,
+a handover for the ground pair, a SIGWINCH for the cell size -- and says
+the rest are settled once answered. `Qtty::capabilities()` in
+`application.h` says to ask again rather than cache, and points at that
+list. `doc/keyboard-first.md` already told an application to re-read
+`color_scheme()` after `shell_out()`; this is the same instruction one
+layer down, where the promise actually lives.
+
+**The guide was the first place it was written and the header should not
+have been the last.** A practice page is read once by somebody learning;
+a header is read by whoever is calling the function. The rule in
+working-practice.md is that a correction goes where a reader will next
+look for it, and for "can this value change" that is the declaration.

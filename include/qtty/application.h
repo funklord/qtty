@@ -111,6 +111,13 @@ bool shell_out(const std::function<void()> &body);
 // What an application does with the answer is real work rather than
 // curiosity: Qtty::cells() needs cell_px to size an image without squashing
 // it, and a lower graphics tier needs the background to composite against.
+//
+// ASK AGAIN RATHER THAN CACHING. Several fields move during a run -- the
+// colour depth and graphics tier when a capability reply arrives after the
+// negotiation, the ground pair at every handover, the cell size on a resize
+// -- and `Capabilities` in backend.h lists which and what moves each. A
+// value read once at startup is a measurement of the terminal the program
+// started on.
 Capabilities capabilities();
 
 // How big the terminal is, in cells, while a backend is driving. An empty
