@@ -23,6 +23,26 @@ best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
 by the end of the three runs.
 
+**Re-taken 2026-10-24 and NOT comparable, which is the whole of what the
+re-take says: 8.29 user, 0.73 sys, 21.2 wall, at load 131** over 2395
+checks. The load differs from the figure above by two orders of magnitude,
+so neither the wall nor the user figure can be set beside it -- user time
+is not load-independent at this contention, cache and memory bandwidth
+being shared. Recorded rather than withheld, per this section's own
+practice: a figure with its load stated is worth more than another week
+without one, and the 2026-10-03 entry resolved exactly this doubt by
+being re-taken when the machine was quiet.
+
+**Two candidate causes, and they are separable by a measurement nobody
+can take today.** Checks rose 16 per cent (2059 to 2395) while user time
+rose 72, so either the suite is genuinely slower per check or the
+contention is in the figure. One concrete contributor is known: the suite
+forks 18 children through `fatal_child()`, three of them added on
+2026-10-23, and `/usr/bin/time` charges a waited-for child's user time to
+the parent -- so the most expensive kind of check grew by a sixth. What
+would separate them is a re-take at load under 5, which is the machine's
+to offer.
+
 **And the re-take answers a caution the previous one raised rather than
 just replacing it.** That figure was 4.76 user and 14.6 wall at load 5.12
 over 2056 checks, recorded with the warning that "the wall figure is not
@@ -46718,3 +46738,26 @@ earlier today, in 8.525, so the density of the hazard rose in the same
 session the crash appeared in -- which is a reason to fix it and not a
 proof of anything. If the exit returns with these gone, the record stands
 and the search starts again from here.
+
+### 8.531 Coverage of theme.cpp, so nobody re-runs it (2026-10-24)
+
+**100 per cent of 98 lines, and 127 branches all executed with 79.53 per
+cent taken at least once.** Recorded because a clean measurement is worth
+as much as a finding here: the next reader can spend their coverage run
+somewhere else.
+
+**Of the branches never taken, nearly all are `(throw)` paths** that gcov
+counts out of every `QByteArray` concatenation in the SGR emitters -- not
+gaps, and not reachable without an allocation failure. Two are real and
+both are defensive: the `: 7` fallback in `const int i = c.kind() ==
+Color::Indexed ? c.index() % 16 : 7;`, which cannot fire because the
+caller quantises before the Ansi16 branch is reached, and one unexercised
+label in `ansi16_for_role`'s switch. Neither is a defect; both would
+silently answer white if the invariant in front of them ever broke, which
+is the only thing worth knowing about them.
+
+**And branch coverage is the form worth running here.** Line coverage was
+100 per cent and said nothing; the 79.53 per cent figure is the one that
+names anything at all, which is the same lesson 8.414's family recorded
+when `drop_target`'s loop was 100 per cent of lines with its
+`acceptDrops()` test never false.
