@@ -6951,7 +6951,7 @@ file = "src/backend/ansi/ansi_backend.cpp"
 find = "\t\tsigaction(SIGTSTP, &g_prev_tstp, nullptr);\n\t\tsigaction(SIGCONT, &g_prev_cont, nullptr);"
 into = "\t\t(void)g_prev_tstp;\n\t\t(void)g_prev_cont;"
 count = 1
-check = "a backend going out of scope puts the job-control signal back exactly as it found it, which is not the same as putting it back to the default"
+check = "a backend going out of scope puts the job-control signal back as it found it"
 
 [[sabotage]]
 # A late set_font() stored and not applied, which is how it was before

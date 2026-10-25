@@ -48165,60 +48165,60 @@ run recorded in this document was taken without knowing this, and
 `make check` passing is not evidence that a given invocation of it will.
 
 
-### 8.563 The baseline was inherited, and three checks assumed it (2026-10-25)
+### 8.563 A forced baseline, and a fix I got wrong twice (2026-10-25)
 
-**8.562's intermittent check is explained, and the fault was the test.**
-Three checks in the job-control block compared `SIGTSTP` against
-`SIG_DFL`. That disposition is **inherited from whatever started the
-process**: a shell running a command WITHOUT job control -- a subshell, a
-background job, a command substitution, a `make` recipe -- hands it
-`SIGTSTP` already set to `SIG_IGN`.
+**The defect was real, the diagnosis was already in this file, and my
+first fix was the one the file had rejected with a measurement.** All
+three parts belong in the record.
 
-**Measured, not deduced.** Printing the disposition at the check gave
-`0x1`, which is `SIG_IGN` against `SIG_DFL` of `(nil)`. Printing the
-backend's own saved value at its release gave `prev=0x1` -- it had
-recorded `SIG_IGN` as the previous disposition and put exactly that back.
-**The library was correct throughout.** Arms and releases balanced four
-and four in both the passing and the failing runs, which is what ruled out
-a leaked owner.
+**The defect.** Three checks in the job-control block compared `SIGTSTP`
+against `SIG_DFL`. That disposition is inherited: a shell starting a
+command without job control -- a subshell, a background job, a command
+substitution, a `make` recipe -- hands it `SIGTSTP` already `SIG_IGN`.
+Measured at `0x1` against `SIG_DFL` of `(nil)`, with the backend's own
+save reading `prev=0x1`, so **the library was correct and the test was
+reading the environment.** Under that start the trio failed, failed, and
+**passed vacuously** in the middle: `!= SIG_DFL` was already true before
+any backend existed.
 
-**The trio came apart three different ways at once**, which is why the
-run looked confusing rather than wrong:
+**The diagnosis was seven thousand lines away in the same file.** The
+`suspend()`/`resume()` block says it outright -- "bash hands a command
+substitution's child SIGTSTP = SIG_IGN, and asserting SIG_DFL made
+`out=$(make test)` fail while `make test` passed". I found this by
+instrumenting from scratch and reported it as new. **A `grep` for
+`SIG_DFL` in the file I was editing would have found it**, and that is the
+cheapest step I skipped.
 
-- the premise -- nothing has taken the terminal yet -- **failed**, because
-  `SIG_IGN` is not `SIG_DFL`;
-- the restore check **failed**, because the backend correctly put
-  `SIG_IGN` back and the check demanded the default;
-- and the middle check **passed VACUOUSLY**: it asked whether the live
-  disposition differs from `SIG_DFL`, which was already true before any
-  backend existed. A check that cannot fail, sitting between two that
-  were failing for the same reason.
+**AND MY FIRST FIX WAS WEAKER, which that block had already measured.** I
+compared the ambient baseline before and after -- and the defect
+CONTAMINATES the baseline: with the restore deleted, an earlier backend
+leaves qtty's handler installed, so before, during and after all read one
+pointer and the comparison holds. That block recorded the numbers: all
+three printed `0x55922d8b84db` under sabotage. **A relational check that
+holds while the thing it defends is broken is worse than the absolute one
+it replaced**, and I had called it "strictly stronger".
 
-**The fix compares against the baseline taken immediately before the
-probe**, which is immune to how the binary was started and strictly
-stronger: it catches a backend that restores the WRONG handler, which a
-test for `SIG_DFL` cannot do whenever the baseline is not `SIG_DFL`. The
-premise is replaced by something the baseline cannot decide -- that a live
-backend's disposition is a real function, neither a default nor an ignore.
-All three now pass in both invocation forms.
+**My sabotage run did not catch that, and the reason matters.** The entry
+reddened my relational check -- but only because no earlier backend had
+armed in that fixture, so the baseline happened to be clean. **A sabotage
+proves a check discriminates in the ordering it was run in, not in every
+ordering**, and this is the first time today that distinction has cost
+anything.
 
-**The shape to carry: a check's PREMISE is an assertion too, and this one
-was about the environment while reading as if it were about the code.**
-"Nothing has taken the terminal yet" sounds like a statement about qtty.
-What it tested was what the shell did before `main`. Assert the
-relationship -- what changed, and that it changed back to what it was --
-and the environment stops being able to decide the verdict.
+**The fix is the file's existing pattern: force what the block starts
+from**, put the outer disposition back afterwards, and leave `SIGPIPE`
+ignored as the backend leaves it -- restoring a default there would arm
+the signal that kills a program writing to a closed pipe. The absolute
+assertions then mean what they say, and all three pass in both invocation
+forms. The check names revert to their originals, so 8.514's sabotage
+entry needs no repointing after all.
 
-**Confirmed where it surfaced.** `make test-sanitize` is green on the
-fixed tree -- exit 0, no failures, zero sanitizer reports, the flag and
-the 51 `__asan` symbols still verified. The fix was checked by hand in two
-invocation forms first, and that was not the close: the fault appeared in
-this configuration, so this is the configuration that had to agree.
+**Three lessons, and the third is the one I would keep.** A check's
+premise is an assertion too, and this one was about the environment while
+reading as if it were about the code. A relational assertion is not
+automatically stronger than an absolute one -- it is weaker exactly when
+the fault moves the baseline. And **before fixing a check, read what the
+file already says about the thing you are fixing**: this file had the
+cause, the remedy and the measurement against my alternative, and I wrote
+all three again from first principles.
 
-**And the beerssh matrix is the one item here this tree cannot re-take
-alone**: it needs `beerssh` built, with a terminal under test on the far
-end of it, which is another project's tree and another project's
-configuration. It is listed above with its command and its own document,
-and that is the right place for it -- but nothing in a qtty session
-closes it, which is worth saying so the list is not read as seven things
-a session could have done.

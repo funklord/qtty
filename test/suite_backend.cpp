@@ -433,55 +433,63 @@ int suite_backend() {
 			sigaction(sig, nullptr, &cur);
 			return cur.sa_handler;
 		};
-		// THE BASELINE IS INHERITED AND MUST NOT BE ASSUMED, which is what
-		// three checks here did until 8.563. They tested against SIG_DFL,
-		// and a shell that starts a command WITHOUT job control -- a
-		// subshell, a background job, a command substitution, a make recipe
-		// -- hands it SIGTSTP already set to SIG_IGN. Measured: the
-		// disposition read 0x1, and the backend's own save showed it had
-		// recorded SIG_IGN as the previous value, so the library was
-		// behaving correctly throughout.
+		// A FORCED BASELINE, which is the pattern this file already uses for
+		// the fatal-signal dispositions and for suspend()/resume() seven
+		// thousand lines below. Two faults made it necessary here, and 8.563
+		// records that the second was mine.
 		//
-		// Under that start the old trio came apart in three different ways
-		// at once: the premise failed, the restore check failed because the
-		// backend had correctly put SIG_IGN back, and the middle one PASSED
-		// VACUOUSLY -- it asked whether the live disposition differs from
-		// SIG_DFL, which was already true before any backend existed.
+		// The dispositions are INHERITED: a shell starting a command without
+		// job control -- a subshell, a background job, a command
+		// substitution, a make recipe -- hands it SIGTSTP already SIG_IGN.
+		// Measured at 0x1 against SIG_DFL of nil, with the backend's own save
+		// showing prev=0x1, so the library was right and the test was reading
+		// the environment. Under that start the old trio failed, failed, and
+		// PASSED VACUOUSLY in the middle -- `!= SIG_DFL` was already true.
 		//
-		// So these compare against the baseline taken immediately before the
-		// probe. That is immune to how the binary was started and strictly
-		// stronger: it catches a backend that restores the WRONG handler,
-		// which a test for SIG_DFL cannot do whenever the baseline is not
-		// SIG_DFL.
-		const auto tstp_before = disposition(SIGTSTP);
-		const auto pipe_before = disposition(SIGPIPE);
-		(void)pipe_before;
-		void (*tstp_live)(int) = SIG_DFL;
+		// AND COMPARING THE AMBIENT BASELINE INSTEAD IS WEAKER, not stronger,
+		// which is what the suspend()/resume() block measured before this one
+		// was written: the defect contaminates the baseline. With the restore
+		// deleted, an earlier backend leaves qtty's handler installed and
+		// before, during and after all read the same pointer -- all three
+		// printed 0x55922d8b84db there. A relational check holds while the
+		// thing it defends is broken.
+		//
+		// So force what the block starts from, put the outer value back
+		// afterwards, and the absolute assertions mean what they say again.
+		// SIGPIPE is left as the backend leaves it -- ignored, deliberately --
+		// because the check below asserts exactly that and because restoring a
+		// default here would arm the signal that kills a program writing to a
+		// closed pipe.
+		struct sigaction outer_tstp {};
+		sigaction(SIGTSTP, nullptr, &outer_tstp);
+		struct sigaction dfl {};
+		dfl.sa_handler = SIG_DFL;
+		sigemptyset(&dfl.sa_mask);
+		sigaction(SIGTSTP, &dfl, nullptr);
+		sigaction(SIGPIPE, &dfl, nullptr);
+
+		const bool tstp_default_before = disposition(SIGTSTP) == SIG_DFL;
+		const bool pipe_default_before = disposition(SIGPIPE) == SIG_DFL;
 		bool tstp_taken = false, pipe_ignored = false;
 		{
 			AnsiBackend probe;
-			tstp_live = disposition(SIGTSTP);
-			tstp_taken = tstp_live != tstp_before;
+			tstp_taken = disposition(SIGTSTP) != SIG_DFL;
 			pipe_ignored = disposition(SIGPIPE) == SIG_IGN;
 		}
-		const bool tstp_back = disposition(SIGTSTP) == tstp_before;
+		const bool tstp_back = disposition(SIGTSTP) == SIG_DFL;
 		const bool pipe_still_ignored = disposition(SIGPIPE) == SIG_IGN;
+		sigaction(SIGTSTP, &outer_tstp, nullptr);
 
-		// A REAL FUNCTION, not merely a different value. This replaces the
-		// inherited-baseline premise with something the baseline cannot
-		// decide: whatever the process started with, a live backend's
-		// SIGTSTP disposition is a handler of its own.
-		CHECK(tstp_live != SIG_DFL && tstp_live != SIG_IGN,
-		      "a live backend installs a real job-control handler rather"
-		      " than leaving the disposition at a default or an ignore,"
-		      " whichever of those the shell happened to hand it");
+		CHECK(tstp_default_before && pipe_default_before,
+		      "the dispositions this block starts from are its own, forced"
+		      " rather than read, so what follows is a backend's doing and not"
+		      " an earlier fixture's or the shell's");
 		CHECK(tstp_taken && pipe_ignored,
 		      "a live backend takes the job-control signal and ignores"
 		      " SIGPIPE, which is the state the teardown has to answer for");
 		CHECK(tstp_back,
 		      "a backend going out of scope puts the job-control signal back"
-		      " exactly as it found it, which is not the same as putting it"
-		      " back to the default");
+		      " as it found it");
 		CHECK(pipe_still_ignored,
 		      "while SIGPIPE stays ignored, deliberately: the teardown's own"
 		      " last act writes the deferred messages to stderr, and"
