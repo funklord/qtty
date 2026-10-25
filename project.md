@@ -48222,3 +48222,44 @@ file already says about the thing you are fixing**: this file had the
 cause, the remedy and the measurement against my alternative, and I wrote
 all three again from first principles.
 
+
+### 8.564 8.530's comfortable explanation, tested at last (2026-10-25)
+
+**The nine dangling-capture timers were fixed two months ago and
+deliberately NOT claimed as the cause. Nobody tested them. They now look
+unlikely.**
+
+**The experiment.** Reintroduce all nine -- the stack `QTimer` form
+reverted to `QTimer::singleShot(2000, [&]{...})`, which outlives its
+frame and writes to a dead stack `bool` -- and run the configurations that
+can carry it. **Twenty runs, no reproduction**: twelve of
+`router runtime` and eight of the full suite, every one exiting 0 with
+2432 passes. The tree was restored from a saved copy afterwards and
+`git status` is clean.
+
+**That is not proof the timers were innocent** -- undefined behaviour is
+nondeterministic and the original symptom was seen once. It is what
+`running-code.md` asks for and what 8.530 never got: the experiment that
+would confirm the comfortable story, run. It did not confirm it, so the
+branch is weakened and the next person knows not to start there.
+
+**AND 8.530's OWN EVIDENCE READS WEAKER THAN IT LOOKS.** "Not reproduced
+in twenty-three attempts" was three full runs and **twenty of
+`suite_runtime` alone**. The suspected mechanism is a timer armed in
+`suite_router` firing two seconds later -- so twenty of those
+twenty-three attempts **could not have carried the cause at all**. The
+pair that can, `router runtime`, was not runnable until the suite filter
+learned to take more than one name earlier today; it was a single
+`QString` and the last argument won.
+
+**The transferable part is about counting attempts, not about this
+fault.** A non-reproduction count is only as good as the configurations
+it was taken in, and a suite-filtered retry of the suite where the
+symptom APPEARED is the natural thing to try and the wrong one when the
+cause lives in a suite that ran BEFORE it. Twenty attempts bought roughly
+three attempts' worth of evidence, and nothing in the figure said so.
+
+**What is still open.** The exit itself: one sighting, no `FAIL`, no
+watchdog message, nothing reaching `== backend ==`, and now a weakened
+prime suspect. The outer `timeout 300` remains implausible on the
+measurement 8.530 took, and the suite's own watchdog would have printed.
