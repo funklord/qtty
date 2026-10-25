@@ -47604,3 +47604,51 @@ and passed before: the finding was never about overlay behaviour but about
 which END of the route was being asked. **A suite can cover an interface
 completely and leave its only implementation untouched, and nothing in a
 green run says which it did.**
+
+### 8.552 Two replies this parser has never been given (2026-10-25)
+
+**Both confirmed and neither fixed -- recorded on the holder's instruction
+at 98 per cent of the week, which is why this entry is a hand-over rather
+than a change.** Each is the same shape: a thing real terminals do that no
+fixture has ever sent.
+
+**1. A BEL-TERMINATED OSC REPLY.** `parse_string_sequence()`,
+`ansi_backend.cpp:2348`:
+
+    if (c == 0x07 && pending_[1] == ']') return i + 1;   // OSC, BEL
+
+The branch data says the second condition has only ever gone one way --
+branch 3 at `taken 0%` -- and the suite says why: **no fixture in
+`suite_backend.cpp` feeds a BEL at all.** Every OSC-reply fixture
+terminates with ST. The two pieces matter in that order: the arc counts
+alone do not establish the polarity, and the grep is what makes it
+conclusive that no BEL has reached this line.
+
+**Why it is the more serious of the two.** `caps_query()` asks OSC 11 for
+the background and OSC 4 for the palette, and **xterm and a good many
+others terminate an OSC REPLY with BEL rather than ST.** So this is not an
+exotic input: it is what a common terminal answers with. If the arm is
+wrong, the ground and the palette silently fail to parse there -- and
+8.517 onwards built the terminal-ground and late-reply machinery on top of
+exactly those two queries, so the feature rests on a line nothing has
+exercised. The fixture is one line of change: take an existing OSC-reply
+fixture, replace its `ESC \` with `\a`, and assert the same `TermCaps`.
+
+**2. A SEQUENCE ABANDONED BY THE NEXT ONE.** `ansi_backend.cpp:2321`:
+
+    if (uchar(pending_[j]) == 0x1b) return j;   // the next sequence
+
+Never taken, branch 1 at `taken 0%`. This is the recovery path for a CSI
+whose byte is not a plausible final when a new `ESC` arrives before the old
+sequence completes -- a truncated or interleaved reply, which is what a
+loaded terminal or a multiplexer produces.
+`parse_string_sequence()` carries the same shape at 2350.
+
+**The filter that produced this shortlist, so it can be re-run.** Over
+`ansi_backend.cpp.gcov`: conditions on an `if (` line, `taken 0%`,
+**excluding arcs labelled `(throw)`** and lines executed fewer than 50
+times, then dropping null and emptiness guards by name. That is eleven
+candidates from roughly four hundred never-taken branches, and both of
+these were then confirmed by asking the suite rather than by the
+extraction -- which is 8.547's rule and the reason the list is short
+enough to read.
