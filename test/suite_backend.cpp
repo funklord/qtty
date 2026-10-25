@@ -5205,6 +5205,43 @@ int suite_backend() {
 					      "and no C1 control or line separator reaches the"
 					      " wire inside it -- U+009C is ST, which would end"
 					      " the OSC string and let what follows be executed");
+
+					// AND THE BOUND, which nothing had reached: the cap is
+					// 256 and no test had ever handed it a longer title, so
+					// truncate() had never run. It goes out on every title
+					// change and the terminal has to keep it.
+					//
+					// MULTI-BYTE deliberately. The comment at the cap says
+					// the cut is at a character rather than a byte so a
+					// cluster is never split, and only a title whose
+					// characters are wider than one byte can tell those
+					// apart: 300 U+00E9 cut at 256 CHARACTERS is 512 bytes,
+					// where a byte cut would give 256 bytes and 128
+					// characters. An ASCII fixture passes either way.
+					fflush(stdout);
+					::dup2(slave, 1);
+					while (::read(master, eat, sizeof(eat)) > 0) { }
+					live.set_title(QString(300, QChar(0x00e9)));
+					QByteArray big;
+					while ((n = ::read(master, eat, sizeof(eat))) > 0)
+						big.append(eat, int(n));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					const int at = big.indexOf("\033]2;");
+					const int end = at < 0 ? -1
+					    : big.indexOf("\033\\", at + 4);
+					const QByteArray payload = (at < 0 || end < 0)
+					    ? QByteArray()
+					    : big.mid(at + 4, end - at - 4);
+					// The character count is read back through UTF-8, which
+					// is also what says no sequence was split: a cut inside
+					// one would not decode to 256 whole characters.
+					const QString back = QString::fromUtf8(payload);
+					CHECK(payload.size() == 512 && back.size() == 256
+					      && back == QString(256, QChar(0x00e9)),
+					      "a title past the cap is cut at 256 CHARACTERS and"
+					      " not at 256 bytes, so a multi-byte cluster is"
+					      " never split down the middle");
 				}
 
 				// The OTHER route to the same handover, and the reason this

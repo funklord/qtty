@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2420 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2421 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47514,3 +47514,37 @@ direction that was took reading the arms above it -- `len == 1` handled, so
 the untaken direction was zero. The extraction that merely lists lines
 carrying an untaken branch would have put this beside the four arrow
 primitives it was wrong about.
+
+### 8.550 A title past its cap (2026-10-25)
+
+**The cap had never been reached.** `set_title()` sanitises, then cuts at
+`kMax = 256`, and no test had ever handed it a longer title -- so
+`truncate()` had never run. It matters because the sequence goes out on
+every title change and the terminal has to keep what it is sent.
+
+**The fixture is multi-byte, and that is the whole of its value.** The
+comment at the cap says the cut is at a CHARACTER rather than a byte so a
+cluster is never split, and only a title whose characters are wider than
+one byte can tell those apart: 300 of U+00E9 cut at 256 characters is 512
+bytes on the wire, where a byte cut would be 256 bytes and 128 characters.
+An ASCII fixture passes against either, which is `evidence.md`'s check
+whose pass includes the failure. The character count is read back by
+decoding the payload, which is also what says no sequence was split -- a
+cut inside one would not decode to 256 whole characters.
+
+**Found by the per-branch reading, and the same reading refused the better
+headline.** `if (sync) out += "\033[?2026h"` also showed a branch at
+`taken 0%` and synchronized output would have been the more interesting
+find -- but that branch is numbered 4 and labelled `(throw)`, an exception
+arm, while the condition itself runs 80/20. The line-keyed extraction
+8.547 warns about would have spent this cycle on it.
+
+**And running ONE suite is not a gate, which cost a detour here.** With
+the check added, `./qtty-tests backend` alone reported
+`every widget geometry landed on the grid (backend) -- 6 did not` while
+the full binary passed. The control settles it: the same single-suite run
+fails identically on the COMMITTED tree, so the red is an artifact of
+running that suite in isolation -- `reset()` disowns off-grid geometries
+over a full run and a filtered one never reaches whatever does it. A
+session debugging one suite will meet this and should not read it as a
+regression; `make check` runs the binary whole.

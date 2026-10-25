@@ -8460,3 +8460,13 @@ find = "\t\t\tif (len <= 0) return QRect();\n\t\t\tif (len >= 1) {\n"
 into = "\t\t\tif (len >= 1) {\n"
 count = 1
 check = "a scroll bar or slider shorter than one cell reports no sub-control rather than falling through to the proxy's pixel rectangles, on both axes"
+
+[[sabotage]]
+# The title loses its cap, so a 300-character title goes out whole -- 600
+# bytes on every title change, which the terminal has to keep. 8.550.
+name = "a title past the cap goes out whole"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (safe.size() > kMax) safe.truncate(kMax);\n"
+into = ""
+count = 1
+check = "a title past the cap is cut at 256 CHARACTERS and not at 256 bytes, so a multi-byte cluster is never split down the middle"
