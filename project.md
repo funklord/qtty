@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2419 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2420 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47420,19 +47420,59 @@ enclosing `if`s and reaches line 2204, `QProxyStyle::subControlRect` --
 Fusion's pixel rectangles. The one-cell fix closed that hole for one cell
 and left it open for zero.
 
-**What must be measured BEFORE a guard is written, and why this was not
-finished rather than half-finished.** The obvious fix is to return
-`QRect()` for `len <= 0`, and a check asserting the sub-control rects of a
-sub-cell bar come back empty. That check only discriminates if Fusion
-returns something NON-empty for a zero-height bar; if Fusion's rects are
-empty too, the check passes against the unguarded code and the sabotage
-entry cannot redden it -- `evidence.md`'s check whose pass includes the
-failure. So: ask Fusion first, with a `QStyleOptionSlider` whose rect is
-0 or sub-cell high, and let the answer decide whether this is a defect to
-fix or a principle to assert some other way.
+**THE MEASUREMENT WAS TAKEN AND IT IS A DEFECT -- fixed in 8.549.** This
+entry asked for one thing before a guard was written: whether Fusion
+returns something NON-empty for a sub-cell bar. If its rects were empty
+too, a check asserting emptiness would pass against the unguarded code and
+no sabotage could redden it, which is `evidence.md`'s check whose pass
+includes the failure. Both sabotage entries reddened the check, so Fusion's
+answer is non-empty and the guard changes real behaviour. The question is
+closed; this paragraph is rewritten rather than appended to, because a
+reader finding both would believe whichever sounded more careful.
 
-**Reachability is the other open half.** `len` is the rect divided by the
-cell, and this tree snaps widget geometry to the grid -- so a sub-cell bar
-most plausibly arrives as a zero-height one, mid-layout or collapsed,
-rather than as a fractional one. Whether Qt asks for a sub-control rect in
-that state is a measurement, not a deduction.
+**Reachability stays open and is a measurement rather than a deduction.**
+`len` is the rect divided by the cell, and this tree snaps widget geometry
+to the grid -- so a sub-cell bar most plausibly arrives as a zero-height
+one, mid-layout or collapsed, rather than as a fractional one. Whether Qt
+asks for a sub-control rect in that state is unmeasured. The guard is
+cheap and correct either way, which is why it did not wait on this.
+
+
+### 8.549 No cells, no sub-controls (2026-10-25)
+
+**The finding 8.548 handed over, with its measurement taken.** Both
+`subControlRect` arms that divide a rect by the cell -- `CC_ScrollBar` and
+`CC_Slider` -- were written for a length of one or more, so a bar shorter
+than one cell fell out of both and reached `QProxyStyle::subControlRect`,
+which hands back Fusion's PIXEL rectangles. The file forbids that twenty
+lines above the hole, and for a reason already paid for: a ONE-cell bar had
+gone wrong the same way, stepping on a horizontal bar and never on a
+vertical one, because a single cell's centre lands inside one of Fusion's
+arrow rectangles on one axis and between them on the other. That fix
+covered one cell and left zero open.
+
+**`if (len <= 0) return QRect();` in both arms.** Null is the honest answer
+rather than a defensive one: there is no cell for a sub-control to occupy,
+and it is what the `len == 1` arm already returns for every sub-control
+that is not the single cell.
+
+**It was a defect and not a principle, which only the sabotage could
+say.** 8.548 refused to write the guard until somebody asked what Fusion
+returns for a sub-cell bar, because an empty answer would have made the
+check vacuous -- passing against the unguarded code with no sabotage able
+to redden it. Both entries reddened it, one per arm, so Fusion's rects are
+non-empty and this changed behaviour.
+
+**The fixture is sub-cell but NOT zero**, and that is the load-bearing
+choice: a zero rect is empty by arithmetic anywhere, so it could not tell
+the guard from its absence. `cw - 1` by `ch` and `cw` by `ch - 1`, both
+orientations -- both, because the one-cell fault was asymmetric and a guard
+tested on one axis would have passed then too.
+
+**Found by the per-branch reading rather than by the line-keyed
+extraction**, which is 8.547's whole point arriving one entry later: line
+1971 ran 2060 times with `branch 1 taken 0%`, and identifying WHICH
+direction that was took reading the arms above it -- `len == 1` handled, so
+the untaken direction was zero. The extraction that merely lists lines
+carrying an untaken branch would have put this beside the four arrow
+primitives it was wrong about.

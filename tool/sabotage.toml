@@ -8439,3 +8439,24 @@ find = "\tif (p == Priority::Required) w->setProperty(k_priority, QVariant());\n
 into = "\tw->setProperty(k_priority, int(p));\n"
 count = 1
 check = "setting a widget back to Required clears the property rather than writing Required into it, leaving it indistinguishable from a widget that was never given a hint"
+
+[[sabotage]]
+# The scroll bar loses its no-cells guard, so a bar shorter than one cell
+# falls out to QProxyStyle and reports Fusion's pixel rectangles -- the
+# route the one-cell fix closed for one cell and not for zero. 8.549.
+name = "a sub-cell scroll bar falls through to the proxy"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (len <= 0) return QRect();\n\t\t\t// ONE cell, matching what drawComplexControl puts in it. That\n"
+into = "\t\t\t// ONE cell, matching what drawComplexControl puts in it. That\n"
+count = 1
+check = "a scroll bar or slider shorter than one cell reports no sub-control rather than falling through to the proxy's pixel rectangles, on both axes"
+
+[[sabotage]]
+# The slider loses the same guard, by the same route. Separate because one
+# entry cannot show that both arms carry it. 8.549.
+name = "a sub-cell slider falls through to the proxy"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (len <= 0) return QRect();\n\t\t\tif (len >= 1) {\n"
+into = "\t\t\tif (len >= 1) {\n"
+count = 1
+check = "a scroll bar or slider shorter than one cell reports no sub-control rather than falling through to the proxy's pixel rectangles, on both axes"

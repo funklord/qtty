@@ -1946,6 +1946,16 @@ QRect GridStyle::sub_control_rect(ComplexControl cc,
 			const bool vert = sb->orientation == Qt::Vertical;
 			const int cell = vert ? ch : cw;
 			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
+			// NO CELLS, NO SUB-CONTROLS. A rect shorter than one cell
+			// divides to a length of zero, and both arms below are written
+			// for a length of one or more -- so such a bar used to fall out
+			// of here to QProxyStyle, which hands back Fusion's PIXEL
+			// rectangles. That is what the paragraph above forbids, and the
+			// one-cell fix closed it for one cell and left it open for zero.
+			// Null is the honest answer: there is no cell for a sub-control
+			// to occupy, which is what the len == 1 arm already returns for
+			// every sub-control that is not the one cell.
+			if (len <= 0) return QRect();
 			// ONE cell, matching what drawComplexControl puts in it. That
 			// arm learned about a one-cell bar and this one did not, so it
 			// fell through to Fusion's pixel rectangles -- which is exactly
@@ -2059,6 +2069,11 @@ QRect GridStyle::sub_control_rect(ComplexControl cc,
 			const bool vert = sl->orientation == Qt::Vertical;
 			const int cell = vert ? ch : cw;
 			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
+			// NO CELLS, NO SUB-CONTROLS -- the same hole as the scroll
+			// bar's above, and found with it: this arm is written for a
+			// length of one or more, so a sub-cell slider reached Fusion's
+			// pixel rectangles by the identical route.
+			if (len <= 0) return QRect();
 			if (len >= 1) {
 				// One derivation, shared with the drawing. See
 				// slider_cell() for what the two copies were missing.

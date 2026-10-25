@@ -6111,6 +6111,59 @@ int suite_widgets() {
 		      "a toolbar separator is drawn between the actions it separates");
 	}
 	{
+		// A BAR WITH NO CELLS IN IT. subControlRect divides the rect by the
+		// cell, so anything shorter than one cell is a length of zero -- and
+		// both the scroll bar's arms and the slider's are written for one or
+		// more, so such a bar fell out to QProxyStyle and got Fusion's PIXEL
+		// rectangles. The file forbids exactly that twenty lines above the
+		// hole: a one-cell bar had already gone wrong that way, stepping on a
+		// horizontal bar and never on a vertical one, because a single cell's
+		// centre lands inside one of Fusion's arrow rectangles on one axis
+		// and between them on the other. That fix covered one cell and left
+		// zero open.
+		//
+		// Branch coverage named it: line 1971 ran 2060 times with the short
+		// direction never once taken.
+		QStyle *st = QApplication::style();
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStyleOptionSlider so;
+		so.minimum = 0;
+		so.maximum = 100;
+		so.sliderPosition = 50;
+		so.pageStep = 10;
+		bool all_null = true;
+		const QStyle::SubControl bar_parts[] = {
+			QStyle::SC_ScrollBarSlider, QStyle::SC_ScrollBarGroove,
+			QStyle::SC_ScrollBarAddLine, QStyle::SC_ScrollBarSubLine,
+			QStyle::SC_ScrollBarAddPage, QStyle::SC_ScrollBarSubPage,
+		};
+		// Both orientations, because the one-cell fault was asymmetric and
+		// a guard tested on one axis would have passed then too.
+		for (int vert = 0; vert < 2; ++vert) {
+			so.orientation = vert ? Qt::Vertical : Qt::Horizontal;
+			// Sub-cell but NOT zero: a zero rect is empty by arithmetic
+			// anywhere, so it cannot tell this guard from its absence.
+			so.rect = vert ? QRect(0, 0, cw, ch - 1)
+			               : QRect(0, 0, cw - 1, ch);
+			for (QStyle::SubControl p : bar_parts)
+				all_null = all_null
+				    && st->subControlRect(QStyle::CC_ScrollBar, &so, p,
+				                          nullptr).isNull();
+			all_null = all_null
+			    && st->subControlRect(QStyle::CC_Slider, &so,
+			                          QStyle::SC_SliderHandle,
+			                          nullptr).isNull()
+			    && st->subControlRect(QStyle::CC_Slider, &so,
+			                          QStyle::SC_SliderGroove,
+			                          nullptr).isNull();
+		}
+		CHECK(all_null,
+		      "a scroll bar or slider shorter than one cell reports no"
+		      " sub-control rather than falling through to the proxy's pixel"
+		      " rectangles, on both axes");
+	}
+
+	{
 		// The four arrow primitives. No widget in this style reaches them --
 		// the combo box, spin box, scroll bar and tool button are all drawn
 		// whole -- so they are asserted as what they are: public style API,
