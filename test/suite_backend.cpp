@@ -1491,6 +1491,40 @@ int suite_backend() {
 		      "that follows is delivered rather than swallowed");
 	}
 
+	// A BEL-TERMINATED OSC REPLY, which nothing had ever fed. The comment
+	// above says every OSC this suite feeds is "closed properly, by BEL or
+	// by ST" -- and the BEL half of that was not true: `\a` appears nowhere
+	// in this file, and the only 0x07 it discusses is the one bell() WRITES.
+	//
+	// parse_string_sequence() has an arm for it --
+	// `if (c == 0x07 && pending_[1] == ']') return i + 1;` -- and branch
+	// coverage put that line's second condition at `taken 0%`.
+	//
+	// It is not an exotic input. caps_query() asks OSC 11 for the background
+	// and OSC 4 for the palette, and xterm among others terminates an OSC
+	// REPLY with BEL rather than ST. So this is what a common terminal
+	// answers with, and the ground and palette machinery rests on it.
+	//
+	// THE ST FORM IS THE CONTROL, and the colours differ on purpose: the
+	// second reply cannot pass on the first one's residue, and if both arms
+	// failed the fault would be this fixture rather than the BEL.
+	{
+		feed("\033]11;rgb:1111/2222/3333\033\\");
+		const Capabilities st_form = backend.capabilities();
+		feed("\033]11;rgb:2e2e/3434/4e4e\a");
+		const Capabilities bel_form = backend.capabilities();
+		CHECK(st_form.background_known
+		      && st_form.background == QColor(0x11, 0x22, 0x33),
+		      "an ST-terminated background reply is read, which is the"
+		      " control for the BEL form below");
+		CHECK(bel_form.background_known
+		      && bel_form.background == QColor(0x2e, 0x34, 0x4e),
+		      "and a BEL-terminated one is read too, which is how xterm"
+		      " closes an OSC reply");
+		CHECK(rec.keys.isEmpty() && rec.pastes.isEmpty(),
+		      "and neither is typed into the application as input");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable

@@ -8490,3 +8490,14 @@ find = "\t                          z > 0 ? z : 1);\n"
 into = "\t                          z);\n"
 count = 1
 check = "the real backend's overlay emitter transmits at its own id offset, defaults z to 1 where every other placement reads 0 as unstacked, moves the cursor to the cell first, and deletes by id"
+
+[[sabotage]]
+# parse_string_sequence loses its BEL arm, so an OSC reply closed with BEL
+# -- which is how xterm closes one -- never terminates and the background
+# is never parsed. 8.552.
+name = "a BEL-terminated OSC reply never terminates"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (c == 0x07 && pending_[1] == ']') return i + 1;         // OSC, BEL\n"
+into = ""
+count = 1
+check = "and a BEL-terminated one is read too, which is how xterm closes an OSC reply"

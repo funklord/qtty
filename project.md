@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2422 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2425 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47605,34 +47605,44 @@ which END of the route was being asked. **A suite can cover an interface
 completely and leave its only implementation untouched, and nothing in a
 green run says which it did.**
 
-### 8.552 Two replies this parser has never been given (2026-10-25)
+### 8.552 Two replies this parser had never been given (2026-10-25)
 
-**Both confirmed and neither fixed -- recorded on the holder's instruction
-at 98 per cent of the week, which is why this entry is a hand-over rather
-than a change.** Each is the same shape: a thing real terminals do that no
-fixture has ever sent.
+**One is closed and one is open.** Written first as a hand-over at the
+weekly halt, and rewritten when the budget came back at the rollover --
+rewritten rather than appended to, because an entry saying something is
+open outlives the work that closed it.
 
-**1. A BEL-TERMINATED OSC REPLY.** `parse_string_sequence()`,
-`ansi_backend.cpp:2348`:
+**1. A BEL-TERMINATED OSC REPLY -- untested, and it WORKS.**
+`parse_string_sequence()`, `ansi_backend.cpp:2348`:
 
     if (c == 0x07 && pending_[1] == ']') return i + 1;   // OSC, BEL
 
-The branch data says the second condition has only ever gone one way --
-branch 3 at `taken 0%` -- and the suite says why: **no fixture in
-`suite_backend.cpp` feeds a BEL at all.** Every OSC-reply fixture
-terminates with ST. The two pieces matter in that order: the arc counts
-alone do not establish the polarity, and the grep is what makes it
-conclusive that no BEL has reached this line.
+Branch coverage put the second condition at `taken 0%`, and nothing in
+`test/` had ever fed a BEL: `\a` appears nowhere, and the only `0x07` the
+file discusses is the one `bell()` WRITES. **The suite's own comment
+overclaimed it** -- the unterminated-OSC block says every OSC it feeds is
+"closed properly, by BEL or by ST", and the BEL half was not true until
+this check existed. A comment asserting coverage is not coverage, and this
+one would have stopped a reader looking.
 
-**Why it is the more serious of the two.** `caps_query()` asks OSC 11 for
-the background and OSC 4 for the palette, and **xterm and a good many
-others terminate an OSC REPLY with BEL rather than ST.** So this is not an
-exotic input: it is what a common terminal answers with. If the arm is
-wrong, the ground and the palette silently fail to parse there -- and
-8.517 onwards built the terminal-ground and late-reply machinery on top of
-exactly those two queries, so the feature rests on a line nothing has
-exercised. The fixture is one line of change: take an existing OSC-reply
-fixture, replace its `ESC \` with `\a`, and assert the same `TermCaps`.
+It is not an exotic input: `caps_query()` asks OSC 11 for the background
+and OSC 4 for the palette, and **xterm among others closes an OSC REPLY
+with BEL**, so the ground and palette machinery of 8.517 onwards rested on
+an unexercised line. Measured, the arm is correct -- a BEL-terminated
+`rgb:2e2e/3434/4e4e` parses to that colour.
+
+**The ST form is the control and the colours differ on purpose.** The
+second reply cannot pass on the first one's residue, and had both arms
+failed the fault would have been the fixture rather than the BEL.
+
+**And this entry's first version prescribed the WRONG fixture**, which is
+worth keeping because the mistake is easy to repeat: it said to take an
+existing OSC-reply fixture and swap its ST for a BEL. Those fixtures call
+`caps_of()`, which goes through `scan_caps()` -- a different parser. Line
+2348 is in the BACKEND's incremental splitter, reached only by feeding
+bytes to a live `AnsiBackend`, so the swap would have exercised nothing and
+passed. **Two parsers read these replies, and a fixture has to name which
+one it is asking.**
 
 **2. A SEQUENCE ABANDONED BY THE NEXT ONE.** `ansi_backend.cpp:2321`:
 
@@ -47642,7 +47652,9 @@ Never taken, branch 1 at `taken 0%`. This is the recovery path for a CSI
 whose byte is not a plausible final when a new `ESC` arrives before the old
 sequence completes -- a truncated or interleaved reply, which is what a
 loaded terminal or a multiplexer produces.
-`parse_string_sequence()` carries the same shape at 2350.
+`parse_string_sequence()` carries the same shape at 2350 -- and that arm
+IS exercised, by the unterminated-OSC block above it, which is how the two
+differ despite looking alike.
 
 **The filter that produced this shortlist, so it can be re-run.** Over
 `ansi_backend.cpp.gcov`: conditions on an `if (` line, `taken 0%`,
