@@ -2682,8 +2682,20 @@ diligence.
 
 In the order I would take them:
 
-1. **The remaining never-taken branches**, the only item here that is
-   plain work. `grid_style.cpp` takes 74.01 per cent of 2001 branches at
+1. **The remaining never-taken branches** -- thinner than when this was
+   written the same day. Three FAMILIES were enumerated and closed after
+   it: the eight wait-for-more guards (8.571), the five bounds (8.572) and
+   the seven degenerate-geometry guards (8.573). Of roughly twenty arms,
+   two were real gaps worth a check, three are unreachable and annotated
+   where they sit, and the rest were already exercised -- several by
+   exactly one fixture, which only a reach count shows. **Enumerate a
+   family with one grep rather than meeting its arms one at a time**, and
+   count reaches with a print folded into the condition -- `if (cond &&
+   (fprintf(...), true))` -- which answers "does this fire, and how often"
+   in one build where gcov answers "was this arc taken" for a whole file.
+   What is left of this item is the defensive remainder: null guards and
+   failed casts, where the yield has fallen far enough that the next
+   family is worth a pass only if its arms protect something measured. `grid_style.cpp` takes 74.01 per cent of 2001 branches at
    least once and `ansi_backend.cpp` 71.00 of 1376 -- and the METHOD
    matters more than the number, because three readings of it have been
    wrong. Read gcov per BRANCH, not per line: a line carrying a call has
