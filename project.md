@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2412 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2414 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46929,9 +46929,11 @@ caught a vacuity while writing rather than after.
    wezterm, mlterm, foot and mintty, the palette remap in the quantiser,
    and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
    at 66.92 -- the `[-]` box for a partially checked item, and
-   `AlignBottom`/`AlignVCenter` for a display alignment -- the latter closed
-   by 8.540 and the quantiser's transparency path by 8.541, leaving only the
-   kitty encoder's empty-payload arm. **The scan is
+   `AlignBottom`/`AlignVCenter` for a display alignment. **This list is
+   closed**: the alignment by 8.540, the quantiser's transparency path by
+   8.541, and the kitty encoder's empty-payload arm by 8.542 -- which was
+   not a gap but a defect, the arm being reachable only by the case it got
+   wrong. **The scan is
    finished otherwise -- see 8.539 for `application.cpp`, which is the
    lowest-covered file in the tree and has no gap in it.**
    `input_router.cpp`
@@ -47142,3 +47144,67 @@ the opaque pixels become.
 **The consequence if it were wrong is a filled region where a picture is
 meant to show through**: an icon or a plot with alpha, on every sixel and
 iTerm2 terminal, since both go through this quantiser.
+
+### 8.542 A null image on the kitty wire (2026-10-25)
+
+**The last never-taken branch on 8.535's list, and it was not a gap in the
+tests.** `kitty_chunks()` ended with `if (payload.isEmpty()) out += "\033_G"
++ ctrl + ";\033\\";` -- emit the control anyway when there is nothing to
+chunk, which reads as a sensible fallback. The obvious candidate for a
+control with no payload is `kitty_delete_all()`, and that is a hand-written
+literal that never goes near the chunker, so the first question was whether
+anything could reach the arm at all.
+
+**One thing can: a null image.** `sizeInBytes()` is 0, the payload is
+empty, and measured, `encode_kitty_image(31, QImage(), 0)` came out as 31
+bytes of `\033_Ga=T,f=32,q=2,i=31,s=0,v=0;\033\` -- a declaration of a
+zero-by-zero image with no data behind it, which a terminal can only answer
+with an error, against an id the sender then believes it has uploaded.
+
+**So the arm was wrong for every caller it has.** All three that go through
+the chunker are `a=T` transmits -- `encode_kitty_image`,
+`encode_kitty_tile`, `encode_kitty_virtual` -- and a transmit with no data
+transmits nothing. It is `return {}` now, fixed at the funnel the three
+share rather than guarded three times, for the reason the file already
+records at `encode_kitty_virtual`: two emitters of one wire format are two
+things to be wrong, and only one of them gets exercised.
+
+**Branch coverage named it never-taken and that was true in the way least
+useful to read.** It was never taken by anything that wanted it, and
+reachable only by the case it got wrong -- so writing a check to cover the
+arm as it stood would have frozen the defect. That is the shape worth
+keeping from the scan as a whole: a never-taken branch is a question about
+who would take it, not an instruction to take it.
+
+**Asserted twice, through two payload routes.** The raw route, where the
+bits are zero-length, and the virtual one, where `QImage::save()` refuses a
+null image so the PNG is empty -- separately, because a caller that stopped
+going through the shared chunker would keep the first check green. Both
+were seen to fail: the first against the code as it stood, and both against
+the sabotage entry, which restores the old arm.
+
+### 8.543 Fold: the branch scan is closed (2026-10-25)
+
+**Second fold of the same session, and what it reports is the closing of
+8.535's hand-over list rather than new ground.** The thresholds moved under
+the session on 2026-10-25 -- 96 per cent of the weekly window is where
+development stops and 98 where work stops, where it had been 96 for both --
+so the three items named there as cheap were taken in order: the display
+alignment (8.540), the quantiser's transparency path (8.541), and the kitty
+encoder's empty-payload arm (8.542). 8.535's item 2 is amended in place to
+say so, because an open list that has been closed elsewhere is the entry
+that goes stale most quietly.
+
+**What is left is unchanged and is not cheap.** The unexplained
+`suite_runtime` exit of 8.530, with 23 non-reproductions and no claimed
+cause; the GUI twin's `z`, which the offscreen platform cannot assert; and
+the §0b rows that are the holder's decisions rather than anybody's next
+task.
+
+**One thing the scan taught that outlives it.** Of the branches it named,
+three were gaps where the code was right and had never been rendered, one
+was a redundant guard whose sabotage passed against broken code, and one --
+the last -- was reachable only by the case it got wrong. **A never-taken
+branch is a question about who would take it**, so the answer is sometimes a
+check, sometimes nothing, and sometimes a deletion. Covering the arm as it
+stood would have frozen the defect in a test.

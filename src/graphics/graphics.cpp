@@ -248,7 +248,21 @@ static QByteArray kitty_chunks(const QByteArray &ctrl, const QByteArray &payload
 		out += payload.mid(off, N);
 		out += "\033\\";
 	}
-	if (payload.isEmpty()) out += "\033_G" + ctrl + ";\033\\";
+	// AN EMPTY PAYLOAD IS NOT A CONTROL-ONLY ESCAPE. This arm used to emit
+	// the control anyway, which looks like a sensible fallback and is wrong
+	// for every caller this chunker has: all three are a=T transmits, and a
+	// transmit with no data behind it transmits nothing. Measured -- a null
+	// image came out as a 31-byte "a=T,f=32,q=2,i=31,s=0,v=0" with no
+	// payload, a declaration of a zero-by-zero image that a terminal can
+	// only answer with an error, against an id the sender then believes it
+	// has uploaded.
+	//
+	// The escapes that genuinely carry no payload are their callers' own
+	// literals -- kitty_delete_all() is the one here -- and they do not come
+	// through a chunker, which is why nothing ever reached this arm on
+	// purpose. Branch coverage named it never-taken; it was never-taken by
+	// anything that wanted it and reachable only by the case it got wrong.
+	if (payload.isEmpty()) return {};
 	return out;
 }
 

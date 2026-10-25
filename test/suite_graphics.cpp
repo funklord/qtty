@@ -2961,5 +2961,37 @@ int suite_graphics() {
 		      " skipped pixels did not shift the palette under it");
 	}
 
+	// A NULL IMAGE THROUGH THE KITTY ENCODER. The chunker has an
+	// empty-payload arm that branch coverage named as never taken, and
+	// kitty_delete_all() -- the obvious candidate for a control with no data
+	// -- is a hand-written literal that never goes near it. What DOES reach
+	// it is a null image: sizeInBytes() is 0, so the payload is empty and
+	// the arm emits a transmit control carrying nothing.
+	//
+	// Asserted as the sensible answer rather than as what it happens to do:
+	// a=T with no payload is a transmission of no image, which a terminal
+	// can only answer with an error, and this file's own record of kitty
+	// error statuses is that an error is not success. Nothing should go out.
+	{
+		const QByteArray nothing = encode_kitty_image(31, QImage(), 0);
+		printf("info: a null image encodes to %d byte(s): [%s]\n",
+		       int(nothing.size()),
+		       qPrintable(QString::fromLatin1(nothing).replace(
+		           QStringLiteral("\033"), QStringLiteral("ESC"))));
+		CHECK(nothing.isEmpty(),
+		      "a null image puts nothing on the wire, rather than a kitty"
+		      " transmit control with no image behind it");
+
+		// The virtual transmitter reaches the same arm by a different
+		// road -- QImage::save() refuses a null image, so the PNG is
+		// empty rather than the raw bits being zero-length -- and it is
+		// asserted separately because a caller that stopped going
+		// through the shared chunker would keep the first check green.
+		CHECK(encode_kitty_virtual(32, QImage(), 2, 1).isEmpty(),
+		      "a null image puts nothing on the wire through the virtual"
+		      " transmitter either, where the empty payload is a PNG"
+		      " that was never written");
+	}
+
 	return fails;
 }

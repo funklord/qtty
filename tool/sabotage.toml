@@ -8417,3 +8417,14 @@ find = "\t\t\tif (qAlpha(line[x]) < 128) continue;\n\t\t\tconst QRgb wire = on_t
 into = "\t\t\tconst QRgb wire = on_the_wire(line[x]);"
 count = 1
 check = "while a half-transparent one leaves exactly its transparent half unpainted, which is what P2=1 means -- untouched is transparent rather than black"
+
+[[sabotage]]
+# The chunker goes back to emitting the control for an empty payload, which
+# is what it did before: a null image becomes a 31-byte a=T declaring a
+# zero-by-zero image, with no data behind it. 8.542.
+name = "a null image is transmitted as a kitty control with no image"
+file = "src/graphics/graphics.cpp"
+find = "\tif (payload.isEmpty()) return {};\n"
+into = "\tif (payload.isEmpty()) out += \"\\033_G\" + ctrl + \";\\033\\\\\";\n"
+count = 1
+check = "a null image puts nothing on the wire, rather than a kitty transmit control with no image behind it"
