@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2431 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2432 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47904,3 +47904,34 @@ produce the same truncated row on screen and different internal state: the
 elided string is shorter, the clipped one is whole and written past the
 edge. A check reading the ROW cannot tell them apart, which is how four
 fixtures agreed on a wrong answer.
+
+### 8.558 The thumb the hit test claims and the picture does not (2026-10-25)
+
+**One layout written twice, and only half of the agreement was asserted.**
+`subControlRect`'s `CC_ScrollBar` arm copies `drawComplexControl`'s thumb
+arithmetic deliberately -- the comment says the hit test has to agree with
+the picture -- and a check already asserted that for a HORIZONTAL bar at
+one value, one way round: the drawn thumb's column is inside the hit
+rectangle.
+
+**The case the style's own comment measured was the other one.** A
+six-row VERTICAL bar at 50 of 100, clicking the centre of each drawn row,
+gave 49, 40, 50, 50, 60, 51 -- one row drawn as track did nothing,
+because Fusion's thumb is 1.37 rows and covered a row the picture called
+track. That is the disagreement this invariant exists to prevent, and it
+had no check.
+
+**Set equality, not containment.** Every drawn thumb row is in the hit
+rectangle AND every row of the hit rectangle is drawn as thumb.
+Containment alone -- which is what the horizontal check asserts -- passes
+a rectangle that claims rows the picture calls track, which is exactly
+the measured fault. The sabotage adds one row to the hit rectangle's
+length and the check reddens; under containment it would not.
+
+**Both ends and the middle**, because the thumb clamps at 0 and 100 and
+an off-by-one at a clamp is invisible in the middle of the range.
+
+**They agree, so this closes a gap rather than a defect** -- and the gap
+was in the assertion's SHAPE rather than its absence. A check existed,
+named the right invariant, and tested the weaker half of it on the easier
+axis.

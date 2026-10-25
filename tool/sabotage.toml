@@ -8557,3 +8557,15 @@ find = "\tif (tty_out_ && raw_ok_ && caps_.kbd_protocol) {\n\t\tg_kbd_wanted = t
 into = ""
 count = 1
 check = "a terminal that answers the keyboard query before the fence is pushed the protocol flags by the constructor, not only by the late path"
+
+# The hit test's thumb claims one row more than the picture draws, which
+# is the fault the style's own comment measured: a row drawn as track that
+# a click treats as thumb. Containment would not catch it; set equality
+# does. 8.558.
+[[sabotage]]
+name = "the scroll bar's hit test claims a row the picture calls track"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tcase SC_ScrollBarSlider:  return band(1 + thumb_pos, thumb_len);\n"
+into = "\t\t\t\tcase SC_ScrollBarSlider:  return band(1 + thumb_pos, thumb_len + 1);\n"
+count = 1
+check = "a vertical scroll bar's drawn thumb and its hit rectangle cover the same rows, at both ends of the range and in the middle"

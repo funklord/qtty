@@ -1484,6 +1484,61 @@ int suite_widgets() {
 		      " ampersand");
 	}
 
+	// THE SAME AGREEMENT ON A VERTICAL BAR, AT BOTH ENDS. The thumb
+	// arithmetic exists twice on purpose -- subControlRect copies
+	// drawComplexControl's, because the hit test has to agree with the
+	// picture -- and the check above asks that of a HORIZONTAL bar at one
+	// value. The case the style's own comment measured is the other one: a
+	// six-row VERTICAL bar, where clicking each drawn row gave 49, 40, 50,
+	// 50, 60, 51 and the row drawn as track did nothing.
+	//
+	// Set equality rather than containment, which is what the horizontal
+	// check asserts: every drawn thumb row is in the hit rect AND every row
+	// of the hit rect is drawn as thumb. Containment alone passes a rect
+	// that claims rows the picture calls track -- the exact fault measured.
+	{
+		const int cw3 = GridMetrics::cw(), ch3 = GridMetrics::ch();
+		bool agree = true, drew = true;
+		for (int value : {0, 50, 100}) {
+			QScrollBar sb(Qt::Vertical);
+			sb.setRange(0, 100);
+			sb.setValue(value);
+			sb.setPageStep(10);
+			sb.setFixedSize(cw3, ch3 * 6);
+			show(sb, 3, 6);
+			CellBuffer b(3, 6);
+			render_once(sb, b);
+			QSet<int> drawn, hit;
+			for (int y = 0; y < b.rows(); ++y)
+				if (b.at(0, y).ch == QString(QChar(0x2588))) drawn.insert(y);
+			QStyleOptionSlider o;
+			o.initFrom(&sb);
+			o.minimum = 0;
+			o.maximum = 100;
+			o.sliderPosition = value;
+			o.sliderValue = value;
+			o.pageStep = 10;
+			o.orientation = Qt::Vertical;
+			o.rect = sb.rect();
+			o.subControls = QStyle::SC_All;
+			const QRect th = sb.style()->subControlRect(
+			    QStyle::CC_ScrollBar, &o, QStyle::SC_ScrollBarSlider, &sb);
+			for (int y = th.top() / ch3; y <= th.bottom() / ch3; ++y)
+				if (y >= 0 && y < b.rows()) hit.insert(y);
+			if (drawn.isEmpty()) drew = false;
+			if (drawn != hit) {
+				agree = false;
+				printf("info: vertical bar at %d draws thumb rows %d and the"
+				       " hit test claims %d\n", value,
+				       int(drawn.size()), int(hit.size()));
+			}
+		}
+		CHECK(drew && agree,
+		      "a vertical scroll bar's drawn thumb and its hit rectangle"
+		      " cover the same rows, at both ends of the range and in the"
+		      " middle");
+	}
+
 	// A menu bar underlines the letter its mnemonic uses.
 	//
 	// Measured before marking it: Alt+F on a bar carrying "&File" opens the
