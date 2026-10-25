@@ -48371,3 +48371,29 @@ unreachable and annotated, and the rest were already exercised -- several
 by exactly one fixture, which only a count reveals. The yield is falling,
 which is itself the signal: the technique is cheap enough that the next
 family is worth a pass only if its arms protect something measured.
+
+### 8.574 The public API is exercised, 56 of 56 (2026-10-25)
+
+**A measurement nobody had taken, and it comes back clean.** The lens is
+the one that found four untested paint-engine routes in 8.544 -- an
+interface is only as wired as its least-used method -- aimed this time at
+what a CONSUMER depends on rather than at an internal engine.
+
+Fifty-six public free functions across `include/qtty/*.h`, each looked for
+by name in `test/`. **One came back uncalled**,
+`install_cell_paint_filter`, and its own declaration answers it: "Called
+by `Qtty::setup()`; an application never calls it." `test/main.cpp` calls
+`setup()` on every run, so it is exercised on every run -- the grep found
+the absence of a literal, not the absence of coverage.
+
+**Scoped to free functions, which is the limitation worth stating.** The
+enumeration matched declarations by return type at the start of a line, so
+member functions, templates and the inline accessors in the headers are
+not in the fifty-six. A fuller pass would need the class surface, and this
+says nothing about it.
+
+**Why a clean negative is worth the entry.** The question "is any public
+entry point untested" is one a reader will ask again, and asking it costs
+a session the same two greps every time unless the answer is written down
+with its date and its scope. This is 8.572's reason repeated: the
+alternative to recording a measured negative is paying for it twice.
