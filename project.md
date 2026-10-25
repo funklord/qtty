@@ -48256,3 +48256,42 @@ file, and answers the better question -- not "was this branch taken" but
 "does anything catch it being wrong". Here the answer was neither a check
 nor nothing, but the watchdog, which only the exit code named. 8.565 is
 what made that readable an hour after it was written.
+
+### 8.571 The wait-for-more family, closed (2026-10-25)
+
+**Eight guards wait for more bytes, and every one is now accounted for.**
+The family produced five findings today by being stumbled into one arm at
+a time; enumerating it took one grep and finished it.
+
+| wait | status |
+|---|---|
+| paste-mode ESC | exercised -- instrumented, 1 reach |
+| ESC with nothing after it | exercised by the Alt-a split, which predates today |
+| CSI incomplete | covered today, 8.552 |
+| string sequence incomplete | covered today, 8.553 |
+| SS3's third byte | covered today, 8.569 |
+| Alt's character span | covered today, 8.570 |
+| the plain character span | covered today, 8.570 |
+| a second ESC-under-two-bytes | **unreachable** -- zero reaches |
+
+**The unreachable one is proved twice over.** Structurally: the top of its
+own block already returns for a buffer under two bytes, and every removal
+between there and it is followed by a return, so nothing can arrive with
+fewer. And measured: instrumented with a print, **zero reaches across
+2439 checks**. Annotated rather than removed, as 8.556 and 8.568 are.
+
+**Counting the reaches is a better instrument than coverage for this
+question, and cheaper.** A print in the guard answers "is this reached,
+and how often" in one build, where gcov answers "was this arc taken" for
+a whole file and has to be regenerated whenever the tests change. The
+paste-mode guard reaching exactly ONCE is the kind of thing only a count
+shows -- covered, but by a single fixture, which is worth knowing about a
+guard whose comment says it was added for a measured fault.
+
+**What the family cost and bought.** Five arms were correct and untested,
+one was unreachable, two were already covered. Nothing in it was broken.
+The lesson is the one 8.569 states -- parsers are written for whole
+sequences and tested with whole sequences -- and the reason it is worth
+enumerating rather than sampling is that the arms are indistinguishable
+from outside: every one of them is a silent wait that looks identical to
+working code until the bytes arrive in two pieces.

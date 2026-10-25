@@ -3000,6 +3000,15 @@ bool AnsiBackend::decode_one() {
 			sink_->on_key(k);
 			return true;
 		}
+		// UNREACHABLE, measured and said so. The top of this same block
+		// already returned for a buffer under two bytes, and every removal
+		// between there and here is followed by a return -- so nothing
+		// arrives with fewer. Instrumented across the whole suite: zero
+		// reaches in 2439 checks.
+		//
+		// Kept for the reason 8.556 and 8.568 keep theirs: it is the right
+		// guard if the block above it ever grows a path that falls through,
+		// and branch coverage names it every time otherwise.
 		if (pending_.size() < 2) return false;
 		// Escape pressed twice, which is the commonest way of being sure a
 		// dialog closes. It fell through to the Alt branch below and arrived
