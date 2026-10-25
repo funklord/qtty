@@ -609,6 +609,32 @@ int suite_backend() {
 	// check pins the COMBINATION, and the wrong implementation it guards
 	// against is somebody replacing that call with arithmetic of their own,
 	// which is what its sabotage does.
+	// A MULTI-BYTE CHARACTER ARRIVING SPLIT. The family was already partly
+	// covered -- an Alt-a split across two reads, and a reply split the same
+	// way -- but both of those split an ASCII byte or an escape sequence.
+	// The CHARACTER itself had never been cut in half. The
+	// decoder frames with utf8_span() and waits while the span is negative
+	// -- an incomplete character -- and that wait sat unexercised. It is the
+	// likeliest split of all: a paste, a buffer boundary or a slow pipe cuts
+	// between the two bytes of an ordinary accented letter.
+	//
+	// THE GUARD CANNOT BE DEFENDED BY A SABOTAGE ENTRY, which is why there
+	// is none. Measured: with the wait removed, the suite HANGS and the
+	// watchdog stops it at exit 2 rather than any check going red -- an
+	// incomplete character is never consumed and decode_one() spins. A
+	// check cannot do better than the watchdog there, because a check in a
+	// spinning process never reports either. So this pins the behaviour and
+	// the watchdog covers the regression.
+	feed("\xc3");
+	CHECK(rec.keys.isEmpty(),
+	      "half of a two-byte character produces no key while the other half"
+	      " might still be arriving");
+	feed("\xa9");
+	CHECK(rec.keys.size() == 1
+	      && rec.keys[0].text == QString::fromUtf8("\xc3\xa9"),
+	      "and the second byte completes it, so a character split across two"
+	      " reads arrives once and whole");
+
 	feed("\xc0\xaf");
 	const QString overlong = rec.keys.isEmpty() ? QString() : rec.keys[0].text;
 	printf("info: C0 AF arrived as %d key(s) carrying %d character(s)\n",
@@ -1760,6 +1786,23 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
 	      && rec.keys[0].text == QStringLiteral("a"),
 	      "Alt-a split across two reads inside the window is still Alt-a");
+
+	// AND ALT PLUS A MULTI-BYTE CHARACTER, split inside the character. The
+	// Alt path measures its span from offset 1 rather than 0, so it is a
+	// second call site of the same framing with its own wait, and the
+	// check above cannot reach it: `a` is one byte and completes the moment
+	// it lands.
+	feed("\033");
+	settle(split_gap_ms);
+	send("\xc3");
+	CHECK(rec.keys.isEmpty(),
+	      "Alt and half a character produces no key either, the Alt path"
+	      " framing its character the same way the plain path does");
+	send("\xa9");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QString::fromUtf8("\xc3\xa9"),
+	      "and the rest of the character completes it as Alt with that"
+	      " character, not as two keys or none");
 
 	// And a whole CSI split the same way, since a function key on a slow link
 	// arrives in pieces exactly as Alt does.

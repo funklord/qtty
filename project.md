@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2435 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2439 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48221,3 +48221,38 @@ untested too -- three arms of one hazard, none of them broken, none of
 them exercised until now. The pattern worth carrying is that **sequence
 parsers are written for whole sequences and tested with whole sequences**,
 and the splitting is the terminal's business rather than the author's.
+
+### 8.570 A character cut in half, and a guard no sabotage can defend (2026-10-25)
+
+**The split-sequence family, enumerated rather than stumbled on.** The
+decoder has seven places that wait for more bytes. Two were covered by
+8.552 and 8.553, one by 8.569, and two more were already covered before
+today -- an Alt-a split across two reads, and a reply split the same way.
+What neither of those reaches is the **character itself**: both split an
+ASCII byte or an escape sequence.
+
+**So two call sites of one framing rule, both now fed.** The plain path
+measures its span from offset 0 and the Alt path from offset 1, which is
+why the existing Alt-a check cannot reach the second -- `a` is one byte
+and completes the moment it lands. Four checks: half a two-byte character
+produces no key and the second byte completes it; Alt and half a
+character does the same. It is the likeliest split of all, since a paste
+or a buffer boundary cuts between the two bytes of an ordinary accented
+letter.
+
+**AND THE GUARD CANNOT BE DEFENDED BY A SABOTAGE ENTRY, which is a
+constraint on the harness worth recording.** Removing the wait does not
+redden a check -- it **hangs the suite**, and the watchdog stops it at
+exit 2. An incomplete character is never consumed and `decode_one()`
+spins. A check cannot do better there, because a check in a spinning
+process never reports either, so the watchdog is the only possible
+detector and there is deliberately no entry for it.
+
+**The audit answered the coverage question without coverage, which is the
+cheaper route found late.** An instrumented rebuild was started to learn
+whether these guards were exercised, and then abandoned: breaking a guard
+and running the suite answers the same question per GUARD rather than per
+file, and answers the better question -- not "was this branch taken" but
+"does anything catch it being wrong". Here the answer was neither a check
+nor nothing, but the watchdog, which only the exit code named. 8.565 is
+what made that readable an hour after it was written.
