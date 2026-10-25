@@ -48,6 +48,8 @@
 #include <cstdio>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstdlib>
+#include <cstring>
 
 using namespace Qtty;
 
@@ -795,4 +797,121 @@ int suite_budget() {
 	}
 
 	return fails;
+}
+
+// ---------------------------------------------------------------- the soak
+//
+// THE ONE FAULT CLASS NO CHECK IN THIS SUITE CAN SEE. Every check is short
+// and accumulation needs length, so section 0c has carried a soak since
+// 2026-09-04 -- 5000 frames, flat to the kilobyte -- as PROSE describing a
+// program that was never kept. That section opens by saying a measurement
+// without its command is one nobody can re-take, and the soak was the one
+// entry that broke it: every other names a make target or a grep.
+//
+// So it is a mode of this binary now, reachable as `--soak` or `make soak`.
+//
+// THE TIER IS FORCED, and without that the whole exercise is empty: with no
+// terminal answering, negotiate_graphics() settles on half-blocks, nothing
+// is uploaded, and the caches this is watching are never touched. The leak
+// mechanism section 0c names is a hundred distinct upload keys against a
+// cache capped at sixteen, which only exists on a tier that uploads.
+//
+// The backend writes escapes to descriptor 1, so that is pointed at
+// /dev/null for the run and restored before the report -- otherwise the
+// report is inside the frames it is reporting on.
+static long rss_kb() {
+	FILE *f = fopen("/proc/self/statm", "r");
+	if (!f) return -1;
+	long total = 0, resident = 0;
+	const int got = fscanf(f, "%ld %ld", &total, &resident);
+	fclose(f);
+	if (got != 2) return -1;
+	return resident * (sysconf(_SC_PAGESIZE) / 1024);
+}
+
+int run_soak() {
+	const QByteArray had_force = qgetenv("QTTY_GRAPHICS");
+	qputenv("QTTY_GRAPHICS", "kitty");
+
+	const int frames = 5000;
+	QVector<QPair<int, long>> marks;
+	const int keep_out = ::dup(1);
+	const int devnull = ::open("/dev/null", O_WRONLY);
+	fflush(stdout);
+	if (devnull >= 0) ::dup2(devnull, 1);
+	{
+		Qtty::AnsiBackend backend;
+		Qtty::CellBuffer frame(80, 24);
+		QPixmap art(GridMetrics::cw() * 2, GridMetrics::ch() * 2);
+		for (int i = 0; i < frames; ++i) {
+			frame.text(0, 0, QStringLiteral("frame %1").arg(i));
+			frame.text(0, 1, QStringLiteral("cell %1").arg(i % 97));
+			// A NEW IDENTITY every fifty frames, which is what makes this a
+			// soak rather than a long idle: fill() detaches the pixmap, so
+			// cacheKey() changes and the backend sees an image it has never
+			// uploaded. A hundred of them over the run.
+			if (i % 50 == 0) {
+				art.fill(QColor(i % 256, (i / 7) % 256, 90));
+				Qtty::CellImage ci;
+				ci.key = quint64(art.cacheKey());
+				ci.cell_rect = QRect(2, 2, 2, 2);
+				ci.pixmap = art;
+				frame.images = QVector<Qtty::CellImage>{ci};
+			}
+			backend.present(frame, QRegion(0, 0, frame.cols(), frame.rows()));
+			if (i % 1000 == 0 || i == frames - 1)
+				marks.append(qMakePair(i, rss_kb()));
+		}
+	}
+	// THE INSTRUMENT, before the result is believed. Section 0c's own note
+	// says flat to the kilobyte is exactly flat enough to be suspicious, so
+	// the reader is tested: touching 60 MB has to move it and freeing has to
+	// give it back. A frozen number reads as a perfect program.
+	//
+	// THE BLOCK HAS TO BE READ, not merely written, and the first version of
+	// this was not: `block` was malloc'd, memset and freed without anything
+	// ever looking at it, so at -Os the compiler removed the allocation and
+	// the probe reported that touching 60 MB moved the reading by 0 kB.
+	// Which the check then correctly called a broken instrument -- it was
+	// broken, and it was this line rather than /proc. A dead store is how an
+	// instrument that cannot fail gets written.
+	const long before = rss_kb();
+	const size_t probe = 60u * 1024 * 1024;
+	char *block = static_cast<char *>(malloc(probe));
+	volatile char sink = 0;
+	if (block) {
+		memset(block, 1, probe);
+		for (size_t k = 0; k < probe; k += 4096)
+			sink = char(sink + block[k]);
+	}
+	const long touched = rss_kb();
+	free(block);
+	const long released = rss_kb();
+
+	fflush(stdout);
+	if (keep_out >= 0) ::dup2(keep_out, 1);
+	if (devnull >= 0) ::close(devnull);
+	if (keep_out >= 0) ::close(keep_out);
+	if (had_force.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+	else qputenv("QTTY_GRAPHICS", had_force);
+
+	for (const auto &m : marks)
+		printf("frame %5d  rss %7ld kB\n", m.first, m.second);
+	const long warm = marks.size() > 1 ? marks[1].second : -1;
+	const long end = marks.isEmpty() ? -1 : marks.last().second;
+	printf("growth after warm-up: %ld kB over %d frames\n",
+	       (warm < 0 || end < 0) ? -1 : end - warm,
+	       frames - (marks.size() > 1 ? marks[1].first : 0) - 1);
+	printf("instrument: %ld kB -> %ld kB touched -> %ld kB freed"
+	       " (checksum %d, which is what stops the touch being elided)\n",
+	       before, touched, released, int(sink));
+	if (touched - before < 50000) {
+		printf("FAIL: touching 60 MB moved the reading by %ld kB, so the"
+		       " reading is not measuring memory and the flatness above"
+		       " means nothing\n", touched - before);
+		return 1;
+	}
+	printf("PASS: the instrument responds, so the growth figure is the"
+	       " program's\n");
+	return 0;
 }

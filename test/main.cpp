@@ -18,6 +18,7 @@ int suite_graphics();
 int suite_runtime();
 int suite_backend();
 int suite_exec();
+int run_soak();
 int suite_budget();
 
 namespace {
@@ -170,12 +171,18 @@ int main(int argc, char **argv) {
 	// the failure mode a per-suite install has and this does not.
 	Qtty::GridGuard::install(app);
 
-	bool record = false;
+	bool record = false, soak = false;
 	QString only;
 	for (int i = 1; i < argc; ++i) {
 		if (!strcmp(argv[i], "--record")) record = true;
+		// The soak is not a suite and must not be counted as one: it runs
+		// for minutes, prints a measurement rather than checks, and section
+		// 0c is where its result belongs. Returning here keeps it out of the
+		// PASS tally that count-check compares against project.md.
+		else if (!strcmp(argv[i], "--soak")) soak = true;
 		else only = QString::fromLatin1(argv[i]);
 	}
+	if (soak) return run_soak();
 	struct { const char *name; std::function<int()> run; } suites[] = {
 		{"cells",      [&] { return suite_cells(); }},
 		{"theme",      [&] { return suite_theme(); }},

@@ -627,6 +627,13 @@ test-platforms: tests-build
 SAN_BUILD_DIR ?= build-san
 DBG_BUILD_DIR ?= build-dbg
 
+# The soak, which section 0c carried as prose for seven weeks because the
+# program that produced it was never kept. It is minutes long and prints a
+# measurement rather than checks, so it stays out of `check` and out of the
+# suite tally -- see the --soak arm in test/main.cpp.
+soak: tests-build
+	@$(TEST_ENV) $(TEST_BIN) --soak
+
 test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1

@@ -1281,11 +1281,16 @@ fatal signal:
     QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 ./build-test/qtty-tests
 
 **A soak**, which is the one fault class no fixture in this suite can
-see: every check here is short, and accumulation needs length. Taken
-2026-09-04, 5000 frames driving a real `AnsiBackend` with a changing
-label, a changing table cell, and a picture whose identity changes every
-fifty frames -- a hundred distinct upload keys against a cache capped at
-sixteen, which is the mechanism that leaked once before:
+see: every check here is short, and accumulation needs length. **It is
+`make soak` now** -- it was prose describing a program nobody kept, which
+is the one entry in this section that broke the section's own opening
+rule. Re-taken 2026-10-25 on that target: **0 kB of growth over 3999
+frames**, with the instrument responding 38068 -> 99512 -> 38068 kB.
+Originally taken 2026-09-04, 5000 frames driving a real `AnsiBackend`
+with a changing label, a changing table cell, and a picture whose
+identity changes every fifty frames -- a hundred distinct upload keys
+against a cache capped at sixteen, which is the mechanism that leaked
+once before:
 
     frame     0  rss  42028 kB
     frame  1000  rss  42028 kB
@@ -48046,3 +48051,44 @@ once when the work it was estimating is done, after which it describes a
 decision nobody still faces. The fix is the same both times -- say when it
 was measured and how -- and the tell is a sentence pricing something the
 tree already has.
+
+
+### 8.561 The soak is a target now, and its instrument was broken (2026-10-25)
+
+**Section 0c opens by saying a measurement without its command is one
+nobody can re-take, and the soak was the entry that broke it.** Every
+other item there names a make target or a grep; the soak named prose
+describing a hand-written program from 2026-09-04 that was never kept. So
+its figure -- flat to the kilobyte -- had stood for seven weeks with no
+way to check it, across every change to the upload cache, the ground
+republish and `forget_uploads` made since.
+
+**It is `make soak` now**, a `--soak` arm on the test binary rather than a
+new program: that binary already links everything the soak drives. It
+stays out of `check` and out of the suite tally -- minutes long, and it
+prints a measurement rather than checks.
+
+**The tier has to be FORCED or the soak is empty.** With no terminal
+answering, `negotiate_graphics()` settles on half-blocks, nothing is
+uploaded, and the caches this exists to watch are never touched.
+`QTTY_GRAPHICS=kitty` is the lever. A soak that exercises no upload path
+would have reported the same flat line and meant nothing.
+
+**Re-taken: 0 kB over 3999 frames.** And the flatness means something only
+because the instrument was tested first, which is section 0c's own note
+on this figure -- flat to the kilobyte is exactly flat enough to be
+suspicious.
+
+**AND THE INSTRUMENT'S FIRST VERSION WAS BROKEN, which its own check
+caught.** It malloc'd 60 MB, memset it and freed it without anything ever
+reading the block, so at `-Os` the compiler removed the allocation: the
+probe reported that touching 60 MB moved the reading by **0 kB**, and the
+check correctly refused the run. The fault was the probe, not `/proc`.
+Summing a byte per page into a `volatile` fixes it, and the reading then
+moves 38068 -> 99512 -> 38068.
+
+**A dead store is how an instrument that cannot fail gets written**, and
+it is worth more than the soak result: the broken probe and a program with
+no leak produce the SAME flat line, and nothing but the deliberate control
+separates them. That is why the control is inside the target rather than
+beside it in a comment.
