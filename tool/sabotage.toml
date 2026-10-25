@@ -8545,3 +8545,15 @@ find = "\t\t\tif (reported_fg() != was_fg || reported_bg() != was_bg) {\n"
 into = "\t\t\tif (reported_bg() != was_bg) {\n"
 count = 1
 check = "a foreground reply alone republishes the ground, so the luminance a Default reads follows it while the background stays where the earlier reply put it"
+
+# The constructor stops pushing the keyboard flags, so a terminal that
+# answered the query before the fence is never told -- only the late path,
+# which fires for a reply arriving after the negotiation, still works.
+# 8.555.
+[[sabotage]]
+name = "the constructor does not push the keyboard flags"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (tty_out_ && raw_ok_ && caps_.kbd_protocol) {\n\t\tg_kbd_wanted = true;\n\t\twrite_out(\"\\033[>1u\");\n\t}\n"
+into = ""
+count = 1
+check = "a terminal that answers the keyboard query before the fence is pushed the protocol flags by the constructor, not only by the late path"

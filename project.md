@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2430 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2431 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47770,3 +47770,57 @@ is what the sabotage makes it -- does not fire and the foreground stays
 where it was. Pinning the ordering rather than either luminance, for the
 reason 8.381 gives at the same function: the numbers are one assumption's
 arithmetic and the arithmetic is what was wrong before.
+
+### 8.555 The keyboard push at construction, and an ordering the suite depends on (2026-10-25)
+
+**Two code paths reach one sequence and only the late one was
+exercised.** The constructor pushes `CSI > 1 u` when the terminal answered
+the `?u` query before the DA1 fence; `caps_.kbd_protocol` in that
+condition sat at `taken 0%`, because in every fixture the answer arrives
+late or not at all. The LATE push -- added when a reply after the
+negotiation was found to be ignored -- had covered the other path and made
+the pair look done.
+
+**It needed its own pty, and fd 1 as well as fd 0.** The push is gated on
+`tty_out_`, so a fixture that puts a pseudo-terminal only on standard
+input cannot reach it -- which is what the shared `Tty` helper does, on
+purpose, because a pty on fd 1 once swallowed four PASS lines. Both
+descriptors are pointed at the slave for the construction alone and
+restored immediately.
+
+**The master is read while the backend is still ALIVE**, because its
+destructor pops the stack with the same bytes. Reading after the scope
+closed would have passed on the pop and said nothing about the push.
+
+**AND THE SUITE HAS AN ORDERING IT DEPENDS ON, which this found by
+breaking it.** `g_kbd_wanted` is a process-global that nothing resets. Two
+checks later in the file assert the opposite property -- that a terminal
+answering the fence and NOT the keyboard query is left alone -- and they
+run in forked children, which inherit the flag. Placed mid-file, this
+fixture turned their control green by contamination; measured, it broke
+exactly that one check and nothing else. It is last in the file now and
+has to stay last, with the reason written where it will be read.
+
+**AND IT MADE A CHECK DISAPPEAR, which only `count-check` could see.** The
+first version restored standard output INSIDE the backend's scope, so the
+destructor's keyboard POP went to the real stdout instead of the
+pseudo-terminal. Stray bytes before a `PASS` line stop it beginning with
+`PASS`, so the line is not counted -- and the run still said
+`OK (0 failures)` because nothing failed. The totals were the only
+witness: one check added, one lost, 2430 either way, and `count-check`
+refused the commit. Diffing the check NAMES between runs named the
+casualty -- the geometry check of a later suite -- which no count could
+have.
+
+**So the ordering is: read the master while the backend is alive AND while
+fd 1 is still the pty, let it be destroyed there, and restore afterwards.**
+Reading needs no stdout; the destructor does. This is section 0c's third
+cause of a short count met from a new direction -- the earlier two were a
+merged stderr and a stale binary, and this is a library's own farewell
+bytes landing in the report.
+
+**The general point is worth more than the placement.** A control that
+asserts an absence -- nothing was written, nothing was pushed -- is only
+as good as the state it starts from, and process-global state makes that
+start depend on what ran before. Such a control can be turned green by any
+earlier test, silently, without anybody touching the code it guards.

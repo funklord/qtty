@@ -9756,5 +9756,90 @@ int suite_exec() {
 		      " check above measured the hangup and not the clock");
 	}
 
+	// LAST IN THIS FILE ON PURPOSE, and it has to stay last. The push sets
+	// `g_kbd_wanted`, a process-global that nothing resets, and two checks
+	// above assert the opposite -- that a terminal which answered the fence
+	// and not the keyboard query is LEFT ALONE. Those run in forked
+	// children, which inherit the flag, so constructing this backend before
+	// them turns their control green by contamination rather than by the
+	// code being right. Measured: placed mid-file, it broke exactly that
+	// check and nothing else.
+	// THE KEYBOARD PUSH AT CONSTRUCTION, which had never fired. The
+	// constructor pushes `CSI > 1 u` when the terminal answered the `?u`
+	// query, and `caps_.kbd_protocol` in that condition was at `taken 0%`:
+	// in every fixture the answer arrives too late or not at all, so only
+	// the LATE push -- added when a reply after the negotiation was found to
+	// be ignored -- had ever run. The two are different code paths to the
+	// same sequence and only one was exercised.
+	//
+	// Its own pty, because the push is gated on `tty_out_` as well: fd 1 has
+	// to be a terminal, which the Tty fixture deliberately does not do. So
+	// both descriptors are pointed at the slave for the construction alone
+	// and restored immediately.
+	//
+	// The master is read while the backend is still ALIVE. Its destructor
+	// pops the stack with the same bytes, so reading after the scope closed
+	// would pass on the pop and say nothing about the push.
+	{
+		int kb_m = -1, kb_s = -1;
+		if (::openpty(&kb_m, &kb_s, nullptr, nullptr, nullptr) != 0) {
+			printf("SKIP: no pty for the construction-time keyboard push\n");
+		} else {
+			::fcntl(kb_m, F_SETFL, O_NONBLOCK);
+			const QByteArray kb_term = qgetenv("TERM");
+			const QByteArray kb_tmux = qgetenv("TMUX");
+			qputenv("TERM", "xterm-kitty");
+			qunsetenv("TMUX");
+			winsize kb_ws{};
+			kb_ws.ws_col = 80;
+			kb_ws.ws_row = 24;
+			::ioctl(kb_s, TIOCSWINSZ, &kb_ws);
+			// The keyboard reply BEFORE the DA1 fence, which is what makes
+			// the answer exist by the time the constructor looks. Put it
+			// after the fence and this fixture would test the late path
+			// again.
+			const QByteArray kb_answer = "\033[?1u\033[?62;4;22c";
+			const ssize_t kb_pre =
+			    ::write(kb_m, kb_answer.constData(), kb_answer.size());
+			(void)kb_pre;
+			const int kb_in = ::dup(0), kb_out = ::dup(1);
+			fflush(stdout);
+			::dup2(kb_s, 0);
+			::dup2(kb_s, 1);
+			QByteArray kb_got;
+			{
+				AnsiBackend kb;
+				// Read while it is ALIVE and while fd 1 is still the pty.
+				// Its destructor POPS the stack with bytes of its own, so
+				// restoring stdout first would send those to the real one
+				// -- and stray bytes before a PASS line stop it beginning
+				// with PASS, which is how a check disappears from the count
+				// rather than failing. Measured: the restore sat inside
+				// this scope and the geometry check of a LATER suite went
+				// missing, which count-check caught and nothing else would
+				// have.
+				char kb_buf[8192];
+				ssize_t kb_n;
+				while ((kb_n = ::read(kb_m, kb_buf, sizeof(kb_buf))) > 0)
+					kb_got.append(kb_buf, int(kb_n));
+			}
+			fflush(stdout);
+			::dup2(kb_out, 1);
+			::dup2(kb_in, 0);
+			CHECK(kb_got.contains("\033[>1u"),
+			      "a terminal that answers the keyboard query before the"
+			      " fence is pushed the protocol flags by the"
+			      " constructor, not only by the late path");
+			::close(kb_in);
+			::close(kb_out);
+			::close(kb_m);
+			::close(kb_s);
+			if (kb_term.isEmpty()) qunsetenv("TERM");
+			else qputenv("TERM", kb_term);
+			if (!kb_tmux.isEmpty()) qputenv("TMUX", kb_tmux);
+		}
+	}
+
+
 	return fails;
 }
