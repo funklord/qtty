@@ -47865,3 +47865,42 @@ and untested; the code is right and the branch cannot be taken from that
 entry point; or the branch is reachable only by the case it gets wrong.
 Telling them apart means reading what computes the condition, not the
 condition.
+
+### 8.557 The mnemonic the elision cuts off, and why it stays untested (2026-10-25)
+
+**A guard with a comment naming its case, an arc at `taken 0%`, and no
+fixture that can reach it.** `grid_style.cpp`'s menu arm underlines the
+mnemonic after writing the label, guarded by `mn >= 0 && mn < shown.size()`
+-- the comment says "guarded against the elision having cut the marked
+letter off" -- and the second operand has never been false. Without it the
+underline would land on a cell the mnemonic is not in.
+
+**Four fixtures could not elide a menu label, and the measurement says
+why.** Instrumenting the site itself: `mn=32`,
+`shown=35(Export the current selection as PDF)`, `label_at=2`,
+`c.right()=49`. The label is **whole** -- nothing was elided -- and the
+item was laid out fifty cells wide while the buffer given to it was
+thirty-five. **A QMenu does not shrink below its minimum size hint**, and
+neither `resize()` nor `setFixedWidth()` moved it.
+
+**What looked like the finding was the fixture.** At thirty-five cells the
+underline appeared on the right border, `[34:|]`, which reads exactly like
+the bug this guard exists to prevent. It is not: the mnemonic was at its
+correct column for a fifty-cell layout, the label text beyond the buffer
+was CLIPPED rather than elided, and the border glyph happened to occupy
+that column. The arithmetic that made it look wrong -- a mnemonic index
+past the shown text -- was never true.
+
+**So the arc stays open, and the next attempt needs a different lever.**
+Constraining the WIDGET does not constrain the label budget, which is
+`last - label_at + 1` and derives from the item rectangle the style is
+handed. Either the item has to be given a rectangle narrower than its
+label -- which the paint path, not the widget, decides -- or the budget
+has to be reached another way. Nothing short of that will elide, and a
+fixture that merely renders into a small buffer measures clipping.
+
+**And clipping is not elision, which is the transferable part.** They
+produce the same truncated row on screen and different internal state: the
+elided string is shorter, the clipped one is whole and written past the
+edge. A check reading the ROW cannot tell them apart, which is how four
+fixtures agreed on a wrong answer.
