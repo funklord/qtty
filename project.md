@@ -48295,3 +48295,28 @@ sequences and tested with whole sequences -- and the reason it is worth
 enumerating rather than sampling is that the arms are indistinguishable
 from outside: every one of them is a silent wait that looks identical to
 working code until the bytes arrive in two pieces.
+
+### 8.572 Every bound is live (2026-10-25)
+
+**The same enumerate-and-count pass over the five bounds, and all five
+fire.** They exist to stop measured blowups, so a cap nobody has seen fire
+is worth asking about; none of these is that.
+
+Instrumented with a print at the comparison and counted across one run:
+the paste refusal **32** reaches, the CSI parameter saturation **10**, the
+clipboard write bound **1**. The sequence cap is reached by the two
+5000-byte fixtures. And the terminal-cells bound has a check of its own --
+a 2000000x2000000 resize report asserted to reach no sink, with an
+ordinary report beside it as the control, so the bound is not a refusal
+of resize reports generally.
+
+**Two of the five are covered by exactly one fixture**, which only the
+count shows: the clipboard bound here, and the paste-mode ESC wait in
+8.571. That is not a gap, and it is not nothing either -- a bound with one
+witness loses its cover to any edit that touches that fixture, and the
+count is the only thing that would say so.
+
+**Recorded because a negative is worth as much as a finding when it was
+measured.** The alternative is a later session asking the same question of
+the same five bounds, which is what 8.571's enumeration cost before the
+grep that should have come first.
