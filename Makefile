@@ -284,13 +284,33 @@ $(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS) \
 tests-build: $(LIB) $(TEST_BUILD_DIR)/Makefile FORCE
 	$(MAKE) -C $(TEST_BUILD_DIR)
 
+# THE EXIT CODE IS NAMED, because it is the one datum that distinguishes
+# the ways this can fail and the target used to throw it away. 8.530 is an
+# unexplained non-zero exit with the output stopping mid-suite, no FAIL line
+# and no watchdog message -- and its record says only "non-zero", because
+# `|| failed=...` counts a failure without keeping the code. 2 is the
+# watchdog (which prints first, to stderr), 124 is the outer timeout
+# (silent, not the suite), and 128+n is a signal (silent, mid-suite). Each
+# names a different cause and the next sighting should not have to guess.
 test: tests-build
 	@ran=0; failed=0; \
 	for binary in $(TEST_BIN); do \
 		[ -x "$$binary" ] && [ -f "$$binary" ] || continue; \
 		ran=$$((ran + 1)); \
 		echo "--- $$binary"; \
-		$(TEST_ENV) timeout $(TEST_TIMEOUT) "$$binary" || failed=$$((failed + 1)); \
+		if $(TEST_ENV) timeout $(TEST_TIMEOUT) "$$binary"; then :; else \
+			rc=$$?; failed=$$((failed + 1)); \
+			echo "test: $$binary exited $$rc" >&2; \
+			case "$$rc" in \
+			2)   echo "test:   2 is the suite's own watchdog, which prints" >&2; \
+			     echo "        to stderr before it goes -- look for it" >&2;; \
+			124) echo "test:   124 is the outer timeout at $(TEST_TIMEOUT)s," >&2; \
+			     echo "        which kills silently and is not the suite" >&2;; \
+			13[2-9]|14[0-3]) \
+			     echo "test:   128+n is a signal: $$((rc - 128)). A crash" >&2; \
+			     echo "        stops the output mid-suite and says nothing" >&2;; \
+			esac; \
+		fi; \
 	done; \
 	if [ "$$ran" -eq 0 ]; then \
 		echo "test: no test binary was found at $(TEST_BIN)." >&2; \

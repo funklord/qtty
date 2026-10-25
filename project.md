@@ -48263,3 +48263,42 @@ three attempts' worth of evidence, and nothing in the figure said so.
 watchdog message, nothing reaching `== backend ==`, and now a weakened
 prime suspect. The outer `timeout 300` remains implausible on the
 measurement 8.530 took, and the suite's own watchdog would have printed.
+
+### 8.565 The watchdog works, and the exit code was being thrown away (2026-10-25)
+
+**8.530 cites the absence of a watchdog message as evidence, and nothing
+had ever seen that watchdog fire.** Fired deliberately with
+`QTTY_TEST_TIMEOUT=1`: exit **2**, the message on **stderr** after 398
+passes, nothing on stdout. So the mechanism works and that absence is real
+evidence rather than an untested assumption -- which is the one thing
+8.530's negative could not have been worth without this.
+
+**It is stderr-only, which matters for who can see it.** `make test` does
+not redirect, so the message reaches whatever captures make's output; a
+capture that keeps only stdout would miss it entirely. Section 0c already
+warns that a merged stream splices `PASS` lines, and this is the same
+boundary from the other side: separating the streams loses the watchdog,
+merging them corrupts the count.
+
+**AND THE ONE DATUM THAT NAMES THE CAUSE WAS BEING DISCARDED.** The target
+ran `... || failed=$$((failed + 1))`, which counts a failure and throws
+the code away -- so 8.530's record says "exited non-zero" and cannot say
+which. Each value names a different mechanism:
+
+- **2** is the suite's own watchdog, which prints first;
+- **124** is the outer `timeout`, which kills silently and is not the
+  suite;
+- **128+n** is a signal -- a crash stops the output mid-suite and says
+  nothing, which fits 8.530's symptom exactly.
+
+It prints the code and the reading now, and all three paths were
+exercised: `QTTY_TEST_TIMEOUT=1` gives 2 with the watchdog hint,
+`TEST_TIMEOUT=1` gives 124 with the outer-timeout hint, and a clean run
+prints neither.
+
+**What this buys 8.530.** The next sighting will say which of the three it
+was, without anybody reasoning from a wall-clock measurement. The record
+had to argue the outer bound was implausible because the number that
+would have settled it was never kept -- and a diagnosis that depends on
+re-deriving what the tool could have told you is one the tool should tell
+you.
