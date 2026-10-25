@@ -8390,3 +8390,14 @@ find = "\t\tif (!a->objectName().isEmpty()) return a->objectName();\n"
 into = ""
 count = 1
 check = "and falls back to an objectName for an action with no text, an icon-only toolbar action being the ordinary case"
+
+[[sabotage]]
+# A tall row ignores its vertical alignment, so every string sits on its
+# band's first row -- which is what the delegate did for any row nothing had
+# given a size hint to. 8.540.
+name = "a tall row ignores its vertical alignment"
+file = "src/widget/cell_item_delegate.cpp"
+find = "\t\tif (opt.displayAlignment & Qt::AlignBottom)       row = c.bottom();\n\t\telse if (opt.displayAlignment & Qt::AlignVCenter) row = c.top() + (c.height() - 1) / 2;\n"
+into = ""
+count = 1
+check = "a tall item view row honours its vertical alignment -- top, centre and bottom each land on a different row of the same band, which nothing had rendered"

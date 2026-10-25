@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2408 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2409 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46929,7 +46929,9 @@ caught a vacuity while writing rather than after.
    wezterm, mlterm, foot and mintty, the palette remap in the quantiser,
    and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
    at 66.92 -- the `[-]` box for a partially checked item, and
-   `AlignBottom`/`AlignVCenter` for a display alignment. **The scan is
+   `AlignBottom`/`AlignVCenter` for a display alignment -- the latter closed
+   by 8.540, leaving only the quantiser's palette remap and the kitty
+   encoder's empty-payload arm. **The scan is
    finished otherwise -- see 8.539 for `application.cpp`, which is the
    lowest-covered file in the tree and has no gap in it.**
    `input_router.cpp`
@@ -47073,3 +47075,22 @@ gaps closed (8.536, 8.537, 8.538), and two files where a low figure meant
 nothing (8.531, this one). A low branch percentage is not a backlog; the
 never-executed subset is the short list, and even that needs reading
 before it is believed.
+
+### 8.540 Where a tall row's text sits (2026-10-25)
+
+**Named on 8.535's list and closed: the delegate's vertical-alignment arms
+are guarded by `c.height() > 1`, and a list item is one cell tall unless
+something gives it a size hint** -- so `AlignBottom` and `AlignVCenter`
+had never been taken. An item view with tall rows is ordinary rather than
+exotic: a file list with two lines per entry, a message list with a
+preview.
+
+Three items of three cells each put the bands at rows 0-2, 3-5 and 6-8,
+so each alignment has a different answer WITHIN its own band -- and the
+top-aligned one is the control, because all three are read from one render
+and a delegate ignoring the alignment entirely would put every string on
+its band's first row. Measured: all three land where the alignment says.
+
+**A gap rather than a defect, like most of what the scan found.** The code
+was right; nothing had ever given an item a size hint, so the question was
+never asked.

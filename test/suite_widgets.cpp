@@ -10062,6 +10062,66 @@ int suite_widgets() {
 		      " rendered");
 	}
 
+	// WHERE A TALL ROW'S TEXT SITS, which the delegate decides and nothing
+	// asked. The vertical-alignment arms are guarded by `c.height() > 1`,
+	// and a list item is one cell tall unless something gives it a size
+	// hint -- so branch coverage named AlignBottom and AlignVCenter as never
+	// taken, and 8.535's list carried them. An item view with tall rows is
+	// ordinary: a file list with two lines per entry, a message list with a
+	// preview.
+	//
+	// Three items, three cells each, so the bands are rows 0-2, 3-5 and 6-8
+	// and each alignment has a different answer within its own band. The
+	// top-aligned one is the control: all three arms are read from one
+	// render, so a delegate that ignored the alignment entirely would put
+	// every string on its band's first row and fail here.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(14, 9));
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *list = new QListWidget;
+		list->setFrameShape(QFrame::NoFrame);
+		list->setItemDelegate(new CellItemDelegate(list));
+		const int ch = GridMetrics::ch(), cw = GridMetrics::cw();
+		struct Row { const char *text; Qt::Alignment align; int want; };
+		const Row rows[] = {
+			{ "aaa", Qt::AlignTop | Qt::AlignLeft,     0 },
+			{ "bbb", Qt::AlignVCenter | Qt::AlignLeft, 4 },
+			{ "ccc", Qt::AlignBottom | Qt::AlignLeft,  8 },
+		};
+		for (const Row &r : rows) {
+			auto *it = new QListWidgetItem(QString::fromLatin1(r.text), list);
+			it->setSizeHint(QSize(12 * cw, 3 * ch));
+			it->setTextAlignment(r.align);
+		}
+		v->addWidget(list);
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(14, 9);
+		render_once(host, b);
+		GridGuard::reset();
+		const QStringList lines = b.to_text().split(QLatin1Char('\n'));
+		QStringList wrong;
+		for (const Row &r : rows) {
+			int at = -1;
+			for (int y = 0; y < lines.size(); ++y)
+				if (lines[y].contains(QString::fromLatin1(r.text))) { at = y; break; }
+			if (at != r.want)
+				wrong << QStringLiteral("%1 on row %2 wanted %3")
+				    .arg(QLatin1String(r.text)).arg(at).arg(r.want);
+		}
+		printf("info: a three-cell row puts its text where the alignment"
+		       " says: %s\n", wrong.isEmpty()
+		           ? "all three"
+		           : qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty(),
+		      "a tall item view row honours its vertical alignment -- top,"
+		      " centre and bottom each land on a different row of the same"
+		      " band, which nothing had rendered");
+	}
+
 	return fails;
 }
 
