@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2433 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2435 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48188,3 +48188,36 @@ that drifts, and both are internally consistent and documented where they
 are returned. Unifying them is a change to an interface with two callers
 rather than a tidy-up, and the existing cap fixtures -- 5000 bytes after
 an OSC opener and after a CSI -- exercise both paths as they stand.
+
+### 8.569 An SS3 arriving split (2026-10-25)
+
+**A real gap, and the third from the split-sequence family this session.**
+`ESC O <final>` is how F1 to F4 arrive, and the branch that waits for the
+third byte sat at 0 per cent: every SS3 in the suite arrives whole. A
+terminal writes the sequence in one write, but a reader does not get one
+read per write -- a buffer boundary splits it, and these are ordinary keys
+to lose.
+
+**The audit came first this time, and it answered.** Breaking the guard to
+accept two bytes left the whole suite green -- exit 0, no `FAIL` -- so
+nothing else covered it. That is the census used in the right order, after
+8.559 cost a cycle by writing the check first.
+
+**And the failure is quiet rather than loud, which is why nothing noticed.**
+`QByteArray` is NUL-terminated, so reading the third byte of a two-byte
+buffer returns the terminator instead of crashing. The sequence decodes
+with a final of 0, is consumed, and the real final byte arrives alone in
+the next read as a letter. A swallowed function key and a stray `P` --
+no crash, no sanitizer report, nothing in a green run.
+
+**Two checks, because the pair is the behaviour.** The first feed produces
+no key while the sequence might still be arriving; the second completes it
+and F1 is delivered once. Asserting only the second would pass against a
+decoder that emitted something immediately and then corrected itself.
+
+**The family's score.** A split ST (8.553) was correct and untested, a
+truncated CSI (8.552) was correct and untested, and this is correct and
+untested too -- three arms of one hazard, none of them broken, none of
+them exercised until now. The pattern worth carrying is that **sequence
+parsers are written for whole sequences and tested with whole sequences**,
+and the splitting is the terminal's business rather than the author's.

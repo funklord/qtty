@@ -533,6 +533,27 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && !rec.keys[0].alt
 	      && rec.keys[0].text.isEmpty(),
 	      "and not as Alt held with the letter O");
+	// AND SS3 ARRIVING SPLIT, which nothing had fed. The branch that waits
+	// for the third byte -- `if (pending_.size() < 3) return false;` -- sat
+	// at 0 per cent, so every SS3 in this file arrives whole. A terminal
+	// writes ESC O and its final in one write, but a reader does not get one
+	// read per write: a buffer boundary splits it, and F1 to F4 are ordinary
+	// keys to lose.
+	//
+	// Measured before writing this: breaking that guard to accept two bytes
+	// leaves the whole suite green, exit 0 and no FAIL, so nothing else
+	// covers it. QByteArray is NUL-terminated, so the out-of-range read
+	// returns the terminator rather than crashing -- the sequence decodes
+	// with a final of 0, is consumed, and the real final byte arrives alone
+	// as a letter. A swallowed function key and a stray P.
+	feed("\033O");
+	CHECK(rec.keys.isEmpty(),
+	      "an SS3 with its final byte still in flight produces no key,"
+	      " rather than decoding against the string's own terminator");
+	feed("P");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F1,
+	      "and the final arriving in a later read completes it, so F1 is"
+	      " delivered once rather than swallowed and followed by a letter");
 	feed("\033OS");
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F4,
 	      "SS3 S decodes as F4");

@@ -8580,3 +8580,14 @@ find = "\t\tif (opt->rect.width() > in)\n"
 into = "\t\tif (opt->rect.width() >= 0)\n"
 count = 1
 check = "an item narrower than its own indent still answers a text rect with no negative dimension, while a wide one gets the row less the indent"
+
+# The SS3 branch accepts two bytes and reads the third, which QByteArray's
+# NUL terminator supplies: the sequence decodes with a final of 0, is
+# consumed, and the real final arrives alone as a letter. 8.569.
+[[sabotage]]
+name = "a split SS3 decodes against the string terminator"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (pending_.size() < 3) return false;      // still arriving\n"
+into = "\t\t\tif (pending_.size() < 2) return false;      // still arriving\n"
+count = 1
+check = "and the final arriving in a later read completes it, so F1 is delivered once rather than swallowed and followed by a letter"
