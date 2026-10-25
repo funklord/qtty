@@ -7117,6 +7117,61 @@ int suite_router() {
 			      "and it still hears the leave, because it heard the enter");
 		}
 
+		// A SECOND DRAG WHILE ONE IS RUNNING, which exec_drag() refuses --
+		// and the refusal carries an ownership promise its own comment
+		// states: "The QDrag is still consumed, so a caller's ownership rule
+		// is the same either way." Branch coverage named this: the `g_live`
+		// test had never been true, so neither the refusal nor the
+		// consumption had ever run. A missing deleteLater() there would leak
+		// in every caller that follows the documented rule, invisibly.
+		//
+		// Asked from INSIDE the first drag's nested loop, which is the only
+		// place the question exists -- a timer is how this fixture reaches
+		// into that loop, as the cancel checks above do.
+		{
+			auto *mime5 = new QMimeData;
+			mime5->setText(QStringLiteral("first"));
+			auto *drag5 = new QDrag(&h);
+			drag5->setMimeData(mime5);
+			auto *mime6 = new QMimeData;
+			mime6->setText(QStringLiteral("second"));
+			auto *drag6 = new QDrag(&h);
+			drag6->setMimeData(mime6);
+			QPointer<QDrag> watch(drag6);
+			Qt::DropAction refused_with = Qt::TargetMoveAction;
+			bool asked = false;
+			QTimer inner;
+			inner.setSingleShot(true);
+			QObject::connect(&inner, &QTimer::timeout, [&] {
+				asked = true;
+				refused_with = Qtty::exec_drag(drag6, Qt::CopyAction);
+				// And end the outer one, which is this block's own business
+				// rather than the question being asked.
+				Qtty::drag_cancel();
+			});
+			QTimer rescue_second;
+			rescue_second.setSingleShot(true);
+			QObject::connect(&rescue_second, &QTimer::timeout, [&] {
+				if (Qtty::drag_active()) Qtty::drag_cancel();
+			});
+			inner.start(0);
+			rescue_second.start(2000);
+			Qtty::exec_drag(drag5, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+			printf("info: a second drag inside the first returned %d and the"
+			       " QDrag it was handed is %s\n", int(refused_with),
+			       watch.isNull() ? "deleted" : "still alive");
+			CHECK(asked && refused_with == Qt::IgnoreAction,
+			      "a second drag started while one is running is refused"
+			      " rather than answered with a nested loop inside a nested"
+			      " loop");
+			CHECK(watch.isNull(),
+			      "and the QDrag it was handed is consumed anyway, so a"
+			      " caller's ownership rule is the same whether it was"
+			      " refused or run");
+		}
+
 		// A DRAG ACROSS A HANDOVER, which is the worst of the family this
 		// session has been closing. exec_drag() runs a NESTED event loop and
 		// only two things end it: a release and Escape. A user who lets go
@@ -7394,6 +7449,14 @@ int suite_router() {
 	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
 	       " has issued a stray quit -- project.md 8.464\n");
 	printf("SKIP: and it still hears the leave, because it heard the enter"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a second drag started while one is running is refused rather"
+	       " than answered with a nested loop inside a nested loop"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and the QDrag it was handed is consumed anyway, so a caller's"
+	       " ownership rule is the same whether it was refused or run"
 	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
 	       " has issued a stray quit -- project.md 8.464\n");
 	printf("SKIP: a drag interrupted by a handover was offered to the target"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2397 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2399 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46830,3 +46830,128 @@ letter at one column, a CJK ideograph at two and -- through the category
 path that was already right -- a combining mark at zero. The second check
 measures `a<ALM>b<ANCHOR>c` at three, which is the number the layouts
 actually read, rather than asserting the classifier in isolation.
+
+### 8.534 The second drag nobody had started (2026-10-25)
+
+**Branch coverage again, and this one is a promise rather than a
+behaviour.** `exec_drag()` refuses a second drag while one is running, and
+its comment states an ownership contract with the refusal: "The QDrag is
+still consumed, so a caller's ownership rule is the same either way." The
+`g_live` test had never been true, so neither the refusal nor the
+consumption had ever run.
+
+**A missing `deleteLater()` there leaks in every caller that follows the
+documented rule, and nothing would say so.** That is the shape worth the
+check: the refusal is visible in a return value, the consumption is
+visible only to whoever is counting QDrags, which is nobody.
+
+Asked from INSIDE the first drag's nested loop, since that is the only
+place the question exists, with a timer reaching into the loop as the
+cancel checks beside it do. Measured: the second call answers
+`Qt::IgnoreAction` and the `QDrag` handed to it is destroyed.
+
+**Only the consumption half carries a sabotage entry, deliberately.**
+Breaking the refusal means removing the `g_live` guard, which puts a
+nested event loop inside a nested event loop -- and this suite's own
+record of that is 8.447, where a hang produced neither a PASS nor a FAIL
+and the harness reported "the code was broken and nothing noticed". The
+refusal is asserted; it is not sabotaged, and the reason is written here
+rather than left as a gap somebody closes by trying it.
+
+### 8.535 Fold: what this session did, measured, and left (2026-10-25)
+
+**Folded at 91 per cent of the weekly window, on the rule's own terms.**
+Eighteen commits, every one gated with `make check`'s receipt matching its
+exact content and both Qt arms agreeing. The suite went 2363 to 2399
+checks and the sabotage spec 744 to 764 entries.
+
+**TWO FAMILIES WERE CLOSED, and each was one fault found several times.**
+
+*A handover takes away the event that would have ended some state.* 0b had
+recorded the mouse GRAB and nothing else. The hover leaves a highlight
+nothing can correct, since `update_hover()` early-returns on an unchanged
+widget; the double-click window turns the next click into a double that
+REPLACES the press, so the real click is lost; and a drag wedges the
+application in `exec_drag()`'s nested loop with Escape the only exit.
+8.523 to 8.525, and the one nobody had noticed is the one that hangs.
+
+*A capability reply that arrives after the negotiation.* The ground, the
+palette, the colour depth, the graphics tier and the keyboard flags were
+each recorded in `caps_` and acted on nowhere. Late is the DOCUMENTED case
+here -- `collect_caps()` returns on its fence and its window is a
+readiness one -- so this was five instances of a shape the tree already
+anticipated everywhere except in the answers derived from it. 8.517,
+8.518, 8.526, 8.527. 8.532 then said in the public headers which fields
+move and when, which is where the promise lives.
+
+**WHAT THE INSTRUMENTS TAUGHT, which outlasts the fixes.**
+
+- **Branch coverage named two things and line coverage named none.**
+  `theme.cpp` is 100 per cent of lines and said nothing; the
+  taken-at-least-once figure found five format characters measuring a
+  column each (8.533) and an ownership promise never exercised (8.534).
+  The scan is nearly free: one instrumented run leaves `.gcda` for every
+  object, so `gcov -b` over all of them costs nothing afterwards.
+- **`make coverage` cannot see a forked child.** `fatal_child()`'s
+  children leave by `_exit()`, which bypasses gcov's flush, so about
+  thirty of `ansi_backend.cpp`'s forty-two "uncovered" lines are covered
+  -- proved by two whose checks assert their bytes on the wire (8.529).
+- **The reddened-check count is a census of what defends a behaviour.**
+  8.521 claimed a contract was unasserted; the sabotage run named eight
+  pre-existing checks. It prints on every run and I had it in hand.
+- **A short count with no skips has three causes now**, not one: a skip, a
+  capture that merges stderr into stdout, and a check that really failed.
+  `count-check` caught the third behind what looked like the first.
+
+**FIVE OF MY OWN CHECKS HAD A FIRST VERSION THAT COULD NOT FAIL for the
+reason it named, which is a higher rate than the defects fixed and is the
+honest headline.** The causes were all different: a fixture whose popup
+branch consumed the event; a subject already at its ceiling, twice, where
+the environment supplied the maximum; a reply the parent volunteered
+regardless of the request; and one that only the sabotage harness caught,
+refusing to redden a hover check that read `underMouse()` after a motion
+something else had already cleared. The cheapest question of the five was
+"who produces the input this assertion reads", and it is the one that
+caught a vacuity while writing rather than after.
+
+**STILL OPEN, in the order a next session should want them.**
+
+1. **8.530's exit is unexplained.** `make check`'s `test` target died once
+   inside `suite_runtime` after 1687 passes -- no FAIL line, no watchdog
+   message -- and did not reproduce in twenty-three attempts. The
+   comfortable explanation, the outer `timeout 300`, is weakened by
+   measurement: 21.2 s wall against it. Nine timers that outlived their
+   frames were found by reading and fixed, and are NOT claimed as the
+   cause. If it returns, start there.
+2. **The branch scan has two unexamined files and the data is cheap to
+   regenerate.** `graphics.cpp` at 64.76 per cent -- never-taken
+   non-throw branches include the `$TERM`/`$TERM_PROGRAM` detection for
+   wezterm, mlterm, foot and mintty, the palette remap in the quantiser,
+   and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
+   at 66.92 -- the `[-]` box for a partially checked item, and
+   `AlignBottom`/`AlignVCenter` for a display alignment. `input_router.cpp`
+   at 67.13 is unexamined entirely.
+3. **The GUI twin ignores z.** `Overlay::visible_overlays()` sorts by z for
+   the terminal path; `sync_gui_twin()` stacks twins in creation order and
+   never reads `z_`, which is why `set_z()` is the one setter that does
+   not sync. Two overlays with explicit z stack wrongly on the GUI path.
+   Not fixed: the offscreen platform does not support `raise()`, so the
+   stacking cannot be asserted here, and a fix nothing defends is worse
+   than none.
+4. **The §0b rows that remain are genuine decisions**, re-read this
+   session: the font's wide advance, the menu mnemonic while closed, the
+   drop indicator's mark, every printable carrying its `Qt::Key`, and the
+   three pointer-only controls -- to which the toolbar extension button is
+   now a fourth instance (8.520), already named by `Qtty::pointer_only()`.
+   Two rows closed this session needed NEITHER decision they reserved:
+   the background row's cost claim had gone stale, and the router row's
+   "additions to a PUBLIC header" was false once `relayout_live_routers()`
+   existed.
+
+**And one number is deliberately not comparable.** The suite's duration
+was re-taken at 8.29 s user against 4.81, at load 131 against 1.68 --
+two orders of magnitude apart, so neither figure can be set beside the
+other. What would separate "slower per check" from "contention in the
+figure" is a re-take under load 5, which is the machine's to offer. One
+contributor is known: 18 `fatal_child()` forks, four added here, and
+`/usr/bin/time` charges a waited-for child to the parent.

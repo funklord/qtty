@@ -8335,3 +8335,14 @@ find = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n
 into = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing;"
 count = 1
 check = "a format character takes no column and a letter, a wide cluster and a mark keep theirs, which is what classifying by category rather than by a table of ranges buys"
+
+[[sabotage]]
+# The refused drag is not consumed, so a caller following the documented
+# ownership rule -- that exec_drag() takes the QDrag either way -- leaks it.
+# 8.534.
+name = "a refused drag is not consumed"
+file = "src/runtime/drag.cpp"
+find = "\tif (g_live) { drag->deleteLater(); return Qt::IgnoreAction; }"
+into = "\tif (g_live) { return Qt::IgnoreAction; }"
+count = 1
+check = "and the QDrag it was handed is consumed anyway, so a caller's ownership rule is the same whether it was refused or run"
