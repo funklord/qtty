@@ -47935,3 +47935,44 @@ an off-by-one at a clamp is invisible in the middle of the range.
 was in the assertion's SHAPE rather than its absence. A check existed,
 named the right invariant, and tested the weaker half of it on the easier
 axis.
+
+### 8.559 A check I did not need, and the audit that said so (2026-10-25)
+
+**I added a redundant check and wrote a false claim, and the sabotage
+census caught both.** 8.558's lens -- two derivations of one layout with
+only half the agreement asserted -- pointed at the spin box, where the
+style's comment records the fault having happened: both arrow rectangles
+on one cell, Qt picking the first, and no click decrementing. I wrote a
+check that each arrow is drawn in the cell its rectangle claims and that
+the two cells differ, and recorded that nothing asserted this.
+
+**Nothing is the wrong word. Five checks assert it already.** The sabotage
+reddened **eleven** where one was expected, and the list names them:
+`a left-to-right spin box's step-up arrow is drawn in the cell its hit
+test names`, the same for right-to-left, `a spin box's up and down arrows
+are separately clickable`, `a left-to-right spin box's arrows are in the
+two cells before its border`, and the disjointness sweep, whose own name
+ends `rather than by what was drawn`. The one at
+`suite_widgets.cpp:3246` is mine almost line for line --
+`up_drawn == up.left() / cw`, both directions.
+
+**Why the search missed them, which is the part to keep.** Two reasons
+compounding. The check names are **assembled at runtime** -- a prefix and
+a ternary on `rtl` -- so grepping for the sentence a run prints finds
+nothing in `test/`. And my search was for the identifier `SpinBox` across
+two files, which found the rectangle sweeps and not the render fixture
+that does this. **A check whose name is built from pieces cannot be found
+by its name**, and that is most of why this file's coverage is easy to
+underestimate.
+
+**The audit is cheap and I ran it last instead of first.** A sabotage
+entry reports every check it reddens, so writing the entry FIRST and
+running it answers "does anything already catch this" for the cost of one
+rebuild -- before a check is written, not after. Where existing checks
+redden, the new one is redundant and the honest output is the census.
+
+**So the check and its entry are removed and the count returns to 2432.**
+What stands is the correction: the spin box's drawn-versus-hit agreement
+is defended, in both directions, and 8.558's scroll bar gap was real
+because that control's vertical axis genuinely had none -- the two cases
+are not alike, and I assumed they were.
