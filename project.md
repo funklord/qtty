@@ -48121,3 +48121,39 @@ then the sabotage as a census -- and the thing it found was not in the
 code's logic but in the REACH of an existing guard. A family can be
 thoroughly policed on the surface it was found on and unpoliced one
 enumerator along.
+
+### 8.567 Why the negative sweep cannot simply be extended (2026-10-25)
+
+**8.566 found a negative-dimension gap one enumerator along from the
+sweep that polices that family, and the obvious next move -- sweep ALL 58
+sub-elements -- does not work. Measured, not assumed.**
+
+**It segfaults, and in Qt rather than here.** Asking each
+`QStyle::SubElement` in turn with one option type and a null widget died
+at **`SE_TabBarScrollLeftButton`**. A standalone program against plain Qt
+with Fusion and no qtty involved makes the same call and dies the same
+way -- `subElementRect(SE_TabBarScrollLeftButton, &QStyleOptionViewItem,
+nullptr)`, exit 139. `GridStyle` does not handle that element at all and
+is not in the path.
+
+**So the options are type-specific and a blanket enumeration is invalid
+usage**, which is the answer to a question 8.566 left open: why the
+existing sweep is an explicit table of control-and-sub-control pairs
+rather than a loop over an enum. It has to be, because each entry needs
+the option type its element expects. Extending it to sub-elements is
+real work -- a table of element, option type and a representative rect --
+not a loop.
+
+**Two reading errors on the way, both from trusting order over output.**
+The crashing index was first read off the HEADER's declaration order and
+named as `SE_ToolBarHandle`; narrowing to that element alone passed and
+printed `se=52`, so the header order is not the enum numbering. The
+printed number was authoritative and the next one, 53, was the culprit.
+And the first probe reported only "it crashes somewhere", which is worth
+little: a fault with no name cannot be looked up, worked around, or
+reported upstream.
+
+**What stands from the attempt.** The sub-element surface is genuinely
+unpoliced for this family, 8.566's fix covers one element of it, and
+extending the cover is a deliberate piece of work with a known shape.
+Nothing here is a qtty defect.
