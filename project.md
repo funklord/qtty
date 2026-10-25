@@ -47824,3 +47824,44 @@ asserts an absence -- nothing was written, nothing was pushed -- is only
 as good as the state it starts from, and process-global state makes that
 start depend on what ran before. Such a control can be turned green by any
 earlier test, silently, without anybody touching the code it guards.
+
+### 8.556 One guard reachable, its twin not, and why (2026-10-25)
+
+**The scroll bar has a sub-cell guard on each side and they are not the
+same guard.** 8.549 added one to `subControlRect` after measuring that
+Fusion answers differently for a bar shorter than a cell. The drawing
+side, `drawComplexControl`, already had `if (len <= 0) return;` and branch
+coverage had it never taken -- which looked like the same gap on the other
+side of one question.
+
+**It is unreachable, provably.** The two sides compute `len` differently:
+
+- `subControlRect`: `(vert ? r.height() : r.width()) / qMax(1, cell)` --
+  plain integer division of PIXELS, which reaches zero for a rect shorter
+  than one cell. Reachable, and the sabotage shows Fusion's alternative is
+  pixel rectangles.
+- `drawComplexControl`: `vert ? c.height() : c.width()`, where `c` comes
+  from `cells_of()` and so from `cells_of_rect()`, which takes
+  **`qMax(1, qRound(...))` of both dimensions**. A cell rect is never
+  smaller than one cell, so `len` is never below 1.
+
+**Measured before it was reasoned about, and the measurement is what sent
+me to the helper.** A check driving `CC_ScrollBar` with a zero-height
+pixel rect inked ONE cell, not none -- the rect had become a one-cell
+rect and taken the `len == 1` path, which is correct. That number is what
+said the fixture was not reaching the guard, where the failing assertion
+alone would have read as the guard being broken.
+
+**The check was removed and the guard annotated instead.** There is
+nothing to assert: a check for an unreachable branch either tests a
+different path, as this one did, or cannot be written. What it leaves
+behind is a note at the guard saying why coverage names it, so the next
+scan costs a read rather than a cycle -- and saying that the measuring
+side is NOT the same, because the two look identical and only one is real.
+
+**The general shape, which the scan keeps producing.** A never-taken
+branch has three answers and only the first is a gap: the code is right
+and untested; the code is right and the branch cannot be taken from that
+entry point; or the branch is reachable only by the case it gets wrong.
+Telling them apart means reading what computes the condition, not the
+condition.

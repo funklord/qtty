@@ -3980,6 +3980,16 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
 				const bool vert = sb->orientation == Qt::Vertical;
 				const int len = vert ? c.height() : c.width();
+				// UNREACHABLE, and said so rather than removed: cells_of()
+				// goes through cells_of_rect(), which takes qMax(1, ...) of
+				// both dimensions, so a cell rect is never smaller than one
+				// cell and len is never below 1. Branch coverage names this
+				// every time and a session chased it once -- the note is
+				// cheaper than the next chase.
+				//
+				// The measuring side is NOT the same: subControlRect divides
+				// pixels by the cell size directly, which does reach zero,
+				// and its guard is real and defended by a check.
 				if (len <= 0) return;
 				// ONE cell says a bar is there, which is more than a blank
 				// cell says. This returned below two, so an application
