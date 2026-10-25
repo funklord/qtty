@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2399 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2401 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46955,3 +46955,24 @@ other. What would separate "slower per check" from "contention in the
 figure" is a re-take under load 5, which is the machine's to offer. One
 contributor is known: 18 `fatal_child()` forks, four added here, and
 `/usr/bin/time` charges a waited-for child to the parent.
+
+### 8.536 A tristate item's box, drawn right and never seen (2026-10-25)
+
+**The first item off 8.535's hand-over list, and it is a gap rather than a
+defect -- which is worth recording as plainly as a fix would be.** Branch
+coverage named the `PartiallyChecked` arm of `CellItemDelegate`'s check
+indicator as never taken: the glyph a half-checked item shows was written
+and had never been rendered. Measured, all three are right -- `[ ] off`,
+`[x] on`, `[-] part`.
+
+**Section 0d's candidate list already had "a tristate checkbox's middle
+state", and this is not that.** That one is a `QCheckBox`, drawn by the
+style; an item view's box is a different drawer with its own three-way
+decision, and the two share no code. A candidate list names widgets, and
+the same state in two drawers is two candidates.
+
+**The two exercised states are the controls, read from ONE render.** A
+delegate that drew `[ ]` for everything, or `[x]` for both checked and
+partial, satisfies an assertion about the middle state alone -- so all
+three rows come out of the same buffer and the pair is what makes either
+mean anything.

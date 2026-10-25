@@ -10008,6 +10008,60 @@ int suite_widgets() {
 		delete wide;
 	}
 
+	// A TRISTATE ITEM'S BOX, which branch coverage named: the
+	// PartiallyChecked arm of CellItemDelegate's check indicator had never
+	// been taken, so the glyph a half-checked item shows was written and
+	// never seen. Section 0d's own candidate list has "a tristate
+	// checkbox's middle state" for a QCheckBox; an item view's box is a
+	// different drawer with its own three-way decision.
+	//
+	// THE TWO EXERCISED STATES ARE THE CONTROLS and they are what stop a
+	// wrong glyph passing: all three boxes are read from one render, so a
+	// delegate that drew `[ ]` for everything, or `[x]` for both checked
+	// and partial, fails here rather than in a reader's eye.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(24, 6));
+		auto *v = new QVBoxLayout(host.window());
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *list = new QListWidget;
+		list->setFrameShape(QFrame::NoFrame);
+		list->setItemDelegate(new CellItemDelegate(list));
+		const Qt::CheckState states[] = { Qt::Unchecked, Qt::Checked,
+		                                  Qt::PartiallyChecked };
+		const char *names[] = { "off", "on", "part" };
+		for (int i = 0; i < 3; ++i) {
+			auto *it = new QListWidgetItem(QString::fromLatin1(names[i]), list);
+			it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+			it->setCheckState(states[i]);
+		}
+		v->addWidget(list);
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(24, 6);
+		render_once(host, b);
+		const QString text = b.to_text();
+		GridGuard::reset();
+		const QStringList rows = text.split(QLatin1Char('\n'));
+		QString off, on, part;
+		for (const QString &r : rows) {
+			if (r.contains(QStringLiteral("off")))  off = r.trimmed();
+			if (r.contains(QStringLiteral("on")))   on = r.trimmed();
+			if (r.contains(QStringLiteral("part"))) part = r.trimmed();
+		}
+		printf("info: a tristate item view draws [%s] [%s] [%s]\n",
+		       qPrintable(off), qPrintable(on), qPrintable(part));
+		CHECK(off.startsWith(QStringLiteral("[ ]"))
+		      && on.startsWith(QStringLiteral("[x]")),
+		      "an item view's check box tells unchecked from checked, which"
+		      " is the control the next check needs");
+		CHECK(part.startsWith(QStringLiteral("[-]")),
+		      "and a half-checked item shows a third glyph rather than"
+		      " borrowing one of the other two, which nothing had ever"
+		      " rendered");
+	}
+
 	return fails;
 }
 

@@ -8346,3 +8346,13 @@ find = "\tif (g_live) { drag->deleteLater(); return Qt::IgnoreAction; }"
 into = "\tif (g_live) { return Qt::IgnoreAction; }"
 count = 1
 check = "and the QDrag it was handed is consumed anyway, so a caller's ownership rule is the same whether it was refused or run"
+
+[[sabotage]]
+# The half-checked item borrows the unchecked box, so a tristate item view
+# shows two glyphs for three states. 8.536.
+name = "a half-checked item shows the unchecked box"
+file = "src/widget/cell_item_delegate.cpp"
+find = "\t\telse if (opt.checkState == Qt::PartiallyChecked)  box = QStringLiteral(\"[-]\");\n"
+into = ""
+count = 1
+check = "and a half-checked item shows a third glyph rather than borrowing one of the other two, which nothing had ever rendered"
