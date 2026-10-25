@@ -47287,6 +47287,26 @@ takes the skip and reports 3 of 4. **A gate arm reachable only by shadowing
 a system binary is one nobody checks**, which is why the variable is the
 change rather than a convenience.
 
+**A SINGLE READING OF THE PROCESS TABLE WILL LIBEL THIS STEP.** Measured
+2026-10-25, minutes after the step went in: a sweep right after `make
+check` found an orphaned `dbus-daemon --session` 40 seconds old with a
+defunct child, and the account's population reading 62 where it had read
+61 -- which is exactly the shape of the leak this entry warns about below,
+attributable to a change made the same hour. It was not a leak. A second
+reading a minute later was back to 61: the bus had exited on its own, and
+the no-bus control arm run alone leaves the count unmoved (61 before, 61
+after). The gate spawns a transient autolaunched bus which then
+terminates.
+
+So the instruction is the one `evidence.md` gives about facts that go stale
+between measuring and acting: **read the table twice before calling
+anything a leak**, because a transient process and a leaked one are
+identical in one snapshot and the difference is only visible in time. Had
+this been recorded from the first reading it would have been a false claim
+in this document about a step added the same day, which is the worst place
+for one -- the next session would have gone looking for a fault that is
+not there, in code it had just been told to suspect.
+
 **One hazard this adds, named where it will be met.** `dbus-run-session`
 tears its bus down when the command exits, and a run was checked afterwards
 for a young orphan and left none -- the 61 orphaned `dbus-daemon --session`
