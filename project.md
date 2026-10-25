@@ -931,6 +931,13 @@ Qt 5.15.15 is installed beside 6.8.2, so the build was simply tried: the
 public headers compile clean, and the library fails on **three usages in
 two files**, named in §8.1. Writing those three conditionals is the
 decision §8.1 records as open, so the axis is priced rather than taken.
+**That pricing is the PRE-PORT figure and the port has since been done**
+-- re-measured 2026-10-25 by counting `#if`/`#elif` lines mentioning
+`QT_VERSION`: **thirteen conditionals in two files, twelve of them in a
+dedicated `src/qt_compat.h` and one in `include/qtty/application.h`.**
+Four times the estimate, and a better shape than the estimate assumed:
+the difference lives in one compat header rather than scattered through
+the sources it serves.
 **One of the five errors was a defect and not a version difference** --
 `grid_style.cpp` uses `QAction` and never included `<QAction>`, compiling
 by transitive luck on a class Qt 6 moved between modules. That include is
@@ -2660,8 +2667,10 @@ In the order I would take them:
    source build or another archive -- a different cost, and one belonging to
    whoever maintains the machine rather than to a session that wanted the
    configuration. Qt 5.15 is here and
-   is a port rather than an axis -- §8.1 prices it at three conditionals
-   in two files, the fourth usage having been closed without one. What a second 6.x would answer, with no decision at all,
+   is a port rather than an axis -- §8.1 priced it at three conditionals
+   in two files before the port, the fourth usage having been closed
+   without one; **measured 2026-10-25 it is thirteen, twelve of them in
+   `src/qt_compat.h`.** What a second 6.x would answer, with no decision at all,
    is whether anything here depends on 6.8.2's particulars; the beerssh
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
@@ -47998,3 +48007,42 @@ the FAIL lines, restore the file -- and the FAIL list is the census.
 vertical axis was a real gap and has a check; the spin box and the tool
 button were already defended. Of the four complex controls that keep two
 derivations, three are now accounted for and the slider keeps only one.
+
+### 8.560 Two of design.md's open questions, measured (2026-10-25)
+
+**OQ-3 is answered in the tree and the document does not say so, and its
+price was out by four.** The question is whether Qt 5.15 and Qt 6 can live
+in one codebase. They do: both arms build and run the whole suite -- 2432
+checks each -- and have all day. What the document and this record carried
+was the PRE-PORT estimate, "three usages in two files", quoted
+present-tense in two places here. Re-measured by counting `#if`/`#elif`
+lines mentioning `QT_VERSION`: **thirteen, in two files, twelve of them in
+`src/qt_compat.h`.** Both citations are corrected.
+
+**Four times the number and a better shape**, which is why the correction
+is not just a bigger figure: the port was done by centralising the
+differences into one compat header, so twelve conditionals in a file that
+exists for them is cheaper to live with than three scattered through the
+sources. The estimate counted failing usages before anybody chose where
+the fix would live.
+
+**What remains of OQ-3 is not technical and is not mine.** The question's
+other half is product sequencing -- which products upgrade when -- and
+nothing in this tree can answer it. The document is not edited here: a
+design question is closed by whoever owns it, and what this entry supplies
+is the measurement it was waiting on.
+
+**OQ-5 is genuinely open, measured the same way.** `QAccessible` appears
+**nowhere** in `src/` or `include/`; the ten mentions of accessibility are
+comments. So there is no bridge, partial or otherwise, and the question is
+not one the code has quietly settled -- unlike OQ-3. Worth stating because
+the two look alike in a list of open questions and only one of them was
+really open.
+
+**The general point, which is this document's own rule meeting itself.** A
+countable present-tense claim about the tree's shape rots, and an ESTIMATE
+recorded present-tense rots twice over: once when the number changes, and
+once when the work it was estimating is done, after which it describes a
+decision nobody still faces. The fix is the same both times -- say when it
+was measured and how -- and the tell is a sentence pricing something the
+tree already has.
