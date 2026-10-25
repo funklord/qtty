@@ -48093,51 +48093,55 @@ no leak produce the SAME flat line, and nothing but the deliberate control
 separates them. That is why the control is inside the target rather than
 beside it in a comment.
 
-### 8.562 A check whose verdict depends on the shape of stdout (2026-10-25)
+### 8.562 An intermittent check, and a cause I got wrong (2026-10-25)
 
-**The suite is not green under the sanitizers, and the cause is not the
-sanitizers.** `make test-sanitize` had never been run this session. It
+**The finding is that the check is INTERMITTENT. The first version of this
+entry said its verdict depends on the shape of stdout, and that was wrong
+-- built on three runs and killed by ten more.** The correction is the
+entry, because the wrong version is committed and a reader would otherwise
+believe it.
+
+**What is solid.** `make test-sanitize` had never been run this session and
 comes back with **zero AddressSanitizer, LeakSanitizer or UndefinedBehavior
-reports** -- the flag reached the binary, 51 `__asan` symbols in it, so
-that clean result means something -- and exactly one failing check:
-`nothing has taken the terminal yet, so the dispositions below are a
-backend's own doing and not an earlier fixture's`.
+reports** -- a clean result that means something, because the instrument
+checks section 0c prescribes confirm `-fsanitize=address,undefined` was
+used and that 51 `__asan` symbols reached the binary. It also returns one
+failing check, `nothing has taken the terminal yet`, which reads
+`SIGTSTP` and `SIGPIPE` before any backend is constructed.
 
-**It fails in an ordinary build too, and what decides it is where stdout
-goes.** Measured on `qtty-tests cells backend`, same binary, three
-destinations:
+**And the check fails in an ordinary build too, sometimes.** Counted on
+`qtty-tests cells backend`, one binary, no rebuild between:
 
-| stdout | `tstp_default_before` | verdict |
+| invocation | runs | verdict |
 |---|---|---|
-| a regular file | 1 | PASS |
-| `/dev/null` | 1 | PASS |
-| a **pipe** | 0 | **FAIL** |
+| plain, stdout to a file, stderr to `/dev/null` | 10 | **PASS** all ten |
+| inside `$( ... 2>&1 )`, output captured | 6 | **FAIL** all six |
+| stdout to a file, stderr to a file | 1 then 1 | PASS, then FAIL |
+| under `make test-sanitize` | 1 | FAIL |
 
-Six runs for six on the pipe. So `SIGTSTP` carries a handler before the
-probe backend is constructed, but only when the binary's standard output
-is a pipe -- and `make` gives its recipes a pipe, which is why the
-sanitized run failed and a direct `> file` run of the same build does not.
-
-**SIGTSTP is the backend's**, installed with `SIGCONT` by the arm in
+**The instrumented reading says `tstp_default_before` is 0 when it
+fails**, so `SIGTSTP` carries a handler before the probe backend exists.
+That handler is the backend's own, installed with `SIGCONT` by the arm in
 `resume()` and restored only when the last owner goes -- the
-`g_owners > 0 && --g_owners == 0` teardown. So the premise can hold only
-while no armed backend has existed, and something about a piped stdout
-leaves one armed, or arms one earlier. **Which code does that is NOT
-established** and is the next step; it is reproducible in one command,
-which is the hard part of a fault like this and is already done.
+`g_owners > 0 && --g_owners == 0` teardown -- so the premise holds only
+while no armed backend has existed.
 
-**The multi-suite runner was added to chase it and is kept.** The filter
-was a single `QString` and the last argument won, so
-`qtty-tests runtime backend` silently ran only the backend -- and a fault
-that needs an earlier suite to have run first cannot be reproduced without
-a pair. It is a `QStringList` now.
+**WHY IT VARIES IS NOT ESTABLISHED.** I attributed it to stdout being a
+pipe on three data points, wrote that into this document and a commit
+message, and then ten identical runs passed and a repeat of the
+supposedly-passing shape failed. The honest state is: it is sometimes red,
+the reproduction that reddens it reliably is running the binary inside a
+capturing command substitution, and the mechanism linking that to an armed
+backend is unknown.
 
-**What this costs, which is why it matters more than one red check.** A
-suite whose verdict depends on how it was invoked has two verdicts, and
-the greener one is the one a developer sees: `make check` captured to a
-file passes, the same gate through a pipe does not. Every green run in
-this document was taken one of those two ways and the document does not
-say which. **This is `running-code.md`'s stdout hazard -- a bound that
-depends on the shape of your stdout is one you can remove by accident
-while investigating -- met from the other side: not a bound removed by
-looking, but a VERDICT changed by looking.**
+**The lesson is the one this session keeps paying for, at its most
+expensive.** A causal claim from three runs is a coincidence with a story
+attached, and the story is more convincing than the data because it
+explains them all. Ten runs cost a minute; the wrong claim cost a commit
+and this rewrite. **Count before attributing, and count more than three.**
+
+**What it costs regardless of cause.** A check that is sometimes red has
+two verdicts, and the greener one is the one a developer sees. Every green
+run recorded in this document was taken without knowing this, and
+`make check` passing is not evidence that a given invocation of it will.
+
