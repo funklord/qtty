@@ -1525,6 +1525,35 @@ int suite_backend() {
 		      "and neither is typed into the application as input");
 	}
 
+	// A TRUNCATED CSI, THEN A NEW ONE -- the CSI counterpart of the
+	// unterminated-OSC block above, and the last of 8.552's pair. parse_csi
+	// scans forward when the byte where a final should be is not one
+	// (0x40..0x7e), and `if (uchar(pending_[j]) == 0x1b) return j;` is what
+	// abandons the sequence because a NEW escape has arrived. Branch
+	// coverage had it never taken.
+	//
+	// Without it the scan keeps looking for a plausible final and finds the
+	// `[` of the sequence that follows -- 0x5b is in range -- so it consumes
+	// the next sequence's introducer and delivers its final byte as a bare
+	// keystroke: Up arrives as the letter A. A multiplexer that drops bytes,
+	// or a terminal killed mid-write, turns the user's arrow key into a
+	// letter in their document.
+	//
+	// Two feeds, because that is the real arrival pattern: the truncated
+	// sequence is already pending when the next one turns up in a later
+	// read. One feed would test the same bytes in an order the wire does
+	// not produce.
+	{
+		feed("\033[1;2");
+		CHECK(rec.keys.isEmpty(),
+		      "a CSI whose final byte has not arrived produces no key while"
+		      " it might still be coming");
+		feed("\033[A");
+		CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+		      "and a new escape abandons it, so the sequence that follows"
+		      " decodes as itself rather than losing its introducer");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable

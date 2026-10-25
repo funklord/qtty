@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2425 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2427 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47607,7 +47607,7 @@ green run says which it did.**
 
 ### 8.552 Two replies this parser had never been given (2026-10-25)
 
-**One is closed and one is open.** Written first as a hand-over at the
+**Both are closed now.** Written first as a hand-over at the
 weekly halt, and rewritten when the budget came back at the rollover --
 rewritten rather than appended to, because an entry saying something is
 open outlives the work that closed it.
@@ -47644,17 +47644,30 @@ bytes to a live `AnsiBackend`, so the swap would have exercised nothing and
 passed. **Two parsers read these replies, and a fixture has to name which
 one it is asking.**
 
-**2. A SEQUENCE ABANDONED BY THE NEXT ONE.** `ansi_backend.cpp:2321`:
+**2. A SEQUENCE ABANDONED BY THE NEXT ONE -- also untested, also
+correct.** `ansi_backend.cpp:2321`, in `parse_csi`'s forward scan for when
+the byte where a final should be is not one:
 
     if (uchar(pending_[j]) == 0x1b) return j;   // the next sequence
 
-Never taken, branch 1 at `taken 0%`. This is the recovery path for a CSI
-whose byte is not a plausible final when a new `ESC` arrives before the old
-sequence completes -- a truncated or interleaved reply, which is what a
-loaded terminal or a multiplexer produces.
-`parse_string_sequence()` carries the same shape at 2350 -- and that arm
-IS exercised, by the unterminated-OSC block above it, which is how the two
-differ despite looking alike.
+Never taken. **What it prevents is worse than a lost sequence.** Without
+it the scan keeps looking for a plausible final and finds the `[` of the
+sequence that follows -- 0x5b is inside 0x40..0x7e -- so it consumes the
+next sequence's introducer and delivers its final byte as a bare
+keystroke: **Up arrives as the letter A.** A multiplexer that drops bytes,
+or a terminal killed mid-write, turns a user's arrow key into a letter in
+their document. The sabotage produces exactly that.
+
+**Fed as two reads, not one**, because that is the arrival pattern the wire
+produces: the truncated sequence is already pending when the next one turns
+up in a later read. One feed would test the same bytes in an order no
+terminal sends them.
+
+**The look-alike at 2350 is exercised and that is the difference.**
+`parse_string_sequence()` has the same shape -- `if (c == 0x1b) return i;`
+-- and the unterminated-OSC block above it has covered that since branch
+coverage found it. Two arms, one shape, one covered: a reader comparing
+them would have assumed both.
 
 **The filter that produced this shortlist, so it can be re-run.** Over
 `ansi_backend.cpp.gcov`: conditions on an `if (` line, `taken 0%`,
