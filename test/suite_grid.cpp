@@ -1260,6 +1260,46 @@ int suite_grid() {
 		CHECK(negative.isEmpty(),
 		      "and no sub-control rect has a negative dimension, which would"
 		      " lie about its area rather than merely be empty");
+
+		// AND THE SUB-ELEMENT THAT SWEEP DOES NOT REACH. The tally above
+		// walks CC_/SC_ pairs; SE_ItemViewItemText is a sub-ELEMENT and is
+		// not in it. Its arithmetic subtracts an indent from the item's
+		// width -- one cell, five when the item carries a check indicator --
+		// and the guard against that going negative had never fired:
+		// coverage put `opt->rect.width() > in` at 100 per cent one way, so
+		// no fixture has an item narrower than its own indent.
+		//
+		// It is reachable by the one consumer this style has for it. The
+		// comment at the arithmetic says GridStyle draws CE_ItemViewItem
+		// itself and never asks this, so the only caller under a cell
+		// device is the inline EDITOR -- a rename box over a narrow,
+		// checkable column, which is an ordinary tree view squeezed.
+		//
+		// A wide item is the control: without it, a style that returned an
+		// empty rect for everything would satisfy the narrow case.
+		{
+			QStyle *st = QApplication::style();
+			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+			QStyleOptionViewItem narrow;
+			narrow.features |= QStyleOptionViewItem::HasCheckIndicator;
+			narrow.rect = QRect(0, 0, cw * 3, ch);   // 3 cells, indent is 5
+			const QRect thin =
+			    st->subElementRect(QStyle::SE_ItemViewItemText, &narrow,
+			                       nullptr);
+			QStyleOptionViewItem wide = narrow;
+			wide.rect = QRect(0, 0, cw * 20, ch);
+			const QRect room =
+			    st->subElementRect(QStyle::SE_ItemViewItemText, &wide,
+			                       nullptr);
+			printf("info: an item 3 cells wide with a check box gives a text"
+			       " rect %dx%d, and one 20 cells wide gives %dx%d\n",
+			       thin.width(), thin.height(), room.width(), room.height());
+			CHECK(thin.width() >= 0 && thin.height() >= 0
+			      && room.width() > 0 && room.width() < wide.rect.width(),
+			      "an item narrower than its own indent still answers a text"
+			      " rect with no negative dimension, while a wide one gets"
+			      " the row less the indent");
+		}
 		overlapping.sort();
 		overlapping.removeDuplicates();
 		printf("info: %d disjoint pair(s) of parts asked, %d overlapping%s%s\n",

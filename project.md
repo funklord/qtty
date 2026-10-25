@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2432 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2433 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48083,3 +48083,41 @@ had to argue the outer bound was implausible because the number that
 would have settled it was never kept -- and a diagnosis that depends on
 re-deriving what the tool could have told you is one the tool should tell
 you.
+
+### 8.566 The sub-element the negative-dimension sweep cannot reach (2026-10-25)
+
+**The first candidate taken by §0e's method, and it was a real gap.**
+`SE_ItemViewItemText` subtracts an indent from the item's width -- one
+cell, five when the item carries a check indicator -- and the guard
+against that going negative had never fired: `opt->rect.width() > in` sat
+at 100 per cent one way, so no fixture had an item narrower than its own
+indent.
+
+**It is reachable by the one consumer this style has for it.** The
+arithmetic's own comment says GridStyle draws `CE_ItemViewItem` itself and
+never asks this, so the only caller under a cell device is the inline
+EDITOR -- a rename box over a narrow, checkable column, which is an
+ordinary tree view squeezed.
+
+**And the sweep that polices this family cannot see it.** 8.477 found
+eighteen negative rects and the tally that guards against their return
+walks `CC_`/`SC_` pairs. `SE_ItemViewItemText` is a sub-ELEMENT and is in
+no part of it. **The sabotage is what established that rather than
+reasoning**: removing the guard reddened **exactly one** check, the new
+one -- so nothing else defended it, and the census answered in one run
+what a reading of the sweep could only suggest.
+
+**Measured, with a wide item as the control.** Three cells with a check
+box gives a text rect of **0x0** -- empty, which is honest -- and twenty
+cells gives 150x19, the row less five cells of indent. Without the guard
+the narrow case computes 30 minus 50 and answers a negative width, which
+lies about its area rather than merely being empty. The control matters
+because a style returning an empty rect for everything would satisfy the
+narrow case on its own.
+
+**What this says about the remaining population.** §0e's method worked as
+written -- per-branch reading, then reachability from the entry point,
+then the sabotage as a census -- and the thing it found was not in the
+code's logic but in the REACH of an existing guard. A family can be
+thoroughly policed on the surface it was found on and unpoliced one
+enumerator along.

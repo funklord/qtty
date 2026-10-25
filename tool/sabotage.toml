@@ -8569,3 +8569,14 @@ find = "\t\t\t\tcase SC_ScrollBarSlider:  return band(1 + thumb_pos, thumb_len);
 into = "\t\t\t\tcase SC_ScrollBarSlider:  return band(1 + thumb_pos, thumb_len + 1);\n"
 count = 1
 check = "a vertical scroll bar's drawn thumb and its hit rectangle cover the same rows, at both ends of the range and in the middle"
+
+# The item-text rect loses its width guard, so an item narrower than its
+# own indent answers a NEGATIVE width -- which lies about its area rather
+# than merely being empty, the family 8.477 found eighteen of. 8.566.
+[[sabotage]]
+name = "a narrow item's text rect goes negative"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (opt->rect.width() > in)\n"
+into = "\t\tif (opt->rect.width() >= 0)\n"
+count = 1
+check = "an item narrower than its own indent still answers a text rect with no negative dimension, while a wide one gets the row less the indent"
