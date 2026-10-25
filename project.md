@@ -47293,3 +47293,56 @@ for a young orphan and left none -- the 61 orphaned `dbus-daemon --session`
 processes on this account are 2.8 to 16 days old and predate it. What it
 cannot survive is being KILLED rather than signalled, so a leaked session
 bus after an interrupted gate is this line's doing and worth sweeping for.
+
+### 8.546 Fold at the threshold: four lenses that found nothing (2026-10-25)
+
+**Third and last fold of this session, at 96 per cent of the weekly window
+-- the figure where the holder's rule says to start nothing further.** The
+work is recorded where it happened: 8.542 the kitty null-image defect, 8.544
+four paint-engine routes nothing had taken, 8.545 the tray gate inside
+`check`. This entry is for what is NOT in those, because a lens that found
+nothing leaves no commit and the next session will otherwise walk it again.
+
+**Four closed without a change, and each needed only one question.**
+
+1. **The direct pixel path does not tmux-wrap its escapes**, where the
+   placeholder path wraps its uploads deliberately. Correct by
+   construction: section 12142 refuses the pixel tiers inside tmux however
+   capable the outer terminal, so the path cannot run there. The wrap would
+   be wrong anyway -- `out` carries text and image bytes in one buffer and
+   tmux is meant to see the text.
+2. **`kitty_place()` treats a null AND an empty source rectangle as "place
+   the whole image"**, which is 8.542's shape exactly -- an empty value
+   meaning two things. Safe: `crop_placement()` returns both rectangles
+   empty together, and the caller skips on `cells.isEmpty()`. Both past
+   faults here are already recorded at the function.
+3. **The style's dispatch handles 22 of 52 `PE_`, 22 of 48 `CE_` and 6 of
+   10 `CC_`, so 60 enum values fall through to Fusion on the cell path.**
+   That number is an upper bound and not a finding: the fall-through IS the
+   mechanism. `CE_PushButton` falls through precisely so `QCommonStyle`
+   decomposes it into `CE_PushButtonBevel` and `CE_PushButtonLabel`, both
+   overridden here, and the progress bar, tab bar, group box and header are
+   the same. **The list is deliberately not written out**, because 60 items
+   that are not gaps would read as a to-do list.
+4. **No `Overlay` setter asks for a frame** -- `sync_gui_twin()` returns
+   immediately in TUI mode. Covered twice over: the 100 ms idle tick asks
+   for a frame while the window is visible, and the decision to talk to the
+   terminal includes `!overlays.isEmpty()`, so a visible overlay always
+   reaches the screen.
+
+**What remains is unchanged from 8.543** -- 8.530's unexplained
+`suite_runtime` exit, the GUI twin's `z` that the offscreen platform cannot
+assert, and §0b's holder questions. §0d's candidate list and §0e are both
+exhausted of actionable items.
+
+**And the lesson of the day is about instruments, not code.** Three times a
+measurement was the fault and twice it looked like a finding: a `grep -E`
+whose parentheses were groups reported three §0d candidates as unchecked
+when all three had checks; a count treating a blank glyph as inked reported
+`drawPoints` flooding 24 cells of a 24-cell buffer; and a suite run against
+a binary whose build had failed reported a pass. A fourth was caught
+mid-measurement -- a `ps`/`awk` pipeline matching its own command line while
+counting session buses, which is `running-code.md`'s self-matching watcher
+wearing a counter's clothes. **In a tree this well worked, the instrument is
+now a likelier suspect than the code**, and that is worth carrying in rather
+than rediscovering.
