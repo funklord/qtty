@@ -47430,12 +47430,30 @@ answer is non-empty and the guard changes real behaviour. The question is
 closed; this paragraph is rewritten rather than appended to, because a
 reader finding both would believe whichever sounded more careful.
 
-**Reachability stays open and is a measurement rather than a deduction.**
-`len` is the rect divided by the cell, and this tree snaps widget geometry
-to the grid -- so a sub-cell bar most plausibly arrives as a zero-height
-one, mid-layout or collapsed, rather than as a fractional one. Whether Qt
-asks for a sub-control rect in that state is unmeasured. The guard is
-cheap and correct either way, which is why it did not wait on this.
+**REACHABILITY WAS MEASURED, and it narrows the guard to defensive --
+which is a smaller claim than this paragraph first made and a measured one
+rather than a deduction.** Two findings from a throwaway `QScrollArea`
+probe. **Qt's minimum size hints will not let the bar go sub-cell by
+resizing**: a host squeezed to 1, 2 and 3 rows gave an area of 95 px every
+time and a vertical bar of 75 px, three cells, whatever the host asked
+for. And **a conforming application's geometry is cell-snapped anyway** --
+the suite asserts every widget geometry lands on the grid -- so `len == 0`
+in such a program means a bar of zero height, collapsed or hidden, not a
+fractional one. Whether Qt queries sub-controls in that state is still
+unmeasured, and reaching it would take an application setting a fixed
+sub-cell height on the bar itself: legal, unusual, nobody's layout.
+
+So the guard defends a reachable-but-unusual case rather than a routine
+one. It stays: it is one line, it is the answer the `len == 1` arm already
+gives, and the sabotage proves Fusion's alternative is pixel rectangles.
+
+**The probe failed the suite, and that was the probe.** Its twelve widgets
+were not grid-snapped, so `every widget geometry landed on the grid` went
+red -- the guard doing its job, and §0d's warning about instruments
+arriving one more time. The 75 px bar above is the same fact from the
+other side: that number is not a multiple of the cell BECAUSE the probe's
+widgets never went through this tree's snapping, so it says what Qt does
+unaided and nothing about what a qtty program shows.
 
 
 ### 8.549 No cells, no sub-controls (2026-10-25)
