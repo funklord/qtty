@@ -439,14 +439,19 @@ test-pty: tests-build
 # against it, reads the properties back over the bus the way a panel would,
 # calls Activate the way a click does, and hides it again.
 TRAY_CHECK = $(BUILD_DIR)/tool/tray/qtty-tray-check
+# Named rather than spelled inline so the "absent" arm of the tray gate can
+# be exercised: `make test-tools DBUS_RUN_SESSION=no-such-tool` takes the
+# skip. A gate arm that can only be reached by shadowing a system binary is
+# one nobody checks.
+DBUS_RUN_SESSION = dbus-run-session
 test-tray: all
-	@command -v dbus-run-session >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- dbus-run-session is not installed"; exit 0; }
+	@command -v $(DBUS_RUN_SESSION) >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- $(DBUS_RUN_SESSION) is not installed"; exit 0; }
 	@DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-qtty-tray \
 		$(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
 	if [ $$? -eq 0 ]; then \
 		echo "    tray: the no-bus control PASSED, so this gate cannot"; \
 		echo "          refuse a run that measured nothing"; exit 1; fi
-	@dbus-run-session -- $(TRAY_CHECK) --require-bus
+	@$(DBUS_RUN_SESSION) -- $(TRAY_CHECK) --require-bus
 
 # The negotiation the screen check depends on, asked of a second terminal.
 # Out of `check` for the same reason test-screen is: it starts terminals
@@ -901,6 +906,27 @@ probe-install:
 # `#` line in the middle comments out the join: everything after it became a
 # SECOND shell, `fail` was unset in it, and the target failed with
 # "[: Illegal number:" while every check it prints said ok.
+# The tray gate runs HERE as well as in test-tray, which is why it is not
+# grouped with test-screen and test-negotiate. Those two sit outside `check`
+# because they start terminals under a virtual display and take a minute;
+# the tray check was outside for a different reason -- it needs a session bus
+# -- and dbus-run-session supplies one hermetically. Measured at 0.25 s wall
+# for the bus and the check together, which is `check`'s own order of
+# magnitude rather than a minute, so the cost argument does not reach it.
+#
+# The no-bus control comes first and is the point: a gate that cannot refuse
+# a run which measured nothing is not a gate. It asserts the check FAILS
+# against a nonexistent bus address before believing the run that passes.
+#
+# dbus-run-session tears its bus down when the command exits, and a run of
+# this target was checked afterwards for a young orphan and left none. What
+# it cannot survive is being KILLED rather than signalled -- see
+# running-code.md on that class -- so a leaked `dbus-daemon --session` after
+# an interrupted gate is this line's doing and worth sweeping for.
+#
+# The tally is derived rather than written: it said "3 of 4" as a literal,
+# which cannot be wrong about a tool set that has changed and cannot be
+# right about one that has.
 test-tools: all
 	@fail=0; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) < /dev/null 2>/dev/null); \
@@ -1174,11 +1200,26 @@ test-tools: all
 	else \
 		echo "    note: script(1) is absent, so the example is not run" >&2; \
 	fi; \
+	tools=3; \
+	if command -v $(DBUS_RUN_SESSION) >/dev/null 2>&1; then \
+		DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-qtty-tray \
+			$(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
+		if [ $$? -eq 0 ]; then \
+			echo "    tray: the no-bus control PASSED, so this gate cannot" >&2; \
+			echo "          refuse a run that measured nothing" >&2; \
+			fail=1; \
+		elif $(DBUS_RUN_SESSION) -- $(TRAY_CHECK) --require-bus >/dev/null 2>&1; then \
+			tools=4; echo "    tray: ok (under a private session bus)"; \
+		else \
+			echo "    tray: FAILED under a private session bus" >&2; fail=1; \
+		fi; \
+	fi; \
 	[ "$$fail" -eq 0 ] || { \
 		echo "test-tools: a shipped program did not do its job" >&2; exit 1; \
 	}; \
-	echo "test-tools: 3 of 4 tool(s) and the example, 0 failed"; \
-	echo "            (qtty-tray-check needs a session bus: make test-tray)"
+	echo "test-tools: $$tools of 4 tool(s) and the example, 0 failed"; \
+	[ "$$tools" -eq 4 ] || \
+		echo "            (qtty-tray-check needs $(DBUS_RUN_SESSION): make test-tray)"
 
 # The suite under valgrind's memcheck, which catches what the sanitizers do not:
 # a READ of memory that was never written. That is not a hypothetical gap --

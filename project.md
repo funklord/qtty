@@ -47252,3 +47252,44 @@ all, and both were measured rather than reasoned about: each inks cells, so
 The sentence that stood here first said only that this was expected, which
 is a claim about Qt's internals; asking the engine cost one build and
 turned an open item into a closed one.
+
+### 8.545 The fourth tool, inside the gate (2026-10-25)
+
+**`make check` reported `3 of 4 tool(s)` on every run, and the fourth was
+reachable all along.** `qtty-tray-check` sat outside `check` because it
+needs a session bus -- which is a different reason from the one that keeps
+`test-screen` and `test-negotiate` out, where the cost is a minute of
+terminals under a virtual display. `dbus-run-session` supplies a bus
+hermetically, and the bus and the check together were measured at **0.25 s
+wall**, which is `check`'s own order of magnitude. So the cost argument
+never reached this gate, and the bus argument had an answer installed on
+the machine.
+
+**It runs in `test-tools` now and the tally is derived.** `3 of 4` was a
+literal, which cannot be wrong about a tool set that has changed and cannot
+be right about one that has; it is `$$tools of 4` and the parenthetical
+about the missing tool prints only when one is missing.
+
+**The no-bus control comes first and is the reason this is a gate rather
+than a run.** It asserts the check FAILS against a nonexistent bus address
+before believing the run that passes -- the same shape `test-tray` already
+had, kept rather than reinvented.
+
+**All four arms were exercised, three of them without touching code.**
+Overriding the tool the recipe invokes reaches two: `TRAY_CHECK=/bin/false`
+makes the check fail under the bus (exit 2, "FAILED under a private session
+bus") and `TRAY_CHECK=/bin/true` makes the no-bus control wrongly pass (exit
+2, "the no-bus control PASSED"). The absent-tool arm needed a change to be
+reachable at all: the recipe spelled `dbus-run-session` inline, so the only
+way to take that branch was to shadow a system binary. It is
+`$(DBUS_RUN_SESSION)` now, and `make test-tools DBUS_RUN_SESSION=no-such-tool`
+takes the skip and reports 3 of 4. **A gate arm reachable only by shadowing
+a system binary is one nobody checks**, which is why the variable is the
+change rather than a convenience.
+
+**One hazard this adds, named where it will be met.** `dbus-run-session`
+tears its bus down when the command exits, and a run was checked afterwards
+for a young orphan and left none -- the 61 orphaned `dbus-daemon --session`
+processes on this account are 2.8 to 16 days old and predate it. What it
+cannot survive is being KILLED rather than signalled, so a leaked session
+bus after an interrupted gate is this line's doing and worth sweeping for.
