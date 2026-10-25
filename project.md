@@ -48320,3 +48320,42 @@ count is the only thing that would say so.
 measured.** The alternative is a later session asking the same question of
 the same five bounds, which is what 8.571's enumeration cost before the
 grep that should have come first.
+
+### 8.573 The degenerate-geometry guards, counted (2026-10-25)
+
+**Third family taken by enumerate-and-count, and the only one where the
+technique's cheapness showed.** `grid_style.cpp` has seven `<= 0` geometry
+guards. Three were already settled -- the two `subControlRect` arms of
+8.549, which were a real defect, and the drawing-side twin of 8.556, which
+is unreachable because `cells_of_rect()` clamps to one cell. The other
+four were instrumented in ONE build and counted:
+
+| guard | fires |
+|---|---|
+| unconfigured cell metrics | 5 |
+| a span of zero, "unknown" | 27 |
+| a cell rect with no area | 2 |
+| **a line height rounding to zero** | **0** |
+
+**The first instrumenting attempt measured the wrong thing**, which is
+worth one sentence: the print went in ABOVE each `if`, so it counted how
+often the LINE was reached rather than how often the guard FIRED. Folding
+it into the condition -- `if (cond && (fprintf(...), true))` -- measures
+the arm. A counter in the wrong place reads exactly like a counter.
+
+**The zero-height guard is unreachable through the API it protects**,
+measured rather than deduced: Qt refuses a pixel size of 0 or less
+outright, leaving the size unset and the height at 18.641, and every small
+size it does accept gives a fractional height -- 1 px gives 1.156, 2 px
+gives 2.328 -- which the integrality check above it rejects first. It
+needs a height both integral and non-positive, so exactly zero, and
+`set_font()` and `QTTY_FONT_SIZE` cannot produce one. Annotated and kept:
+a font FILE with zero metrics would reach it, and that is not this API's
+to prevent.
+
+**Three families now: the waits, the bounds, the geometry guards.** Of
+roughly twenty arms, two were real gaps worth a check, three are
+unreachable and annotated, and the rest were already exercised -- several
+by exactly one fixture, which only a count reveals. The yield is falling,
+which is itself the signal: the technique is cheap enough that the next
+family is worth a pass only if its arms protect something measured.

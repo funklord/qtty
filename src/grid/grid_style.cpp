@@ -961,6 +961,17 @@ QString grid_font_problem(const QFont &font) {
 	if (!qFuzzyCompare(height, qRound(height)))
 		return QStringLiteral("line height is %1 px, which is not a whole number")
 		       .arg(height);
+	// UNREACHABLE THROUGH THE API THIS PROTECTS, measured 2026-10-25 and
+	// kept. It needs a height that is integral AND non-positive, so exactly
+	// zero -- and Qt refuses a pixel size of 0 or less outright, leaving the
+	// size unset and the height at the default 18.641. Every small size it
+	// does accept gives a FRACTIONAL height, 1 px -> 1.156 and 2 px ->
+	// 2.328, which the integrality check above rejects first. So the two
+	// guards together leave this one nothing to catch from set_font() or
+	// QTTY_FONT_SIZE.
+	//
+	// It stays because a font FILE with zero metrics would reach it, which
+	// is not this API's to prevent, and because it is one line.
 	if (qRound(height) <= 0)
 		return QStringLiteral("line height is %1 px").arg(height);
 
