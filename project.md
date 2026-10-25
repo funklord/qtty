@@ -46929,7 +46929,10 @@ caught a vacuity while writing rather than after.
    wezterm, mlterm, foot and mintty, the palette remap in the quantiser,
    and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
    at 66.92 -- the `[-]` box for a partially checked item, and
-   `AlignBottom`/`AlignVCenter` for a display alignment. `input_router.cpp`
+   `AlignBottom`/`AlignVCenter` for a display alignment. **The scan is
+   finished otherwise -- see 8.539 for `application.cpp`, which is the
+   lowest-covered file in the tree and has no gap in it.**
+   `input_router.cpp`
    at 67.13 was examined on 2026-10-25 and is mostly NOT a gap -- 185 of its
    never-taken branches are defensive guards and short-circuit arms, all four
    shortcut contexts are covered, and the only lines never executed at all
@@ -47034,3 +47037,39 @@ scanned this way yielded a user-visible defect (8.533), two gaps worth
 closing (8.536, 8.537) and this one. Reading a low branch figure as a
 backlog would have been wrong in every case; what pays is the subset
 gcov marks as never executed AT ALL, which is a much shorter list.
+
+### 8.539 The lowest-covered file has no gap in it (2026-10-25)
+
+**`application.cpp` reports 56.61 per cent of branches taken, the lowest
+in the tree, and the figure is the instrument rather than the code.**
+Recorded so that the next reader does not spend a run on it: twelve lines
+are never executed at all, and every one is accounted for.
+
+- **Five are the deferring message handler's own branch** -- give the
+  terminal back, flush what was held, chain to the previous handler,
+  return. Asserted end to end by the `fatal_child()` checks, which run in
+  a forked child, so gcov never sees them. 8.529 measured that blind spot
+  and proved it on two other lines.
+- **Four are `setup()`'s font refusals**, ending in `qFatal`. A path that
+  aborts the process can only be exercised in a child, for the same
+  reason.
+- **Three are a guard whose own comment says it is unmet**: `cw <= 0 ||
+  ch <= 0` in `apply_font_now()`, for a font that passes
+  `grid_font_problem()` and still measures nothing. It exists because the
+  LATE path must decline rather than end the program, which is 8.516's
+  decision, and it is deliberately defensive.
+
+**And one thing was checked rather than assumed, which is why this entry
+is not a finding.** A check asserts that a late `set_font()` refuses an
+unusable font and says so -- and the warning it reads comes from the
+`grid_font_problem()` refusal, which IS executed, not from the uncovered
+guard beside it. `apply_font_now()` has two refusal paths and the suite
+exercises the one that can happen. Had it read the other, the check would
+have been passing without the code it names.
+
+**That makes the branch scan complete across the tree**, and the yield
+worth stating once: six files read, one user-visible defect (8.533), three
+gaps closed (8.536, 8.537, 8.538), and two files where a low figure meant
+nothing (8.531, this one). A low branch percentage is not a backlog; the
+never-executed subset is the short list, and even that needs reading
+before it is believed.
