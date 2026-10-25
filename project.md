@@ -2665,281 +2665,62 @@ discarding its own work.
 
 ## 0e. What I would pick up next
 
-**Rewritten 2026-09-04**, for the reason the version it replaces gave for
-rewriting the one before it: three of its six items had been struck in a
-day, and a list that records its own history is a list nobody reads. The
-closed ones are described where the work is -- the type-ahead residue in
-§7.1, the coverage decision and partial-line scrolling in §7.2.
+**Rewritten 2026-10-25**, by the standard the version it replaces set for
+itself: it had come down to one item belonging to whoever maintains the
+machine, a pointer at questions that are the holder's, and struck
+history. A list that records its own history is a list nobody reads, and
+the closed items are described where the work is.
 
-**And it lost an item within the hour, which is worth one sentence
-because of what the item was.** "An ownership model for the process-wide
-state the library takes" was written here as the holder's, and it was a
-counter: `resume()` takes a reference, `suspend()` restores on the last.
-The phrase was doing the deferring, not the problem -- see §7.4. **A
-question deferred under a grander name than it deserves is one nobody
-comes back to**, which is the failure mode this list exists to avoid and
-had just committed.
+**Two lessons from the old version are kept, because they are rules
+rather than items.** A question deferred under a grander name than it
+deserves is one nobody comes back to -- "an ownership model for the
+process-wide state the library takes" turned out to be a counter, and the
+phrase was doing the deferring. And a wrongly-deferred question is caught
+by nothing: a wrong technical claim meets a gate, a test or somebody
+re-deriving it, while a deferral sits in the document looking like
+diligence.
 
 In the order I would take them:
 
-1. **A second Qt 6 point release**, still the cheapest untaken
-   configuration and **not installable from this machine's archive**,
-   which is a sharper statement than the "absent from this machine" that
-   stood here. Re-measured 2026-10-17: `apt-cache policy qt6-base-dev`
-   offers exactly one candidate, 6.8.2+dfsg-9+deb13u2, the version already
-   installed, with Qt 5.15.15 beside it. So this is not an install, it is a
-   source build or another archive -- a different cost, and one belonging to
-   whoever maintains the machine rather than to a session that wanted the
-   configuration. Qt 5.15 is here and
-   is a port rather than an axis -- §8.1 priced it at three conditionals
-   in two files before the port, the fourth usage having been closed
-   without one; **measured 2026-10-25 it is thirteen, twelve of them in
-   `src/qt_compat.h`.** What a second 6.x would answer, with no decision at all,
-   is whether anything here depends on 6.8.2's particulars; the beerssh
-   exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
-   reason to want it.
+1. **The remaining never-taken branches**, the only item here that is
+   plain work. `grid_style.cpp` takes 74.01 per cent of 2001 branches at
+   least once and `ansi_backend.cpp` 71.00 of 1376 -- and the METHOD
+   matters more than the number, because three readings of it have been
+   wrong. Read gcov per BRANCH, not per line: a line carrying a call has
+   inlined arcs of its own. Skip arcs labelled `(throw)`. A never-taken
+   branch has three answers and only the first is a gap -- right and
+   untested, right and unreachable from that entry point, or reachable
+   only by the case it gets wrong. Confirm each candidate by asking the
+   suite with untruncated output, and run the sabotage FIRST: an entry
+   reports every check it reddens, which answers "does anything already
+   cover this" for one rebuild. 8.547, 8.556 and 8.559 each cost a cycle
+   to learn.
 
-2. **§0b's questions are the holder's** and are not work to pick up: RTL
-   scope, the bundled font, tooltips and hover, the severity glyph, and
-   whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0). **~~the
-   picture rule~~ was settled on 2026-10-07** and is 8.383. **~~the layout top margin~~ was settled and FIXED on
-   2026-09-01** by `66db797`, and §0b dropped it then while this line kept
-   it for five weeks -- in the very sentence that boasts of correcting the
-   slider pointer below. 8.382. `SH_Slider_AbsoluteSetButtons` was on
-   this list and was answered on 2026-09-05 -- the left button sets the
-   value -- which is why the pointer is corrected here rather than left to
-   send a reader at a decision already taken.
+2. **8.530's exit, when it recurs.** It is instrumented now: the `test`
+   target names the exit code, where 2 is the watchdog, 124 the outer
+   timeout and 128+n a signal. The prime suspect is weakened -- twenty
+   runs with the dangling captures deliberately restored reproduced
+   nothing -- and twenty of its original twenty-three non-reproductions
+   ran a suite that could not carry the cause. Nothing to do until a
+   sighting, and the sighting will say which mechanism it was.
 
-3. **Four things an adopting project meets that are decisions rather than
-   defects.** Added 2026-09-05 after the library was made installable and
-   a consumer was built against it -- see the adoption entries above.
-   Every one of these is reachable, understood, and waiting on somebody's
-   judgement rather than on work:
+3. **The holder's, and not work to pick up**: §0b's rows, `design.md`'s
+   OQ-3 product sequencing -- its technical half is answered, both Qt
+   versions build and pass at thirteen conditionals in two files -- and
+   OQ-5, accessibility, where `QAccessible` appears nowhere in the tree.
 
-   - **`set_quit_keys()` through `exec()` is done** (8.224), by the
-     shape this entry pointed at: a free function, as `capabilities()`
-     and `shell_out()` are, with the one difference those two do not need
-     -- an application picks its quit keys while building its window, so
-     it sets the default every router starts from as well as reaching
-     the ones already running.
-   - **The font can be chosen now** (8.225). `setup()` still installs
-     DejaVu Sans Mono at 16 px and still refuses a font whose metrics
-     are not integral -- that is R3 and stays -- but
-     `Qtty::set_font()` names another for an application and
-     `QTTY_FONT`/`QTTY_FONT_SIZE` for whoever runs it. §0b's
-     bundled-font question is the other end of this and is untouched.
-   - **~~An application's own `QStyle` is discarded.~~ Settled 2026-10-06
-     by the copyright holder, in the document's favour, and fixed.**
-     `setup()` wrapped a hardwired Fusion where design.md section 12
-     promises "an app's custom style is not lost -- it becomes GridStyle's
-     proxy base". It takes the style the application already had. See
-     8.380, which carries the measurement and the one thing the suite does
-     not hold.
-   - **~~`luminance()` assumes a dark ground for a Default colour.~~
-     Settled 2026-10-07 by the copyright holder and fixed.** It reads the
-     ground the terminal reported, and an unstated half is assumed to
-     contrast with the stated one -- a reported light background implies
-     dark ink. See 8.381.
+4. **Two things this tree cannot close alone.** The beerssh probe matrix
+   in §0c needs that project built with a terminal under test. And the
+   148 pointers from this document into `claude-guidelines` -- 116 to
+   `evidence.md`, 20 to `running-code.md`, 12 to the tree itself -- are
+   unfollowable for a reader who cannot reach it, against a rule set
+   2026-10-25 that a project stands on its own. Whether that earns a pass
+   over a 48,000-line file is the holder's call; new entries state their
+   principles inline.
 
-4. **The licence is the one thing that blocks distribution**, and it is
-   the holder's alone. Recorded here once, as a blocker rather than as a
-   suggestion: a project outside this workspace cannot take a dependency
-   on qtty until its terms exist. Nothing else in this list stops
-   somebody using it inside the workspace today.
-
-**~~One thing the pixel work leaves open~~ -- closed, and this entry was
-sending readers at work already done.** It asked for "a small driver that
-presents a frame through `AnsiBackend` inside kitty so the capture has
-something of qtty's to look at", on the grounds that every tier was
-verified by its emitted bytes and none by what a terminal draws.
-
-`tool/screen-probe.cpp` is that driver and its own opening comment says
-so. `tool/screen-check` compiles it when the library is built -- not
-shipped and in no `.pro`, because a binary only a screen test uses does
-not belong in an install -- and drives six captures: the kitty protocol,
-sixel under xterm, the halfblocks tier, the overlay, the placeholder and
-tmux. Two terminals and two wire formats, which is the point: they share
-nothing but this tree, so a geometry both draw is not a property of one
-renderer.
-
-**Run to confirm that rather than inferred from the file existing**, since
-a driver that exists and a gate that works are different claims. `make
-test-screen`, 2026-09-28, rc=0:
-
-    kitty      drew left=199 width=35, predicted 198 and 36
-    overlay    drew left=198 width=36, predicted 198 and 36
-    after clear_overlay the marker is gone, control still 2592 px
-    tmux       left=198 width=36, implying a cell of 9.00
-    xterm      drew left=135 width=24, predicted 132 and 24
-    halfblocks drew left=135 width=24, predicted 132 and 24
-
-within each path's own slack -- exact for kitty, and the three-unit xterm
-residual is sixel stating colour and position through DEC's percentages.
-
-**Rewritten rather than struck through in passing, because the sweep that
-found it is the reusable part.** Swept 2026-09-28 over §0e and §11 for
-gap language -- *needs*, *cannot*, *absent*, *not built*, *missing* --
-which returned eight candidates. One was stale: this. Two were the
-holder's decisions, one was the licence, one was a Qt point release this
-machine genuinely still lacks (6.8.2 is the only 6.x here, with 5.15.15
-beside it, measured rather than recalled), and **three were false
-positives of exactly the kind `evidence.md` names** -- recorded reasoning
-from a past sabotage analysis, where "the focus `QPointer` needs a check
-that depends on a stale pointer surviving, and none constructs that" is a
-closed finding wearing an open gap's words.
-
-So one stale claim in eight candidates, and the detector cannot tell a
-recorded limit from an open gap. The part worth keeping is which claims
-it CAN settle: the ones naming an artifact. This one named a missing file,
-and one `ls` answered it.
-
-**And two standing ones that are method rather than work.**
-
-The claims in this document that rot are the countable ones written in
-the present tense about the tree's own shape. `make count-check` holds
-the headline figure and `make test-platforms` now holds it per
-configuration; the rest is a grep for a number beside a noun, and §0c
-records the one instrument that does NOT work for it.
-
-**A SAMPLER'S HARD INPUT IS THE LENS THIS SESSION LEAVES.** Two
-subsystems in one day lost a shape to a point sample and the suite was
-green through both: `compose_halfblocks()` read one pixel per half cell,
-and `fill_polygon()` asks which cell centres a span contains. Neither
-had a fixture supplying a thin shape, because a suite assembled to
-confirm correct behaviour does not select for the input that
-discriminates. 8.383 and 8.384.
-
-So the lens for the next pass is **every place that reduces a continuous
-thing to cells, asked what it does with a thing thinner than one** --
-and the fixture has to be built rather than found. What is swept: the
-two above, and the encoders and `crop_placement()` beneath them, which
-answer correctly for a one-cell placement and for a degenerate
-1x1-pixel image.
-
-**~~The lens for the next pass~~ -- read end to end 2026-10-08 and
-exhausted, so the next pass wants a different one.** Every remaining
-member already answers the question, and each carries its own
-measurement in the comment above it, which is better evidence than this
-sweep: `cells_of_rect()` ends in `qMax(1, qRound(...))` on both axes, so
-nothing that reaches it can vanish -- which is also why the two defects
-found were in the paths that BYPASS it. `fill_rectf()` states the
-distinction this lens is really about, "no extent is not a thin extent",
-and separates an empty rect from a one-pixel one; it was measured on
-`QColorDialog`, whose swatches arrive as `2x-2`. `line()` applies the
-same half-cell test along a line's length, measured on a mnemonic
-underline traced at (39.00,16.50) to (49.00,16.50) against cw = 10.
-`draw_box()` cannot be reached with a degenerate rect, both callers
-guarding at `>= 2`.
-
-**How that was established, because it is weaker than what the entry
-asked for.** By reading, not by building fixtures. What makes it worth
-recording anyway is that the paths were measured by whoever wrote them
-and the numbers are in the comments -- so a fixture pass here would
-mostly re-measure what is already written down, which is the one thing
-this sweep can say and a fresh lens cannot.
-
-**~~One case is left unsettled~~ -- measured the same day, and the
-premise for leaving it open was wrong.** A zero-LENGTH line: the
-half-cell test gives it one cell, and this said whether that was right
-depended on the pen, Qt painting a pixel under a square or round cap and
-nothing under a flat one. **Measured, Qt lights one pixel either way** --
-a claim about Qt written from memory rather than read. So both engines
-agree under both caps, which is what `fill_rectf()` already says should
-happen: a one-pixel extent covers a pixel somebody asked for, and an
-empty one does not.
-
-It is pinned as a RELATIONSHIP rather than a count -- a cell is marked
-exactly when Qt lights a pixel, under either cap -- so a Qt that changes
-its mind does not redden it and a divergence between the two engines
-does. **Its sabotage is the plausible wrong fix**: a guard refusing a
-degenerate line, which is what an empty `fillRect()` correctly gets and
-this correctly does not.
-
-**And the edit that added it tripped the substring-anchor hazard this
-document already carries.** The insertion anchored on
-`\tQtty::set_font(QString(), 0);`, which is a substring of the real line
-at two tabs -- so the block went in between that line's leading tabs,
-splitting them. The guard that catches this is the match COUNT, and it
-was written `>= 1` rather than `== 1`, which is the one spelling that
-cannot catch it. **`make style` caught it instead**, naming the
-indentation of every line of the block, which is a gate reporting a
-genuine fault rather than a stylistic one.
-
-**Re-run the sabotage for checks NEAR what you changed, not only for the
-check you added.** A fix can make a neighbouring check stop
-discriminating, and nothing announces it: the check goes on passing, its
-message goes on describing a fault it can no longer see, and it is
-quoted afterwards as coverage. Measured 2026-09-04 -- the terminal-owner
-stack removed the only coverage the emergency restore's disarm had,
-within an hour of that coverage being written, because the improved path
-now restores the terminal by a route that does not need it. The tell was
-not available by reading; only re-running the older sabotage found it.
-
-**Applied once and it found a second instance immediately.** The handler
-COUNT blinded the check written to catch a broken restore. That check's
-comment said install and restore were coupled by a "did I install" flag,
-so a restore that never happened left the flag set and a second backend
-installed nothing -- true of the flag, false of the count, which returns
-to zero on suspend either way. Re-running the old sabotage after the
-count landed is what showed it: removing the restore now reddens the two
-direct checks and nothing else. The comment is withdrawn rather than
-quietly deleted, because it named a mechanism a reader would otherwise
-still believe.
-
-**Two instances in one evening, from two unrelated fixes**, which is what
-makes this a standing item rather than an anecdote: an improvement that
-makes a fault unreachable by one route silently retires whatever was
-watching that route.
-
-**And both sat in the same cluster, which says where to spend the
-re-runs.** The other four fixes of that evening could not blind
-anything, and reading says why rather than guessing: damage-limited
-`present()` leaves every test caller on the unchanged path, since they
-pass an empty region explicitly; the `drawPixmap` crop could only reach
-a check that passes a source rectangle, and a probe measured that none
-does; the focus `QPointer` needs a check that depends on a stale pointer
-surviving, and none constructs that; the pid reset was re-run live and
-still reddens `SIGCONT`.
-
-So the risk concentrates on a fix that changes **how shared state is
-owned or released** -- both instances were exactly that -- and a fix to
-a local computation cannot retire a neighbouring check, because nothing
-else was reaching the fault through it. Re-run the sabotages whose
-subject shares state with what changed, rather than all of them.
-
-**THE LENS THAT WORKED ON 2026-10-08, and what is left of it.** *A record
-of what a PEER holds, which stops being true at a handover and was
-restored on one route or none.* Four defects: 8.410 the settle the
-compositor could not see, 8.411 every kitty picture gone after a Ctrl+Z,
-8.412 a letter typed after a shell-out arriving as an arrow key, 8.413 a
-paste abandoned mid-flight freezing the keyboard. It came from
-`read_winch()`'s handover block, which already held two such restores --
-the title and the cursor -- each a defect somebody had paid for, with the
-rest of the family sitting beside them unlooked-at.
-
-**It is exhausted for all three peers**, which is the useful half to
-leave. The TERMINAL: every record enumerated under 8.411, with
-`last_pixel_size_` covered by construction. The APPLICATION: all eight
-setters under 8.414, where `set_font()` was the only one whose sole
-reader had already run. QT ITSELF: the style is wrapped on
-`QEvent::StyleChange`, the font is 8.414, and there is no palette cache
-to go stale -- widget colours resolve per paint from the option's own
-palette, and `s_theme` is the terminal's colours rather than Qt's.
-
-**So the next lens is not this one, and the two candidates it suggests
-are:** *a branch of a state machine that does not consult the flag the
-machine keeps* -- 8.415's shape, swept for every `bool` in the ANSI
-backend and clean, so the unswept part is the router's pointer state
-(`grab_`, `hovered_`, `popups_`) -- and the mouse-grab question in 0b,
-which is that same shape with an owner rather than a fix.
-
-**Derive the next lens from the last defect, and finish it.** Every fault
-found on 2026-09-04 came from a lens the previous fault suggested rather
-than from a list decided in advance -- a stated rule obeyed in some
-places, a flag keyed to the wrong end, process-wide state with an
-instance lifetime, a documented contract nothing writes down. Each was
-run to exhaustion and the empty part recorded, which is what makes the
-next one derivable instead of a guess.
+5. **The GUI twin's `z`**, unchanged and still unassertable: the
+   offscreen platform does not support `raise()`, so the stacking cannot
+   be checked here, and a fix nothing defends is worse than none.
 
 ## 0. What this is
 
