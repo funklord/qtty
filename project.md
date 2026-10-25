@@ -1315,7 +1315,13 @@ and it says that shape is absent.
     i/50, present() through an AnsiBackend with stdout on a file, and
     sample resident pages from /proc/self/statm every thousand frames.
 
-**The sanitizers** are `make test-sanitize`, and the instrument check
+**The sanitizers** are `make test-sanitize`. **Re-taken 2026-10-25 and
+GREEN** -- exit 0, no failing checks, **zero** AddressSanitizer,
+LeakSanitizer or UndefinedBehavior reports, with `-fsanitize=address,undefined`
+in the build log and 51 `__asan` symbols in the binary. It was red before
+8.563: one check failed and a second passed vacuously, both because they
+read `SIGTSTP` against `SIG_DFL` when a `make` recipe starts the binary
+with it ignored. The instrument check
 that makes a clean run mean anything is two probes and a grep:
 
     grep -o '\-fsanitize=[a-z,]*' <build log>      # the flag was used
@@ -48189,3 +48195,9 @@ was about the environment while reading as if it were about the code.**
 What it tested was what the shell did before `main`. Assert the
 relationship -- what changed, and that it changed back to what it was --
 and the environment stops being able to decide the verdict.
+
+**Confirmed where it surfaced.** `make test-sanitize` is green on the
+fixed tree -- exit 0, no failures, zero sanitizer reports, the flag and
+the 51 `__asan` symbols still verified. The fix was checked by hand in two
+invocation forms first, and that was not the close: the fault appeared in
+this configuration, so this is the configuration that had to agree.
