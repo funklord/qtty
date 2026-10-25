@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2417 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2419 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47346,3 +47346,51 @@ counting session buses, which is `running-code.md`'s self-matching watcher
 wearing a counter's clothes. **In a tree this well worked, the instrument is
 now a likelier suspect than the code**, and that is worth carrying in rather
 than rediscovering.
+
+### 8.547 set_priority's other arm, and how the branch scan misleads (2026-10-25)
+
+**A real gap, found by asking the suite rather than the coverage data.**
+`set_priority(w, Priority::Required)` clears the dynamic property instead of
+writing Required into it, so a widget explicitly told it is required is the
+same object as one never told anything. Every `set_priority()` call in the
+suite passes `Optional` -- measured by grep, which is what settled it -- so
+the clearing arm had never run. Its stake is the documented path: `grid.h`
+says the point of a dynamic property is that an application need not link
+qtty and can set it from a `.ui` file, so a stale `1` left behind would make
+a Required widget read as Optional to everything reading the property
+directly. Asserted with a control first, since a `set_priority()` that did
+nothing at all would satisfy the clearing assertion on its own.
+
+**The whole-tree coverage ranking, which nobody had.** 8.535's scan named
+four files chosen one at a time; one instrumented build plus `gcov` over
+every object gives the picture for the same cost. **Line coverage is 95 to
+100 per cent across all 14 source files** -- lowest `application.cpp`
+95.18, then `ansi_backend.cpp` 95.46 and `grid_style.cpp` 97.80, with six
+files at 100. The branch figures that matter are the two biggest files,
+which the scan never reached: **`grid_style.cpp` takes 73.81 per cent of
+2001 branches at least once, `ansi_backend.cpp` 70.93 per cent of 1376** --
+so roughly 524 and 400 never-taken branches, a population the size of
+`input_router.cpp`'s, which 8.535 found was mostly defensive guards.
+
+**AND THE OBVIOUS WAY TO MINE THAT LIST IS WRONG, which cost this entry its
+first two candidates.** Extracting source lines that carry a
+`never executed` branch flags the LINE, not the branch -- a line with a
+call on it has branches of its own, inlined, and one of those being untaken
+says nothing about the line's own condition. It named the four
+`PE_IndicatorArrow*` cases as unreached; they are **already covered**, by a
+check in `suite_widgets` that asserts all four glyphs and explains in its
+own comment why no widget in this style reaches them. The check had been
+there all along and the scan said otherwise.
+
+So the instruction for whoever mines the remaining ~900: **gcov's per-branch
+entries have to be read per branch**, and a candidate is confirmed by asking
+the suite -- grep for the call, read what it passes -- not by the extraction
+that proposed it. That is how the one real finding here was settled and how
+the two false ones were dropped.
+
+**Fifth instrument fault of the session, and the first aimed at the method
+itself.** The others were a `grep -E` whose parentheses were groups, a count
+treating a blank glyph as inked, a suite run against a failed build, and a
+`ps` pipeline matching its own command line. This one differs in kind: it
+discredits the scan that 8.535 ran and that its hand-over invites the next
+session to continue, so it is written here rather than left as a caution.

@@ -8428,3 +8428,14 @@ find = "\tif (payload.isEmpty()) return {};\n"
 into = "\tif (payload.isEmpty()) out += \"\\033_G\" + ctrl + \";\\033\\\\\";\n"
 count = 1
 check = "a null image puts nothing on the wire, rather than a kitty transmit control with no image behind it"
+
+[[sabotage]]
+# The setter writes Required into the property instead of clearing it, so a
+# widget told it is required reads as a stale hint to anything looking at
+# the documented property rather than through priority_of(). 8.547.
+name = "setting a widget back to Required leaves a stale hint"
+file = "src/grid/grid_style.cpp"
+find = "\tif (p == Priority::Required) w->setProperty(k_priority, QVariant());\n\telse                         w->setProperty(k_priority, int(p));\n"
+into = "\tw->setProperty(k_priority, int(p));\n"
+count = 1
+check = "setting a widget back to Required clears the property rather than writing Required into it, leaving it indistinguishable from a widget that was never given a hint"

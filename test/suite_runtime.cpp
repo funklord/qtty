@@ -1979,6 +1979,33 @@ int suite_runtime() {
 	// The value is asserted as a literal too, because a .ui file carries a
 	// number and not an enumerator: reordering Priority would move it under
 	// a suite that never looks.
+	// AND THE SETTER'S OTHER ARM, which nothing had called. Every
+	// set_priority() in this file passes Optional, so the Required arm --
+	// which CLEARS the property rather than writing Required into it -- had
+	// never run. Its contract is in grid.h and it is about the property
+	// above being the documented path: a widget explicitly told it is
+	// required must be the same object as one that was never told anything,
+	// or an application that sets the hint back is left with a stale 1 and
+	// reads as Optional to everything that looks at the property directly.
+	{
+		QWidget w;
+		set_priority(&w, Priority::Optional);
+		// The control, without which a set_priority() that did nothing at
+		// all would satisfy the assertion below.
+		CHECK(w.property("qtty.priority").isValid(),
+		      "a widget given a priority hint carries the property, which is"
+		      " what makes the clearing below mean something");
+		set_priority(&w, Priority::Required);
+		QWidget untouched;
+		CHECK(!w.property("qtty.priority").isValid()
+		      && priority_of(&w) == Priority::Required
+		      && w.property("qtty.priority")
+		             == untouched.property("qtty.priority"),
+		      "setting a widget back to Required clears the property rather"
+		      " than writing Required into it, leaving it indistinguishable"
+		      " from a widget that was never given a hint");
+	}
+
 	{
 		CHECK(int(Priority::Optional) == 1,
 		      "the priority a .ui file writes as 1 is the optional one");
