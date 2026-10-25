@@ -47976,3 +47976,25 @@ What stands is the correction: the spin box's drawn-versus-hit agreement
 is defended, in both directions, and 8.558's scroll bar gap was real
 because that control's vertical axis genuinely had none -- the two cases
 are not alike, and I assumed they were.
+
+**The audit was then used as intended, once, and it paid immediately.**
+The next candidate for 8.558's lens was the tool button's menu arrow --
+another two-derivation site whose comment records the same fault, a press
+on the arrow cell firing the default action and opening nothing. Applying
+the break by hand and running the suite reddened **exactly one** check: `a
+tool button's menu opens from the cell its arrow is drawn in`. Covered,
+and by a better assertion than the one I would have written -- it asks
+whether the menu OPENS from that cell, which is behaviour, where mine
+would have compared two rectangles.
+
+**One mechanical note for anyone repeating it.** A throwaway entry in
+`sabotage.toml` will not do: `--validate` refuses an entry whose named
+check is not already spelled in `test/`, which is correct and is exactly
+the case here, since the check does not exist yet. So the audit is run by
+hand -- save the file, apply the break, build, run the whole binary, read
+the FAIL lines, restore the file -- and the FAIL list is the census.
+
+**So the lens is exhausted for these three controls.** The scroll bar's
+vertical axis was a real gap and has a check; the spin box and the tool
+button were already defended. Of the four complex controls that keep two
+derivations, three are now accounted for and the slider keeps only one.
