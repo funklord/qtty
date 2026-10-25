@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2427 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2428 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47634,6 +47634,26 @@ an unexercised line. Measured, the arm is correct -- a BEL-terminated
 **The ST form is the control and the colours differ on purpose.** The
 second reply cannot pass on the first one's residue, and had both arms
 failed the fault would have been the fixture rather than the BEL.
+
+**AND THE SAME LINE HAD A SECOND UNTAKEN ARC, which the first check could
+not reach.** `c == 0x07 && pending_[1] == ']'` has two conditions and so
+two pairs of arcs. Feeding a BEL-terminated OSC exercises the second
+operand TRUE; what nothing had fed is a **BEL inside a sequence where it
+must be IGNORED**, which is the whole point of that operand -- BEL closes
+an OSC and nothing else. A DCS carrying one now covers it.
+
+**So a line is not covered because a check made it run.** That is the
+per-branch rule from 8.547 turned on this file's own work: the BEL commit
+reported a gap closed and closed one arc of four. Re-reading the arcs after
+adding a check is what caught it, and `gcov` had to be re-run first --
+mining the stale data would have shown the line still open and said
+nothing about which half.
+
+**The BEL goes BEFORE the payload on purpose.** After it, a broken guard
+would terminate the DCS with the hex already read and `truecolor` would
+come out true either way -- the check would pass against the fault. Before
+it, a broken guard ends the sequence early and `524742=38` is delivered as
+nine keystrokes, so the key count says it.
 
 **And this entry's first version prescribed the WRONG fixture**, which is
 worth keeping because the mistake is easy to repeat: it said to take an

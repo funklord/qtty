@@ -1554,6 +1554,30 @@ int suite_backend() {
 		      " decodes as itself rather than losing its introducer");
 	}
 
+	// A BEL INSIDE A DCS, WHICH MUST NOT TERMINATE IT. The arm above reads
+	// `c == 0x07 && pending_[1] == ']'`, and the second half is the whole of
+	// it: BEL closes an OSC and nothing else. Branch coverage put that
+	// operand at `taken 0%` even after the BEL-terminated OSC check was
+	// added -- feeding an OSC exercises it TRUE, and nothing had ever fed a
+	// BEL inside a sequence where it must be ignored.
+	//
+	// Two arcs on one line, and the first check could not reach the second.
+	// That is the per-branch rule turned on this file's own work: a line is
+	// not covered because a check made it run.
+	//
+	// The BEL goes BEFORE the payload on purpose. After it, a broken guard
+	// would terminate the DCS with the hex already read and `truecolor`
+	// would come out true either way -- the check would pass against the
+	// fault. Before it, a broken guard ends the sequence early and
+	// `524742=38` is delivered as nine keystrokes, so the key count says it.
+	{
+		feed("\033P1+r\a524742=38\033\\\033[A");
+		CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+		      "a BEL inside a DCS does not close it, so the sequence is"
+		      " consumed whole and the arrow key after it is the only key"
+		      " delivered");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable
