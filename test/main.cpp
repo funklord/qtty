@@ -172,7 +172,13 @@ int main(int argc, char **argv) {
 	Qtty::GridGuard::install(app);
 
 	bool record = false, soak = false;
-	QString only;
+	// A LIST, not one name. It was a single QString and the last argument
+	// won, so `qtty-tests runtime backend` ran only the backend -- and the
+	// one thing a suite-filtered run cannot otherwise do is reproduce a
+	// fault that needs an EARLIER suite to have run first. 8.562 is such a
+	// fault: a precondition that holds alone and fails after its
+	// predecessors, which is exactly what a pair of names tests.
+	QStringList only;
 	for (int i = 1; i < argc; ++i) {
 		if (!strcmp(argv[i], "--record")) record = true;
 		// The soak is not a suite and must not be counted as one: it runs
@@ -180,7 +186,7 @@ int main(int argc, char **argv) {
 		// 0c is where its result belongs. Returning here keeps it out of the
 		// PASS tally that count-check compares against project.md.
 		else if (!strcmp(argv[i], "--soak")) soak = true;
-		else only = QString::fromLatin1(argv[i]);
+		else only << QString::fromLatin1(argv[i]);
 	}
 	if (soak) return run_soak();
 	struct { const char *name; std::function<int()> run; } suites[] = {
@@ -199,7 +205,8 @@ int main(int argc, char **argv) {
 	};
 	int ran = 0;
 	for (auto &s : suites) {
-		if (!only.isEmpty() && only != QLatin1String(s.name)) continue;
+		if (!only.isEmpty() && !only.contains(QLatin1String(s.name)))
+			continue;
 		++ran;
 		printf("\n== %s ==\n", s.name);
 		Qtty::GridGuard::reset();
@@ -307,7 +314,7 @@ int main(int argc, char **argv) {
 	// asked to rewrite untouched.
 	if (!only.isEmpty() && ran == 0) {
 		printf("FAIL: '%s' names no suite, so nothing ran\n      suites:",
-		       qPrintable(only));
+		       qPrintable(only.join(QLatin1String(", "))));
 		for (auto &s : suites) printf(" %s", s.name);
 		printf("\n");
 		++failures;

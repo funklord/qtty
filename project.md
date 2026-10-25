@@ -48092,3 +48092,52 @@ it is worth more than the soak result: the broken probe and a program with
 no leak produce the SAME flat line, and nothing but the deliberate control
 separates them. That is why the control is inside the target rather than
 beside it in a comment.
+
+### 8.562 A check whose verdict depends on the shape of stdout (2026-10-25)
+
+**The suite is not green under the sanitizers, and the cause is not the
+sanitizers.** `make test-sanitize` had never been run this session. It
+comes back with **zero AddressSanitizer, LeakSanitizer or UndefinedBehavior
+reports** -- the flag reached the binary, 51 `__asan` symbols in it, so
+that clean result means something -- and exactly one failing check:
+`nothing has taken the terminal yet, so the dispositions below are a
+backend's own doing and not an earlier fixture's`.
+
+**It fails in an ordinary build too, and what decides it is where stdout
+goes.** Measured on `qtty-tests cells backend`, same binary, three
+destinations:
+
+| stdout | `tstp_default_before` | verdict |
+|---|---|---|
+| a regular file | 1 | PASS |
+| `/dev/null` | 1 | PASS |
+| a **pipe** | 0 | **FAIL** |
+
+Six runs for six on the pipe. So `SIGTSTP` carries a handler before the
+probe backend is constructed, but only when the binary's standard output
+is a pipe -- and `make` gives its recipes a pipe, which is why the
+sanitized run failed and a direct `> file` run of the same build does not.
+
+**SIGTSTP is the backend's**, installed with `SIGCONT` by the arm in
+`resume()` and restored only when the last owner goes -- the
+`g_owners > 0 && --g_owners == 0` teardown. So the premise can hold only
+while no armed backend has existed, and something about a piped stdout
+leaves one armed, or arms one earlier. **Which code does that is NOT
+established** and is the next step; it is reproducible in one command,
+which is the hard part of a fault like this and is already done.
+
+**The multi-suite runner was added to chase it and is kept.** The filter
+was a single `QString` and the last argument won, so
+`qtty-tests runtime backend` silently ran only the backend -- and a fault
+that needs an earlier suite to have run first cannot be reproduced without
+a pair. It is a `QStringList` now.
+
+**What this costs, which is why it matters more than one red check.** A
+suite whose verdict depends on how it was invoked has two verdicts, and
+the greener one is the one a developer sees: `make check` captured to a
+file passes, the same gate through a pipe does not. Every green run in
+this document was taken one of those two ways and the document does not
+say which. **This is `running-code.md`'s stdout hazard -- a bound that
+depends on the shape of your stdout is one you can remove by accident
+while investigating -- met from the other side: not a bound removed by
+looking, but a VERDICT changed by looking.**
