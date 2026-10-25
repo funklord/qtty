@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2414 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2417 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47208,3 +47208,47 @@ the last -- was reachable only by the case it got wrong. **A never-taken
 branch is a question about who would take it**, so the answer is sometimes a
 check, sometimes nothing, and sometimes a deletion. Covering the arm as it
 stood would have frozen the defect in a test.
+
+### 8.544 Two routes into the paint engine nothing had taken (2026-10-25)
+
+**The lens, and it is evidence.md's rather than a new one: an interface is
+only as wired as its least-used method.** `CellPaintEngine` overrides nine
+`QPaintEngine` operations, and a widget painting itself may call others --
+those reach the cells through `QPaintEngine`'s own implementations rather
+than through anything written here. Measured by name: `drawPoints` appears
+nowhere in `src/` or `test/`, and `drawImage` nowhere in `test/`. Neither
+had ever been put through this engine.
+
+**Both are correct, and that is the finding.** `drawImage` produces the
+same single placement over the same cells as `drawPixmap` of the same
+image, so `QPaintEngine`'s conversion lands it in the section 8.6 funnel;
+three points ink the three cells they fall in and no others, each drawn as
+a pen-wide rectangle the fill path resolves to one cell. Recorded as
+plainly as a fix, because the next session should not re-probe them.
+
+**The checks are the deliverable, not the probe.** An unexercised route is
+one that a later change to `drawPixmap()` or to the fill path can break
+with nothing saying so, and the `drawImage` check asserts the RELATIONSHIP
+to `drawPixmap` rather than a rectangle -- a literal `QRect(0, 0, 2, 2)`
+would pass if both routes broke the same way. Both were seen to fail
+against deliberately wrong expectations before being kept.
+
+**And the instrument was the fault again, for the third time this
+session.** The first count of the `drawPoints` result reported 24 inked
+cells of a 24-cell buffer -- a flood, and a convincing one, from code that
+was right. The test was `!ch.isEmpty() || bg != Default`, and every cell
+in a `CellBuffer` holds a SPACE rather than an empty string, so the first
+clause was true everywhere. Reading the cells out row by row showed three
+coloured cells at exactly the three points. §0d already says to check the
+instrument before believing the result; what this adds is the specific
+trap, that an empty glyph and a blank glyph are different things in this
+buffer, and a count keyed on the first can never fail.
+
+**Two things this closes off rather than leaves open.** `drawEllipse` and
+`drawArc` are reached from `cell_paint.cpp` itself and so are already
+exercised; `drawChord` and `drawRoundedRect` appear nowhere in the tree at
+all, and both were measured rather than reasoned about: each inks cells, so
+`QPainter` does convert them to a path and so to the overridden `drawPath`.
+The sentence that stood here first said only that this was expected, which
+is a claim about Qt's internals; asking the engine cost one build and
+turned an open item into a closed one.

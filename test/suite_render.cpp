@@ -4705,5 +4705,128 @@ int suite_render(bool record) {
 		}
 	}
 
+	// TWO ROUTES INTO THE ENGINE THAT NOTHING HAD EVER TAKEN. The engine
+	// overrides nine QPaintEngine operations; a widget painting itself can
+	// call others, and those reach the cells through QPaintEngine's own
+	// implementations rather than through anything written here. Measured:
+	// `drawPoints` appeared nowhere in src/ or test/, and `drawImage`
+	// nowhere in test/ -- so neither had been put through the engine once,
+	// which is the least-used-method hazard rather than a suspicion about
+	// either.
+	//
+	// Both turned out correct, and the checks are here so that stays true:
+	// an unexercised route is one a later change to drawPixmap() or to the
+	// fill path can break without anything saying so.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QImage img(cw * 2, ch * 2, QImage::Format_RGB32);
+		img.fill(Qt::red);
+		Qtty::CellBuffer a(8, 3), b(8, 3), c(8, 3);
+		QVector<Qtty::CellImage> pm_pl, im_pl;
+		{
+			Qtty::CellPaintDevice dev(a);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw * 2, ch * 2),
+			             QPixmap::fromImage(img));
+			p.end();
+			pm_pl = dev.placements;
+		}
+		{
+			Qtty::CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.drawImage(QRect(0, 0, cw * 2, ch * 2), img);
+			p.end();
+			im_pl = dev.placements;
+		}
+		// The RELATIONSHIP rather than either placement: a widget that
+		// paints a QImage is entitled to the same picture as one that
+		// paints the pixmap of it, and asserting the rectangle alone
+		// would pass if both routes broke the same way.
+		const char *same = "a widget painting a QImage gets the same"
+		    " placement over the same cells as one painting the pixmap of"
+		    " it, drawImage reaching the section 8.6 funnel through"
+		    " drawPixmap";
+		if (pm_pl.size() == 1 && im_pl.size() == 1
+		    && im_pl[0].cell_rect == pm_pl[0].cell_rect)
+			printf("PASS: %s\n", same);
+		else {
+			printf("FAIL: %s\n", same);
+			++r;
+		}
+
+		// One cell per point, and no others. The count has to exclude the
+		// cells a point did NOT fall in, because the first attempt at this
+		// counted a space as an inked glyph and reported all 24 cells of a
+		// 24-cell buffer -- an instrument that cannot fail, over code that
+		// was right.
+		{
+			Qtty::CellPaintDevice dev(c);
+			QPainter p(&dev);
+			p.setPen(Qt::red);
+			const QPointF pts[3] = { QPointF(cw / 2, ch / 2),
+			                         QPointF(cw * 3, ch / 2),
+			                         QPointF(cw * 5, ch * 2) };
+			p.drawPoints(pts, 3);
+			p.end();
+		}
+		int coloured = 0;
+		for (int y = 0; y < c.rows(); ++y)
+			for (int x = 0; x < c.cols(); ++x)
+				if (c.at(x, y).bg.kind() != Qtty::Color::Default) ++coloured;
+		// drawRoundedRect and drawChord, the two remaining operations that
+		// appear nowhere in this tree. QPainter is expected to convert both
+		// to a path and so to the overridden drawPath -- expected is not
+		// measured, which is why this asks the engine rather than reasoning
+		// about Qt. A shape that inks nothing is the failure that matters:
+		// a widget drawing its own rounded panel would simply not appear.
+		Qtty::CellBuffer rr(8, 3), ch_b(8, 3);
+		{
+			Qtty::CellPaintDevice dev(rr);
+			QPainter p(&dev);
+			p.setBrush(Qt::red);
+			p.setPen(Qt::red);
+			p.drawRoundedRect(QRectF(0, 0, cw * 4, ch * 2), 4, 4);
+			p.end();
+		}
+		{
+			Qtty::CellPaintDevice dev(ch_b);
+			QPainter p(&dev);
+			p.setBrush(Qt::red);
+			p.setPen(Qt::red);
+			p.drawChord(QRectF(0, 0, cw * 4, ch * 2), 0, 180 * 16);
+			p.end();
+		}
+		const auto coloured_in = [](const Qtty::CellBuffer &g) {
+			int n = 0;
+			for (int y = 0; y < g.rows(); ++y)
+				for (int x = 0; x < g.cols(); ++x)
+					if (g.at(x, y).bg.kind() != Qtty::Color::Default) ++n;
+			return n;
+		};
+		const char *paths = "a rounded rectangle and a chord both reach the"
+		    " cells, QPainter converting each to a path and so to the"
+		    " drawPath this engine does override";
+		if (coloured_in(rr) > 0 && coloured_in(ch_b) > 0)
+			printf("PASS: %s\n", paths);
+		else {
+			printf("FAIL: %s (rounded %d cell(s), chord %d cell(s))\n",
+			       paths, coloured_in(rr), coloured_in(ch_b));
+			++r;
+		}
+
+		const char *dots = "three points ink the three cells they fall in"
+		    " and no others, QPaintEngine drawing each one as a pen-wide"
+		    " rectangle the fill path resolves to a single cell";
+		if (coloured == 3
+		    && c.at(0, 0).bg.kind() != Qtty::Color::Default
+		    && c.at(3, 0).bg.kind() != Qtty::Color::Default
+		    && c.at(5, 2).bg.kind() != Qtty::Color::Default)
+			printf("PASS: %s\n", dots);
+		else {
+			printf("FAIL: %s\n", dots);
+			++r;
+		}
+	}
+
 	return r;
 }
