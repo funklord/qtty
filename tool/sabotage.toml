@@ -8470,3 +8470,23 @@ find = "\tif (safe.size() > kMax) safe.truncate(kMax);\n"
 into = ""
 count = 1
 check = "a title past the cap is cut at 256 CHARACTERS and not at 256 bytes, so a multi-byte cluster is never split down the middle"
+
+[[sabotage]]
+# The overlay transmit moves off its own id space, so an overlay collides
+# with the ordinary placement ids it was offset to avoid. 8.551.
+name = "an overlay transmits outside its id space"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tout += encode_kitty_image(0xFFFFE00u + quint32(id), for_terminal(rgba),\n"
+into = "\tout += encode_kitty_image(0xFFFFD00u + quint32(id), for_terminal(rgba),\n"
+count = 1
+check = "the real backend's overlay emitter transmits at its own id offset, defaults z to 1 where every other placement reads 0 as unstacked, moves the cursor to the cell first, and deletes by id"
+
+[[sabotage]]
+# The overlay passes z through, so z=0 emits no z at all and the overlay
+# sits unstacked -- where this emitter alone means "above" by default. 8.551.
+name = "an overlay loses its z default"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t                          z > 0 ? z : 1);\n"
+into = "\t                          z);\n"
+count = 1
+check = "the real backend's overlay emitter transmits at its own id offset, defaults z to 1 where every other placement reads 0 as unstacked, moves the cursor to the cell first, and deletes by id"

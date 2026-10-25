@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2421 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2422 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47549,11 +47549,12 @@ over a full run and a filtered one never reaches whatever does it. A
 session debugging one suite will meet this and should not read it as a
 regression; `make check` runs the binary whole.
 
-### 8.551 The real backend's overlay emitter has never run (2026-10-25)
+### 8.551 The real backend's overlay emitter, never run until now (2026-10-25)
 
-**Confirmed, located, and handed over rather than fixed, because closing it
-needs a fixture this budget could not finish.** Stated precisely so the next
-session does not re-derive it.
+**CLOSED, with the fixture it needed.** This entry was written as a
+hand-over and is rewritten rather than appended to, because an entry saying
+something is open outlives the work that closed it and reads as the more
+careful of the two.
 
 **The branch data.** `ansi_backend.cpp` line 1903, the first line of
 `AnsiBackend::present_overlay`: `if (mode_ != Capabilities::KittyAlpha)
@@ -47574,17 +47575,32 @@ chosen to sit clear of the ordinary placement ids -- and the z default,
 treats zero as "say nothing about stacking". Neither has ever been on a
 wire, and both are the kind of constant a reader would not question.
 
-**The fixture it needs, and why it is not a five-line check.** `mode_` is
-computed in the constructor, so a backend must be built with
-`QTTY_GRAPHICS=kitty-alpha` already set -- `kitty-alpha` is an accepted
-force value, and the late-reply check at suite_backend.cpp 3077 shows the
-other route -- set the variable, then feed a reply so the arrival path
-re-derives the tier. Then `present_overlay`
-on a pty, and read the master for an `a=T` carrying the offset id and
-`z=1`. The pty block around the `set_title` checks at suite_backend.cpp
-5180 is the pattern to copy; what it lacks is the forced mode, since its
-backend is constructed before any env change.
+**The fixture, and why it is its own.** `mode_` is computed in the
+constructor, so the backend is built with `QTTY_GRAPHICS=kitty-alpha`
+already set. It could not go inside the big pty block that negotiates the
+kitty tier: that block's own comment records that two backends watching
+descriptor 0 hang, and its `live` is in scope for two thousand lines. So
+this stands after that fixture's teardown, where nothing else is alive, on
+a `Tty` -- which puts the pseudo-terminal on fd 0 only, four PASS lines
+having once gone into a pty -- with fd 1 captured to a pipe around the
+three calls alone and restored immediately.
 
-**Do not assert through a double.** A test double would pass today and is
-what has kept this quiet: the whole finding is that the interface is
-covered and the implementation is not.
+**All five properties hold, and they are asserted as WHOLE control
+strings.** The first draft tested `contains("i=268434951")` and
+`contains("a=T")` separately, and `clear_overlay`'s own id satisfies the
+first -- so a moved transmit offset would have passed on bytes emitted by a
+different call. It asserts `a=T,f=32,q=2,i=268434951,s=4,v=2,z=1` entire,
+the same for id 8 at `z=5`, the cursor move to the cell, and the
+delete-by-id. The ids are literals on purpose: writing the expression would
+make the check agree with whatever the code says, and a silently moved
+offset is the one thing worth catching about a constant nobody reads.
+
+**Two sabotage entries, one per quiet constant** -- the id space moved off
+its offset, and the z default passed through so `z=0` emits no `z` and the
+overlay sits unstacked, where this emitter alone means "above".
+
+**The trap, and why doubles kept this quiet.** A test double passes today
+and passed before: the finding was never about overlay behaviour but about
+which END of the route was being asked. **A suite can cover an interface
+completely and leave its only implementation untouched, and nothing in a
+green run says which it did.**

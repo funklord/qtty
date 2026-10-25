@@ -5936,6 +5936,89 @@ int suite_backend() {
 		}
 	}
 
+	// THE REAL OVERLAY EMITTER, which had never run. Every present_overlay()
+	// in this tree was an override on a test double, so the overlay path was
+	// exercised against the INTERFACE and never against the one
+	// implementation that puts bytes on a wire: measured, line 1903's
+	// fallthrough at 0 per cent, every call returning at the mode test.
+	//
+	// Its own fixture rather than a block inside the one above, for the
+	// reason that one records: two backends watching descriptor 0 hang, and
+	// `live` is in scope for two thousand lines. Here nothing else is alive.
+	//
+	// Tty puts the pseudo-terminal on fd 0 only -- its comment says why, four
+	// PASS lines having once gone into a pty -- so fd 1 is captured around
+	// the calls alone and restored immediately, which is what the title
+	// checks above do.
+	{
+		const QByteArray had_force = qgetenv("QTTY_GRAPHICS");
+		const QByteArray had_term = qgetenv("TERM");
+		const QByteArray had_tmux = qgetenv("TMUX");
+		qputenv("QTTY_GRAPHICS", "kitty-alpha");
+		qputenv("TERM", "xterm-kitty");
+		qunsetenv("TMUX");
+		Tty t;
+		if (!t.ok()) {
+			printf("SKIP: no pseudo-terminal for the overlay emitter\n");
+		} else {
+			int cap[2];
+			const bool piped = ::pipe(cap) == 0;
+			if (piped) ::fcntl(cap[0], F_SETFL, O_NONBLOCK);
+			AnsiBackend ob;
+			QImage rgba(4, 2, QImage::Format_ARGB32);
+			rgba.fill(QColor(0, 0, 255, 128));
+			QByteArray got;
+			if (piped) {
+				const int keep1 = ::dup(1);
+				fflush(stdout);
+				::dup2(cap[1], 1);
+				ob.present_overlay(7, rgba, QPoint(3, 4), 0);
+				ob.present_overlay(8, rgba, QPoint(0, 0), 5);
+				ob.clear_overlay(7);
+				fflush(stdout);
+				::dup2(keep1, 1);
+				::close(keep1);
+				::close(cap[1]);
+				char buf[8192];
+				ssize_t n;
+				while ((n = ::read(cap[0], buf, sizeof(buf))) > 0)
+					got.append(buf, int(n));
+				::close(cap[0]);
+			}
+			// The ids are asserted as LITERALS. 0xFFFFE00 is a wire-visible
+			// id space chosen to sit clear of ordinary placements, and
+			// writing the expression here instead would make this agree with
+			// whatever the code says -- so a moved offset would pass, which
+			// is the one thing worth catching about a constant nobody reads.
+			// 0xFFFFE00 + 7 is 268434951 and + 8 is 268434952.
+			// The WHOLE control, not the id somewhere in the buffer: the
+			// first draft tested contains("i=268434951") and
+			// contains("a=T") separately, which clear_overlay's own id
+			// satisfies -- so a moved transmit offset would have passed on
+			// bytes emitted by a different call.
+			const bool one = got.contains(
+			    "a=T,f=32,q=2,i=268434951,s=4,v=2,z=1");
+			// z=0 becomes z=1, which is this emitter's own rule and differs
+			// from every other placement, where 0 means "say nothing about
+			// stacking". A default that quiet is worth pinning.
+			const bool zgiven = got.contains(
+			    "a=T,f=32,q=2,i=268434952,s=4,v=2,z=5");
+			// The cursor goes first: an overlay is placed at a cell, and
+			// without the move it lands wherever the last write left it.
+			const bool moved = got.contains("\033[5;4H");
+			const bool cleared = got.contains("a=d,d=i,q=2,i=268434951");
+			CHECK(one && zgiven && moved && cleared,
+			      "the real backend's overlay emitter transmits at its own id"
+			      " offset, defaults z to 1 where every other placement reads"
+			      " 0 as unstacked, moves the cursor to the cell first, and"
+			      " deletes by id");
+		}
+		if (had_force.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+		else qputenv("QTTY_GRAPHICS", had_force);
+		if (had_term.isEmpty()) qunsetenv("TERM"); else qputenv("TERM", had_term);
+		if (!had_tmux.isEmpty()) qputenv("TMUX", had_tmux);
+	}
+
 	// -- section 5.7's scroll-settle policy. The clock is a parameter, so
 	//    this exercises a hundred-millisecond debounce without sleeping for
 	//    one: a test that sleeps is a test that is flaky on a loaded machine.
