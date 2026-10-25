@@ -1274,7 +1274,14 @@ lines. `gcov -f <file>.cpp` is what separates a `D0` destructor from a `D2`
 and is why the residue is what it is.
 
 **The third configuration.** `make test-platforms` covers offscreen, xcb
-under `Xvfb`, and the hostile environment. Against a REAL display it is
+under `Xvfb`, and the hostile environment. **Re-taken 2026-10-25 and
+GREEN**: offscreen 2432 checks, xcb under Xvfb 2432, the `minimal`
+platform refusing as it must, and the hostile environment
+(`QT_SCALE_FACTOR=2`, `QT_SCREEN_SCALE_FACTORS=2`,
+`QT_QPA_PLATFORMTHEME=gtk3`) 2432 -- the EQUAL counts being the part that
+means anything, since a configuration running fewer is green on the exit
+status alone, which this target says in its own recipe. No `Xvfb`
+survived the run and no orphan under twenty minutes old. Against a REAL display it is
 run directly, and needs the stack dump off because QtTest forks gdb on a
 fatal signal:
 
