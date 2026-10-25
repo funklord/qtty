@@ -47394,3 +47394,45 @@ treating a blank glyph as inked, a suite run against a failed build, and a
 `ps` pipeline matching its own command line. This one differs in kind: it
 discredits the scan that 8.535 ran and that its hand-over invites the next
 session to continue, so it is written here rather than left as a caution.
+
+### 8.548 A zero-cell scroll bar still falls through to Fusion (2026-10-25)
+
+**Found by the per-branch reading 8.547 prescribes, and handed over rather
+than fixed, because the budget reached the fold figure.** This is a
+confirmed candidate with its location, not a suspicion.
+
+**The branch data, read per branch.** `grid_style.cpp` line 1971,
+`if (len >= 2)` in `subControlRect`'s `CC_ScrollBar` arm: executed 2060
+times, `branch 1 taken 0%`. The same at line 2062 for the slider's
+`if (len >= 1)`. So the short-bar direction has never once been taken.
+
+**Which direction that is takes one more step, and it is the point.**
+`len == 1` is handled immediately above, with a comment recording the
+asymmetric one-cell fault it was written for -- a single cell's centre
+falls inside one of Fusion's arrow rectangles horizontally and between
+them vertically, so a one-cell horizontal bar always stepped and a
+one-cell vertical bar never did. So the untaken direction is **`len == 0`**:
+a bar whose rect is shorter than one cell.
+
+**And it reaches exactly what that comment forbids.** A zero-cell bar
+skips the `len == 1` return, skips the `len >= 2` block, falls out of both
+enclosing `if`s and reaches line 2204, `QProxyStyle::subControlRect` --
+Fusion's pixel rectangles. The one-cell fix closed that hole for one cell
+and left it open for zero.
+
+**What must be measured BEFORE a guard is written, and why this was not
+finished rather than half-finished.** The obvious fix is to return
+`QRect()` for `len <= 0`, and a check asserting the sub-control rects of a
+sub-cell bar come back empty. That check only discriminates if Fusion
+returns something NON-empty for a zero-height bar; if Fusion's rects are
+empty too, the check passes against the unguarded code and the sabotage
+entry cannot redden it -- `evidence.md`'s check whose pass includes the
+failure. So: ask Fusion first, with a `QStyleOptionSlider` whose rect is
+0 or sub-cell high, and let the answer decide whether this is a defect to
+fix or a principle to assert some other way.
+
+**Reachability is the other open half.** `len` is the rect divided by the
+cell, and this tree snaps widget geometry to the grid -- so a sub-cell bar
+most plausibly arrives as a zero-height one, mid-layout or collapsed,
+rather than as a fractional one. Whether Qt asks for a sub-control rect in
+that state is a measurement, not a deduction.
