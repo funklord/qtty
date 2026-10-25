@@ -1604,6 +1604,39 @@ int suite_backend() {
 		      " rather than abandoned at the trailing escape");
 	}
 
+	// THE FOREGROUND HALF OF THE GROUND REPUBLISH, which had never fired.
+	// The arrival path tests `reported_fg() != was_fg || reported_bg() !=
+	// was_bg` and republishes the PAIR; branch coverage put the fg operand
+	// at `taken 0%` while the bg one ran 17 per cent of the time. So the
+	// entry that records this says the ground is a pair, and only one half
+	// of it had ever moved a published value.
+	//
+	// Every OSC 10 fixture in this file goes through caps_of(), which is
+	// scan_caps() -- a different reader that publishes nothing. That is why
+	// the gap survived a dozen foreground checks.
+	//
+	// Asserted through Color::luminance(), which reads the GLOBAL store that
+	// publish_ground() writes. capabilities() cannot see this: it recomputes
+	// from caps_ on every call, so it answered correctly throughout and is
+	// exactly the reader that hid the fault this branch was added for.
+	{
+		feed("\033]11;rgb:1010/1010/1010\033\\");
+		feed("\033]10;rgb:2020/2020/2020\033\\");
+		const Color dflt;
+		const int fg_dark = dflt.luminance(true);
+		const int bg_before = dflt.luminance(false);
+		// The foreground alone moves, from near-black to near-white. The
+		// background is not re-sent, so a republish keyed on the bg would
+		// not fire and the fg would stay where it was.
+		feed("\033]10;rgb:f0f0/f0f0/f0f0\033\\");
+		const int fg_light = dflt.luminance(true);
+		const int bg_after = dflt.luminance(false);
+		CHECK(fg_light > fg_dark && bg_after == bg_before,
+		      "a foreground reply alone republishes the ground, so the"
+		      " luminance a Default reads follows it while the background"
+		      " stays where the earlier reply put it");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable

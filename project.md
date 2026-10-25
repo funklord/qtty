@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2429 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2430 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47737,3 +47737,36 @@ DEL -- and whether DEL is read as a CSI final or as not-a-final, the
 sequence is consumed and the following key still arrives. **No observable
 difference, so no check**: a check written for it would assert the same
 output against both behaviours.
+
+### 8.554 The foreground half of the ground republish (2026-10-25)
+
+**A gap in work from earlier in this same session, found by re-reading the
+arcs of code that had just been written.** The arrival path tests
+`reported_fg() != was_fg || reported_bg() != was_bg` and republishes the
+pair; branch coverage put the **fg operand at `taken 0%`** while the bg one
+ran 17 per cent of the time. The entry that added this says in as many
+words that the ground is a PAIR, and only one half of it had ever moved a
+published value.
+
+**Why a dozen foreground checks did not cover it.** Every OSC 10 fixture in
+`suite_backend.cpp` goes through `caps_of()`, which is `scan_caps()` -- a
+reader that parses and publishes nothing. The backend's arrival path is a
+different reader, and no fixture had sent it a foreground reply that
+MOVED the value. Two readers again, as 8.552 found for the BEL: a count of
+fixtures mentioning OSC 10 says nothing about which reader got them.
+
+**Asserted through `Color::luminance()`, which is the only reader that can
+see the fault.** `capabilities()` recomputes from `caps_` on every call, so
+it answered correctly throughout -- it is exactly the reader that hid the
+original bug this branch was added for, and asserting on it would have
+passed against a republish that never happened. The global store that
+`publish_ground()` writes is what `luminance()` reads, so a Default's
+foreground luminance follows the reply while its background stays where
+the earlier reply put it.
+
+**The fixture moves the foreground ALONE, near-black to near-white.** The
+background is not re-sent, so a republish keyed on the background -- which
+is what the sabotage makes it -- does not fire and the foreground stays
+where it was. Pinning the ordering rather than either luminance, for the
+reason 8.381 gives at the same function: the numbers are one assumption's
+arithmetic and the arithmetic is what was wrong before.
