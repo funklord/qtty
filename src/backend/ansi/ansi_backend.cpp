@@ -2835,6 +2835,18 @@ bool AnsiBackend::decode_one() {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // still arriving
+			// UNREACHABLE, and said so rather than removed: parse_csi
+			// never returns 0. Its returns are -1, j (at least 2, as its
+			// own comment states), i + 1, j + 1, and pending_.size() for
+			// over the cap -- where parse_string_sequence returns 0
+			// instead, documented there as "0 asks the caller to drop".
+			// So the two parsers use different conventions for the same
+			// condition and this arm carries the OTHER one's. "See above"
+			// implies a parity that is not there.
+			//
+			// Kept because it is the correct handling if parse_csi ever
+			// adopts that convention, and because branch coverage names it
+			// every time: the note is cheaper than the next chase.
 			if (n == 0) { pending_.remove(0, 1); return true; }  // see above
 			pending_.remove(0, n);
 			// Malformed, per parse_csi: consumed and dropped rather than

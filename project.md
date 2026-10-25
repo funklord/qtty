@@ -48157,3 +48157,34 @@ reported upstream.
 unpoliced for this family, 8.566's fix covers one element of it, and
 extending the cover is a deliberate piece of work with a known shape.
 Nothing here is a qtty defect.
+
+### 8.568 Two parsers, two conventions, one dead arm (2026-10-25)
+
+**The CSI dispatch handles a return value its parser cannot produce.**
+`if (n == 0) { pending_.remove(0, 1); return true; }` sits in the `ESC [`
+branch with the comment "see above", and branch coverage put it at 0 per
+cent. Established by enumerating every return rather than by reading the
+cap: **`parse_csi` returns `-1`, `j` (at least 2, as its own comment
+says), `i + 1`, `j + 1`, and `pending_.size()` when over the cap. Never
+0.**
+
+**`parse_string_sequence` is the one that returns 0**, and says so where
+it does -- `pending_.size() > kSequenceCap ? 0 : -1`, with "0 asks the
+caller to drop". So the two parsers answer the SAME condition --
+unbounded growth past 4096 bytes -- with two different values, one
+returning zero and the other returning the whole buffer, and the CSI
+caller carries the string caller's handling. "See above" implies a parity
+that is not there.
+
+**Answer two of the three**, by §0e's rule: the code is right and the
+branch cannot be taken from that entry point. So it is annotated rather
+than removed -- it is the correct handling if `parse_csi` ever adopts that
+convention, and the note stops the next scan spending a cycle on it, as
+8.556 does for the drawing-side sub-cell guard.
+
+**The convention difference is not mine to settle.** Two values for one
+condition in two parsers that sit forty lines apart is the kind of thing
+that drifts, and both are internally consistent and documented where they
+are returned. Unifying them is a change to an interface with two callers
+rather than a tidy-up, and the existing cap fixtures -- 5000 bytes after
+an OSC opener and after a CSI -- exercise both paths as they stand.
