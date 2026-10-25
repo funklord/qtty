@@ -2722,12 +2722,20 @@ In the order I would take them:
    OQ-5, accessibility, where `QAccessible` appears nowhere in the tree.
 
 4. **Two things this tree cannot close alone.** The beerssh probe matrix
-   in §0c needs that project built with a terminal under test. And the
-   148 pointers from this document into `claude-guidelines` -- 116 to
-   `evidence.md`, 20 to `running-code.md`, 12 to the tree itself -- are
-   unfollowable for a reader who cannot reach it, against a rule set
-   2026-10-25 that a project stands on its own. Whether that earns a pass
-   over a 48,000-line file is the holder's call; new entries state their
+   in §0c needs that project built with a terminal under test. And this
+   document cites `claude-guidelines` 148 times -- 116 to `evidence.md`,
+   20 to `running-code.md`, 12 to the tree itself -- against a rule set
+   2026-10-25 that a project stands on its own. **That is a count of
+   CITATIONS and not of violations**, which the first version of this item
+   blurred: the rule forbids a pointer the reader NEEDS to follow and says
+   a rule must not be "only cited from here", so a citation that states
+   its principle and names the source for provenance is compliant.
+   Sampled, both kinds are there -- "`evidence.md` names this exactly:"
+   followed by the rule is fine, while "the falsifier problem in
+   `evidence.md`" gives a reader without the file only a label. **How many
+   are of the second kind is unmeasured**, so the size of any pass is
+   unknown and whether to take one over a 48,000-line file is the
+   holder's call. Entries written after the rule landed state their
    principles inline.
 
 5. **The GUI twin's `z`**, unchanged and still unassertable: the
