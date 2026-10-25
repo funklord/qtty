@@ -47548,3 +47548,43 @@ running that suite in isolation -- `reset()` disowns off-grid geometries
 over a full run and a filtered one never reaches whatever does it. A
 session debugging one suite will meet this and should not read it as a
 regression; `make check` runs the binary whole.
+
+### 8.551 The real backend's overlay emitter has never run (2026-10-25)
+
+**Confirmed, located, and handed over rather than fixed, because closing it
+needs a fixture this budget could not finish.** Stated precisely so the next
+session does not re-derive it.
+
+**The branch data.** `ansi_backend.cpp` line 1903, the first line of
+`AnsiBackend::present_overlay`: `if (mode_ != Capabilities::KittyAlpha)
+return;` -- branch 0, the fallthrough, `taken 0%`; branch 1 `taken 100%`.
+So every call so far has returned at that line and **the body has never
+executed**. `clear_overlay` at 1911 is the same.
+
+**Confirmed by asking the suite, which is what settles it.** All twelve
+`present_overlay` references in the tree are overrides on test doubles --
+`suite_graphics.cpp` counts calls on fake backends. So overlays are
+exercised against the interface and never against the one implementation
+that puts bytes on a wire. 8.544's lens, one layer in: the route is wired,
+and the real end of it is untested.
+
+**What is untested, specifically.** The id space -- `0xFFFFE00u + id`,
+chosen to sit clear of the ordinary placement ids -- and the z default,
+`z > 0 ? z : 1`, which quietly refuses zero where every other placement
+treats zero as "say nothing about stacking". Neither has ever been on a
+wire, and both are the kind of constant a reader would not question.
+
+**The fixture it needs, and why it is not a five-line check.** `mode_` is
+computed in the constructor, so a backend must be built with
+`QTTY_GRAPHICS=kitty-alpha` already set -- `kitty-alpha` is an accepted
+force value, and the late-reply check at suite_backend.cpp 3077 shows the
+other route -- set the variable, then feed a reply so the arrival path
+re-derives the tier. Then `present_overlay`
+on a pty, and read the master for an `a=T` carrying the offset id and
+`z=1`. The pty block around the `set_title` checks at suite_backend.cpp
+5180 is the pattern to copy; what it lacks is the forced mode, since its
+backend is constructed before any env change.
+
+**Do not assert through a double.** A test double would pass today and is
+what has kept this quiet: the whole finding is that the interface is
+covered and the implementation is not.
