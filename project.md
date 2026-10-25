@@ -48145,3 +48145,47 @@ two verdicts, and the greener one is the one a developer sees. Every green
 run recorded in this document was taken without knowing this, and
 `make check` passing is not evidence that a given invocation of it will.
 
+
+### 8.563 The baseline was inherited, and three checks assumed it (2026-10-25)
+
+**8.562's intermittent check is explained, and the fault was the test.**
+Three checks in the job-control block compared `SIGTSTP` against
+`SIG_DFL`. That disposition is **inherited from whatever started the
+process**: a shell running a command WITHOUT job control -- a subshell, a
+background job, a command substitution, a `make` recipe -- hands it
+`SIGTSTP` already set to `SIG_IGN`.
+
+**Measured, not deduced.** Printing the disposition at the check gave
+`0x1`, which is `SIG_IGN` against `SIG_DFL` of `(nil)`. Printing the
+backend's own saved value at its release gave `prev=0x1` -- it had
+recorded `SIG_IGN` as the previous disposition and put exactly that back.
+**The library was correct throughout.** Arms and releases balanced four
+and four in both the passing and the failing runs, which is what ruled out
+a leaked owner.
+
+**The trio came apart three different ways at once**, which is why the
+run looked confusing rather than wrong:
+
+- the premise -- nothing has taken the terminal yet -- **failed**, because
+  `SIG_IGN` is not `SIG_DFL`;
+- the restore check **failed**, because the backend correctly put
+  `SIG_IGN` back and the check demanded the default;
+- and the middle check **passed VACUOUSLY**: it asked whether the live
+  disposition differs from `SIG_DFL`, which was already true before any
+  backend existed. A check that cannot fail, sitting between two that
+  were failing for the same reason.
+
+**The fix compares against the baseline taken immediately before the
+probe**, which is immune to how the binary was started and strictly
+stronger: it catches a backend that restores the WRONG handler, which a
+test for `SIG_DFL` cannot do whenever the baseline is not `SIG_DFL`. The
+premise is replaced by something the baseline cannot decide -- that a live
+backend's disposition is a real function, neither a default nor an ignore.
+All three now pass in both invocation forms.
+
+**The shape to carry: a check's PREMISE is an assertion too, and this one
+was about the environment while reading as if it were about the code.**
+"Nothing has taken the terminal yet" sounds like a statement about qtty.
+What it tested was what the shell did before `main`. Assert the
+relationship -- what changed, and that it changed back to what it was --
+and the environment stops being able to decide the verdict.
