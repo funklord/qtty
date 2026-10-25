@@ -8356,3 +8356,25 @@ find = "\t\telse if (opt.checkState == Qt::PartiallyChecked)  box = QStringLiter
 into = ""
 count = 1
 check = "and a half-checked item shows a third glyph rather than borrowing one of the other two, which nothing had ever rendered"
+
+[[sabotage]]
+# wezterm is given alpha over text, which it has never claimed -- a guess in
+# the expensive direction, and the one the detector's own comment refuses.
+# 8.537.
+name = "wezterm is assumed to blend alpha over text"
+file = "src/graphics/graphics.cpp"
+find = "\tif (prog.contains(\"wezterm\"))\n\t\treturn Capabilities::Kitty;"
+into = "\tif (prog.contains(\"wezterm\"))\n\t\treturn Capabilities::KittyAlpha;"
+count = 1
+check = "wezterm -> Kitty and not KittyAlpha, the protocol without alpha over text"
+
+[[sabotage]]
+# mintty loses its tier, so a terminal that draws sixels gets blocks. It is
+# read from TERM_PROGRAM, which is why the short-circuit above it hid this.
+# 8.537.
+name = "mintty is not recognised"
+file = "src/graphics/graphics.cpp"
+find = "\t    || prog.contains(\"mintty\"))"
+into = "\t    )"
+count = 1
+check = "mintty -> Sixel, which is read from TERM_PROGRAM rather than from TERM"

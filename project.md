@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2401 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2405 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46976,3 +46976,30 @@ delegate that drew `[ ]` for everything, or `[x]` for both checked and
 partial, satisfies an assertion about the middle state alone -- so all
 three rows come out of the same buffer and the pair is what makes either
 mean anything.
+
+### 8.537 Four terminals nobody had detected (2026-10-25)
+
+**The second item off 8.535's list, and the short-circuit is why it hid.**
+`foot` was already asserted -- and reaching that test means
+`term.contains("sixel")` and `term.contains("mlterm")` were both false and
+`prog.contains("mintty")` was never evaluated at all. Branch coverage
+named those three, and wezterm's own line with them. A table with five
+rows looked like it covered the function; it covered one arm of one
+condition.
+
+**Each is a terminal somebody uses, and the tier decides whether their
+pictures are pixels or blocks.** All four answer correctly -- a `TERM`
+naming sixel, `mlterm` and `mintty` to Sixel, wezterm to Kitty -- so this
+is a gap rather than a defect, and the four rows cost nothing to add to a
+table that was already there.
+
+**wezterm to Kitty and NOT KittyAlpha is the one worth a sabotage of its
+own.** The distinction is the branch's whole purpose: wezterm speaks the
+protocol and does not blend alpha over text, so assuming it did is a guess
+in the most expensive direction available -- which is the mistake this
+function's comment records having made about beerssh and removed.
+
+**The lesson is about reading a table, not about terminals.** Five rows
+and five passing checks read as a covered function. What said otherwise
+was the branch figure, and the thing it named was not a missing row but an
+arm of a condition no row could reach.

@@ -298,6 +298,30 @@ int suite_graphics() {
 		CHECK(detect_graphics_mode() == Capabilities::ITerm2, "iTerm -> ITerm2");
 		setenvs("", "foot", "");
 		CHECK(detect_graphics_mode() == Capabilities::Sixel, "foot -> Sixel");
+		// THE FOUR THE SHORT-CIRCUIT HID. `foot` above is the third test in
+		// its own condition, so reaching it means `sixel` and `mlterm` were
+		// both false and `mintty` was never evaluated at all -- branch
+		// coverage named exactly those three as never taken, and wezterm's
+		// line with them. Each is a terminal somebody uses, and the tier is
+		// what decides whether their pictures are pixels or blocks.
+		setenvs("", "xterm-sixel", "");
+		CHECK(detect_graphics_mode() == Capabilities::Sixel,
+		      "a TERM naming sixel -> Sixel");
+		setenvs("", "mlterm", "");
+		CHECK(detect_graphics_mode() == Capabilities::Sixel,
+		      "mlterm -> Sixel");
+		setenvs("", "xterm-256color", "mintty");
+		CHECK(detect_graphics_mode() == Capabilities::Sixel,
+		      "mintty -> Sixel, which is read from TERM_PROGRAM rather than"
+		      " from TERM");
+		// Kitty rather than KittyAlpha, which is the distinction the branch
+		// exists for: wezterm speaks the protocol and does not blend alpha
+		// over text, so assuming it did would be a guess in the expensive
+		// direction.
+		setenvs("", "xterm-256color", "WezTerm");
+		CHECK(detect_graphics_mode() == Capabilities::Kitty,
+		      "wezterm -> Kitty and not KittyAlpha, the protocol without"
+		      " alpha over text");
 		setenvs("", "xterm-256color", "");
 		CHECK(detect_graphics_mode() == Capabilities::Halfblocks, "plain xterm -> Halfblocks");
 		// $TERM=beerssh used to be a special case returning KittyAlpha --
