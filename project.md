@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2428 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2429 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -47697,3 +47697,43 @@ candidates from roughly four hundred never-taken branches, and both of
 these were then confirmed by asking the suite rather than by the
 extraction -- which is 8.547's rule and the reason the list is short
 enough to read.
+
+### 8.553 An ST split across two reads, and a defect that was not one (2026-10-25)
+
+**Predicted as a defect, measured as correct, and the measurement is the
+entry.** `parse_string_sequence()` tests
+`c == 0x1b && i + 1 < pending_.size() && pending_[i + 1] == '\\'`, and the
+middle operand sat at `taken 0%`: **an ESC had never been the last byte of
+a pending sequence.** Reading the code, when it is, that test fails and the
+line below -- `if (c == 0x1b) return i;` -- abandons the sequence. The
+prediction was that a reply whose ST straddles two reads is thrown away.
+
+**It is not, and the reason is one line further on than the reading went.**
+The caller does `scan_caps(pending_.left(n), caps_)` -- **an abandoned
+sequence's payload is still handed to the capability parser.** So
+"abandoned" means closed here and scanned, not discarded. Measured: a
+background reply fed as `...rgb:4444/5555/6666\033` and then `\\` parses to
+that colour.
+
+**Which makes the early decision safe for both readings of a trailing
+ESC**, and that is worth more than the check. One byte cannot say whether
+it opens an ST closing this sequence or a new sequence abandoning it --
+the answer is in a byte that has not arrived. Deciding early would pick
+wrong half the time **if the decision discarded anything**; because the
+payload goes to the parser either way, both readings reach the same place.
+The arm that looks like a premature commitment is not one.
+
+**A sabotage pins the half that matters**: make the abandoned path return
+0, which drops the bytes instead of scanning them, and the split reply is
+lost.
+
+**And one candidate was examined and left alone, with the reasoning, so
+nobody re-chases it.** Line 2318's `uchar(pending_[i]) > 0x7e` is also at
+`taken 0%`, and it is **unreachable for the case it looks like it covers**:
+`pending_[i]` is a signed `char`, so any byte from 0x80 up is negative and
+the first operand `< 0x40` catches it by short-circuit. The second operand
+is evaluated only for 0x40..0x7f, where the one value above 0x7e is 0x7f,
+DEL -- and whether DEL is read as a CSI final or as not-a-final, the
+sequence is consumed and the following key still arrives. **No observable
+difference, so no check**: a check written for it would assert the same
+output against both behaviours.

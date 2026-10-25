@@ -1578,6 +1578,32 @@ int suite_backend() {
 		      " delivered");
 	}
 
+	// AN ST SPLIT ACROSS TWO READS. parse_string_sequence tests
+	// `c == 0x1b && i + 1 < pending_.size() && pending_[i + 1] == '\\'`,
+	// and the middle operand was at `taken 0%`: an ESC had never been the
+	// LAST byte of a pending sequence. When it is, that test fails and the
+	// line below it -- `if (c == 0x1b) return i;` -- abandons the sequence,
+	// throwing the reply away.
+	//
+	// One byte cannot decide it. A trailing ESC is either the first half of
+	// an ST closing this sequence or the start of a new one abandoning it,
+	// and which depends on the byte that has not arrived. Deciding early
+	// picks the wrong one half the time; waiting is right for both.
+	//
+	// A terminal writes a reply in one write(), but a reader does not get
+	// one read per write: a buffer boundary, several replies at once, or a
+	// multiplexer in between all split it. collect_caps() reads in a loop
+	// until the DA1 fence for exactly that reason.
+	{
+		feed("\033]11;rgb:4444/5555/6666\033");
+		feed("\\");
+		const Capabilities split = backend.capabilities();
+		CHECK(split.background_known
+		      && split.background == QColor(0x44, 0x55, 0x66),
+		      "a reply whose ST is split across two reads is still read,"
+		      " rather than abandoned at the trailing escape");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable
