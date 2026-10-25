@@ -2910,5 +2910,56 @@ int suite_graphics() {
 		      " shape that makes the first check vacuous");
 	}
 
+	// A TRANSPARENT PIXEL THROUGH THE SIXEL ENCODER, which nothing had fed
+	// it. Branch coverage named two never-taken arms in the quantiser --
+	// `if (qAlpha(line[x]) < 128) { idx[...] = -1; continue; }` and the
+	// `v >= 0` test that skips the remap for such a pixel -- so the whole
+	// transparency path was unexercised. The fixtures here use opaque
+	// images on purpose, which 8.244's record explains: an uninitialised
+	// QImage came out fully transparent once and made a check pass over a
+	// blank screen, so they were made opaque and the alpha case went with
+	// them.
+	//
+	// What P2=1 promises is written on SixelImage above: untouched is
+	// transparent, not black. That is the assertion -- the decoder leaves a
+	// pixel no band painted at alpha zero, so a half-transparent source must
+	// come back half untouched.
+	{
+		QImage split(4, 6, QImage::Format_ARGB32);
+		for (int y = 0; y < 6; ++y)
+			for (int x = 0; x < 4; ++x)
+				split.setPixel(x, y, x < 2 ? qRgba(255, 0, 0, 255)
+				                           : qRgba(0, 0, 0, 0));
+		const SixelImage out = decode_sixel(encode_sixel(split));
+		// The control, and it is the half that matters: the same geometry
+		// fully opaque must come back fully painted, so "nothing was
+		// painted" cannot pass as "the transparent part was skipped".
+		QImage solid(4, 6, QImage::Format_ARGB32);
+		solid.fill(QColor(255, 0, 0, 255));
+		const SixelImage all = decode_sixel(encode_sixel(solid));
+		int untouched_split = 0, untouched_solid = 0;
+		if (out.ok && all.ok)
+			for (int y = 0; y < 6; ++y)
+				for (int x = 0; x < 4; ++x) {
+					if (qAlpha(out.at(x, y)) == 0) ++untouched_split;
+					if (qAlpha(all.at(x, y)) == 0) ++untouched_solid;
+				}
+		printf("info: a half-transparent 4x6 sixel leaves %d of 24 pixels"
+		       " untouched, the opaque one %d; the painted half reads"
+		       " %06x\n", untouched_split, untouched_solid,
+		       out.ok ? unsigned(out.at(0, 0) & 0xffffffu) : 0u);
+		CHECK(all.ok && untouched_solid == 0,
+		      "an opaque image paints every pixel of its sixel, which is the"
+		      " control the transparency check needs");
+		CHECK(out.ok && untouched_split == 12,
+		      "while a half-transparent one leaves exactly its transparent"
+		      " half unpainted, which is what P2=1 means -- untouched is"
+		      " transparent rather than black");
+		CHECK(out.ok && qAlpha(out.at(0, 0)) == 255
+		      && qRed(out.at(0, 0)) > 200 && qGreen(out.at(0, 0)) < 60,
+		      "and the opaque half still carries its own colour, so the"
+		      " skipped pixels did not shift the palette under it");
+	}
+
 	return fails;
 }

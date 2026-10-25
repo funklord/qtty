@@ -8401,3 +8401,19 @@ find = "\t\tif (opt.displayAlignment & Qt::AlignBottom)       row = c.bottom();\
 into = ""
 count = 1
 check = "a tall item view row honours its vertical alignment -- top, centre and bottom each land on a different row of the same band, which nothing had rendered"
+
+[[sabotage]]
+# The quantiser stops marking a transparent pixel, so it is quantised and
+# painted like any other -- a PNG with alpha comes out with its transparent
+# region filled on a sixel terminal. 8.541.
+name = "a transparent pixel is painted into the sixel"
+file = "src/graphics/graphics.cpp"
+# Anchored on the REGISTRY pass's skip, which is the load-bearing guard: it
+# leaves idx at its -1 initialiser and the remap below then passes over the
+# pixel. The deeper copy in the else arm was tried first and sabotaging it
+# changed nothing -- see 8.541, which records that branch as a redundant
+# re-test rather than a gap.
+find = "\t\t\tif (qAlpha(line[x]) < 128) continue;\n\t\t\tconst QRgb wire = on_the_wire(line[x]);"
+into = "\t\t\tconst QRgb wire = on_the_wire(line[x]);"
+count = 1
+check = "while a half-transparent one leaves exactly its transparent half unpainted, which is what P2=1 means -- untouched is transparent rather than black"

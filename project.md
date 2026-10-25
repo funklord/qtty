@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2409 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2412 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46930,8 +46930,8 @@ caught a vacuity while writing rather than after.
    and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
    at 66.92 -- the `[-]` box for a partially checked item, and
    `AlignBottom`/`AlignVCenter` for a display alignment -- the latter closed
-   by 8.540, leaving only the quantiser's palette remap and the kitty
-   encoder's empty-payload arm. **The scan is
+   by 8.540 and the quantiser's transparency path by 8.541, leaving only the
+   kitty encoder's empty-payload arm. **The scan is
    finished otherwise -- see 8.539 for `application.cpp`, which is the
    lowest-covered file in the tree and has no gap in it.**
    `input_router.cpp`
@@ -47094,3 +47094,51 @@ its band's first row. Measured: all three land where the alignment says.
 **A gap rather than a defect, like most of what the scan found.** The code
 was right; nothing had ever given an item a size hint, so the question was
 never asked.
+
+### 8.541 A transparent pixel through the sixel encoder (2026-10-25)
+
+**Nothing had ever fed it one, and this is the first of the scan's
+remaining items with a user-visible stake.** Branch coverage named two
+never-taken arms in the quantiser -- `if (qAlpha(line[x]) < 128) {
+idx[...] = -1; continue; }` and the `v >= 0` test that skips the remap for
+such a pixel -- so the whole transparency path was unexercised.
+
+**The fixtures avoid alpha on purpose, and that is why it was missed.**
+8.244 records an uninitialised `QImage` coming out fully transparent and
+making a check pass over a blank screen; the fixtures were made opaque in
+response, and the alpha case went with them. A guard against a false pass
+removed the only images that asked the question.
+
+**What P2=1 promises is already written on `SixelImage` in the test
+harness** -- untouched is transparent, not black -- so the assertion is
+that a half-transparent source comes back half unpainted. Measured: 12 of
+24 pixels untouched against 0 for the same geometry opaque, and the
+painted half still reads `ff0000`, so skipping the transparent pixels did
+not shift the palette under it.
+
+**AND THE BRANCH COVERAGE NAMED THE WRONG GUARD, which only the sabotage
+could tell.** The encoder has two alternative paths: a registry pass that
+skips a transparent pixel -- leaving `idx` at its `-1` initialiser so the
+remap below passes over it -- and an `else` arm with its own per-pixel
+alpha test. Coverage named the arm in the SECOND, the entry was written
+against it, and the run reported the check PASSING AGAINST BROKEN CODE:
+this image takes the first path, so breaking the second changed nothing.
+The entry is re-pointed at the registry pass's skip and reddens there.
+
+So that never-taken branch is a **redundant re-test rather than a gap**.
+Coverage says "nothing executed this", which is not the same as "nothing
+tests this behaviour" -- three of the branches it named this session were
+defensive or duplicative, and sabotage is the only instrument here that
+tells those apart from real gaps. A check written from a coverage report
+alone can end up guarding the copy that does not matter.
+
+**Three checks, and the opaque control is the one that matters.** "Nothing
+was painted" satisfies an assertion about transparency perfectly, so the
+same image fully opaque has to come back fully painted. The third check is
+there because a quantiser that dropped pixels from its palette pass could
+leave the kept half a different colour -- the skip must not change what
+the opaque pixels become.
+
+**The consequence if it were wrong is a filled region where a picture is
+meant to show through**: an icon or a plot with alpha, on every sixel and
+iTerm2 terminal, since both go through this quantiser.
