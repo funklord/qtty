@@ -76,15 +76,28 @@ static bool is_zero_width(char32_t u) {
 	// carry every combining mark and every variation selector without a
 	// table to keep current. Mc, Spacing_Combining_Mark, is deliberately
 	// NOT here -- those do take a column.
+	// Cf, Other_Format, is here for the reason the two marks are and the
+	// paragraph above states: by category rather than by range, so that no
+	// table has to be kept current. It used to be five ranges and two named
+	// characters -- soft hyphen, U+200B..200F, U+202A..202E, U+2060..2064,
+	// U+2066..2069 and U+FEFF -- and every one of those IS Cf, so the list
+	// said in seven clauses what one category says.
+	//
+	// WHAT THE LIST MISSED IS THE POINT. Measured: U+061C ARABIC LETTER
+	// MARK, U+070F SYRIAC ABBREVIATION MARK and the three interlinear
+	// annotation controls U+FFF9..FFFB are all Cf, carry no glyph, and were
+	// measured at ONE COLUMN EACH. A letter mark is ordinary in Arabic and
+	// Hebrew text, so a line containing one was reported a cell too wide per
+	// occurrence -- and every cell-counted layout in this tree reads that
+	// number: the fold, the elide, and the size floors sections 8.485 to
+	// 8.489 put under a button, a check box, a tab and a menu item.
+	//
+	// Found by branch coverage rather than by a wrong frame: the three bidi
+	// and invisible-operator ranges had never been taken, which is to say
+	// nothing had ever fed the characters the table was written for.
 	const QChar::Category cat = QChar::category(u);
-	if (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)
-		return true;
-	return u == 0x00ad                     // soft hyphen
-	    || (u >= 0x200b && u <= 0x200f)    // ZWSP, ZWNJ, ZWJ, LRM, RLM
-	    || (u >= 0x202a && u <= 0x202e)    // bidi embedding and override
-	    || (u >= 0x2060 && u <= 0x2064)    // word joiner, invisible operators
-	    || (u >= 0x2066 && u <= 0x2069)    // bidi isolates
-	    || u == 0xfeff;                    // zero width no-break space
+	return cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing
+	    || cat == QChar::Other_Format;
 }
 
 // Default true, which is what every terminal this project has met does and

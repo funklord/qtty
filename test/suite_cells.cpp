@@ -2,6 +2,7 @@
 #include <qtty/qtty.h>
 #include "src/cell_geometry.h"
 #include <cstdio>
+#include <iterator>
 #include <functional>
 
 using namespace Qtty;
@@ -1083,6 +1084,66 @@ int suite_cells() {
 		      == saved.color(QPalette::Inactive, QPalette::Text),
 		      "and the palette is put back, so no later check inherits this "
 		      "fixture");
+	}
+
+	// FORMAT CHARACTERS TAKE NO COLUMN, by category rather than by range.
+	// The classifier used to name five ranges and two characters, all of
+	// them Cf, and what the table missed is the point: U+061C ARABIC LETTER
+	// MARK, U+070F SYRIAC ABBREVIATION MARK and the three interlinear
+	// annotation controls U+FFF9..FFFB carry no glyph and were measured at
+	// ONE COLUMN EACH. A letter mark is ordinary in Arabic and Hebrew text,
+	// so a line holding one was a cell too wide per occurrence -- and every
+	// cell-counted layout here reads that number.
+	//
+	// Found by branch coverage: the bidi and invisible-operator ranges had
+	// never been taken, so nothing had ever fed the characters the table was
+	// written for.
+	{
+		struct Row { const char *what; char32_t u; int cells; };
+		const Row rows[] = {
+			// The ones the table already had, which must not regress.
+			{ "ZWSP",                  0x200b, 0 },
+			{ "left-to-right embed",   0x202a, 0 },
+			{ "word joiner",           0x2060, 0 },
+			{ "left-to-right isolate", 0x2066, 0 },
+			{ "soft hyphen",           0x00ad, 0 },
+			{ "byte order mark",       0xfeff, 0 },
+			// The ones it missed, each Cf and each previously one column.
+			{ "Arabic letter mark",    0x061c, 0 },
+			{ "Syriac abbreviation",   0x070f, 0 },
+			{ "annotation anchor",     0xfff9, 0 },
+			{ "annotation separator",  0xfffa, 0 },
+			{ "annotation terminator", 0xfffb, 0 },
+			// THE CONTROLS, and they are what stop "return 0 for
+			// everything" passing: a letter, a wide cluster and a
+			// combining mark on a letter all have to keep their widths.
+			{ "a Latin letter",        0x0061, 1 },
+			{ "a CJK ideograph",       0x6f22, 2 },
+		};
+		QStringList wrong;
+		for (const Row &r : rows) {
+			const QString one = QString::fromUcs4(&r.u, 1);
+			const int got = text_cells(one);
+			if (got != r.cells)
+				wrong << QStringLiteral("%1 gave %2 wanted %3")
+				    .arg(QLatin1String(r.what)).arg(got).arg(r.cells);
+		}
+		// And in a line, which is where the cost showed: the mark must not
+		// widen the text it sits in.
+		const QString marked = QStringLiteral("a؜b￹c");
+		const int in_line = text_cells(marked);
+		printf("info: %d of %d format-character widths wrong, and \"abc\""
+		       " with two format characters in it measures %d\n",
+		       int(wrong.size()), int(std::size(rows)), in_line);
+		if (!wrong.isEmpty())
+			printf("      %s\n", qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty(),
+		      "a format character takes no column and a letter, a wide"
+		      " cluster and a mark keep theirs, which is what classifying by"
+		      " category rather than by a table of ranges buys");
+		CHECK(in_line == 3,
+		      "and a line carrying two of them is as wide as its letters,"
+		      " which is the number every cell-counted layout here reads");
 	}
 
 	return fails;

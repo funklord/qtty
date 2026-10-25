@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2395 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2397 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46793,3 +46793,40 @@ have been the last.** A practice page is read once by somebody learning;
 a header is read by whoever is calling the function. The rule in
 working-practice.md is that a correction goes where a reader will next
 look for it, and for "can this value change" that is the declaration.
+
+### 8.533 Five format characters that took a column (2026-10-25)
+
+**Found by branch coverage, which is the second time that instrument has
+named something here and the first time it named a user-visible defect.**
+A free tree-wide scan -- the instrumented data from 8.531's run was still
+on disk, so `gcov -b` over every object cost nothing -- put
+`cell_buffer.cpp` near the bottom at 66.03 per cent of branches taken at
+least once. Filtering out the `(throw)` paths that inflate every file,
+three never-taken branches were the bidi-embedding, invisible-operator
+and bidi-isolate ranges in the zero-width classifier: nothing had ever fed
+the characters that table was written for.
+
+**The table was also incomplete, and that is the defect.** Measured: every
+character it named is category Cf, Other_Format, and so are five it did
+not -- U+061C ARABIC LETTER MARK, U+070F SYRIAC ABBREVIATION MARK and the
+three interlinear annotation controls U+FFF9..FFFB. Each carries no glyph
+and each measured ONE COLUMN. A letter mark is ordinary in Arabic and
+Hebrew text, so a line holding one was reported a cell too wide per
+occurrence -- and every cell-counted layout in this tree reads that
+number: `fold_to_cells()`, `elide_to_cells()` and the size floors sections
+8.485 to 8.489 put under a push button, a check box, a tab and a menu
+item.
+
+**The fix is what the function's own comment already argued for.** Two
+lines above the table it says marks are classified "by category and not by
+range... without a table to keep current", and then the formats were a
+table. Seven clauses collapse into `cat == QChar::Other_Format`, which is
+strictly larger than what they covered and needs no maintenance as
+Unicode adds format characters.
+
+**The controls are the half that matters.** "Return zero for everything"
+satisfies the eleven format rows perfectly, so the table carries a Latin
+letter at one column, a CJK ideograph at two and -- through the category
+path that was already right -- a combining mark at zero. The second check
+measures `a<ALM>b<ANCHOR>c` at three, which is the number the layouts
+actually read, rather than asserting the classifier in isolation.

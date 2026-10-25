@@ -5349,8 +5349,11 @@ check = "their narrow neighbours in the same block are one"
 # lone variation selector took two. 8.299.
 name = "a lone combining mark takes a column"
 file = "src/core/cell_buffer.cpp"
-find = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)\n\t\treturn true;"
-into = "\t(void)cat;"
+# The two marks dropped from what was an if and is now the single return that
+# 8.533 collapsed the format table into. Other_Format stays, so this breaks
+# the marks alone and the format checks are a different entry's.
+find = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Other_Format;"
+into = "\treturn cat == QChar::Other_Format;"
 count = 1
 check = "a lone combining mark takes no column"
 
@@ -5360,8 +5363,8 @@ check = "a lone combining mark takes no column"
 # be given none. 8.299.
 name = "a spacing combining mark is treated as zero width"
 file = "src/core/cell_buffer.cpp"
-find = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)"
-into = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Mark_SpacingCombining)"
+find = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Other_Format;"
+into = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Mark_SpacingCombining || cat == QChar::Other_Format;"
 count = 1
 check = "a spacing combining mark still takes one"
 
@@ -8321,3 +8324,14 @@ find = "\tif (use_placeholders(caps_, depth_)) return 0;\n\treturn settle_.pendi
 into = "\treturn 0;"
 count = 1
 check = "and the backend asks for a later frame once a placement has moved, having nothing owed while it was still"
+
+[[sabotage]]
+# The classifier stops treating Other_Format as zero width, which is the state
+# the tree was in for every Cf character its range table did not name: an
+# Arabic letter mark took a column and widened the line it sat in. 8.533.
+name = "a format character takes a column again"
+file = "src/core/cell_buffer.cpp"
+find = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Other_Format;"
+into = "\treturn cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing;"
+count = 1
+check = "a format character takes no column and a letter, a wide cluster and a mark keep theirs, which is what classifying by category rather than by a table of ranges buys"
