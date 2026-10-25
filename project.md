@@ -1353,6 +1353,12 @@ configuration file rather than a variable:
     EOF
     FONTCONFIG_FILE=/tmp/hint.conf ./build-test/qtty-tests
 
+**Re-taken 2026-10-25 and GREEN on all three**: `hintfull`, `hintslight`
+and `hintnone` each ran 2432 checks with none failing -- the equal counts
+again being what means anything. This account reads `hintstyle: 1`, so
+its unconfigured default is SLIGHT, and that is the run the packaged
+default corresponds to.
+
 `hintslight` and `hintnone` are the other two values worth running, and
 `fc-match --verbose "DejaVu Sans Mono" | grep hintstyle` says which one
 the account is on without changing anything -- `1` is slight, `3` is
@@ -48208,3 +48214,11 @@ fixed tree -- exit 0, no failures, zero sanitizer reports, the flag and
 the 51 `__asan` symbols still verified. The fix was checked by hand in two
 invocation forms first, and that was not the close: the fault appeared in
 this configuration, so this is the configuration that had to agree.
+
+**And the beerssh matrix is the one item here this tree cannot re-take
+alone**: it needs `beerssh` built, with a terminal under test on the far
+end of it, which is another project's tree and another project's
+configuration. It is listed above with its command and its own document,
+and that is the right place for it -- but nothing in a qtty session
+closes it, which is worth saying so the list is not read as seven things
+a session could have done.
