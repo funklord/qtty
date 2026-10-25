@@ -8378,3 +8378,15 @@ find = "\t    || prog.contains(\"mintty\"))"
 into = "\t    )"
 count = 1
 check = "mintty -> Sixel, which is read from TERM_PROGRAM rather than from TERM"
+
+[[sabotage]]
+# The shadow report loses the objectName rung, so an icon-only action with a
+# shortcut is reported as "a QAction" -- which names the kind and not the
+# thing, in a report whose only job is telling an application what it lost.
+# 8.538.
+name = "the shadow report drops an action's objectName"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!a->objectName().isEmpty()) return a->objectName();\n"
+into = ""
+count = 1
+check = "and falls back to an objectName for an action with no text, an icon-only toolbar action being the ordinary case"

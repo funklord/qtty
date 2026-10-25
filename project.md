@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2405 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2408 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -46930,7 +46930,10 @@ caught a vacuity while writing rather than after.
    and the empty-payload arm of the kitty encoder. `cell_item_delegate.cpp`
    at 66.92 -- the `[-]` box for a partially checked item, and
    `AlignBottom`/`AlignVCenter` for a display alignment. `input_router.cpp`
-   at 67.13 is unexamined entirely.
+   at 67.13 was examined on 2026-10-25 and is mostly NOT a gap -- 185 of its
+   never-taken branches are defensive guards and short-circuit arms, all four
+   shortcut contexts are covered, and the only lines never executed at all
+   were `claim_label()`'s lower two rungs, closed by 8.538.
 3. **The GUI twin ignores z.** `Overlay::visible_overlays()` sorts by z for
    the terminal path; `sync_gui_twin()` stacks twins in creation order and
    never reads `z_`, which is why `set_z()` is the one setter that does
@@ -47003,3 +47006,31 @@ function's comment records having made about beerssh and removed.
 and five passing checks read as a covered function. What said otherwise
 was the branch figure, and the thing it named was not a missing row but an
 arm of a condition no row could reach.
+
+### 8.538 How the shadow report names a nameless action (2026-10-25)
+
+**The last item off 8.535's scan list, and the file it came from turned out
+to be better covered than its figure.** `input_router.cpp` reports 67.13
+per cent of branches taken, and 185 of the never-taken ones are defensive
+guards or short-circuit arms: all four shortcut contexts ARE exercised,
+which was checked rather than assumed. The only lines never executed at
+all were the lower two rungs of `claim_label()`'s ladder for a QAction --
+its text, then its objectName, then "a QAction".
+
+**The ladder exists because the report is the only way an application
+learns what it lost.** `conventions_shadowed()` hands those strings
+straight out, so a rung that produced an empty name would make the report
+useless for exactly the actions it is about -- and an icon-only toolbar
+action with a shortcut and no text is the ordinary case for reaching the
+middle rung, not an exotic one.
+
+Measured: the three rungs answer `Next pane`, `zoom_in` and `a QAction`.
+The text-named action is the control, which is what stops the ladder being
+read top-down for everything.
+
+**A figure of 67 per cent named one real thing in two thousand five
+hundred branches, and that is the useful calibration.** The three files
+scanned this way yielded a user-visible defect (8.533), two gaps worth
+closing (8.536, 8.537) and this one. Reading a low branch figure as a
+backlog would have been wrong in every case; what pays is the subset
+gcov marks as never executed AT ALL, which is a much shorter list.

@@ -17502,5 +17502,54 @@ int suite_router() {
 		Qtty::set_current_window(nullptr);
 	}
 
+	// HOW THE SHADOW REPORT NAMES AN ACTION WITH NO TEXT. claim_label() has
+	// a three-rung ladder for a QAction -- its text, then its objectName,
+	// then "a QAction" -- and coverage showed the lower two rungs were the
+	// only lines in input_router.cpp never executed at all. The ladder
+	// exists because a report saying "a QAction took your chord" is nearly
+	// useless, and conventions_shadowed() hands these strings straight to an
+	// application whose only way to learn what it has lost is to read them.
+	//
+	// An icon-only action is the ordinary case: a toolbar action with a
+	// pixmap and a shortcut and no text at all.
+	{
+		const bool had_conventions = keyboard_conventions();
+		set_keyboard_conventions(true);
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 4));
+		// Named by its objectName, the middle rung.
+		auto *named = new QAction(&host);
+		named->setObjectName(QStringLiteral("zoom_in"));
+		named->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_W));
+		host.addAction(named);
+		// Named by nothing, the bottom rung.
+		auto *nameless = new QAction(&host);
+		nameless->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+		host.addAction(nameless);
+		// THE CONTROL: an action with text must still be named by it, which
+		// is what stops the ladder being read top-down for everything.
+		auto *spoken = new QAction(QStringLiteral("Next pane"), &host);
+		spoken->setShortcut(QKeySequence(Qt::Key_F6));
+		host.addAction(spoken);
+		host.show();
+		QCoreApplication::processEvents();
+		QStringList labels;
+		for (const auto &row : conventions_shadowed(&host))
+			labels += row.second;
+		printf("info: the shadow report names [%s]\n",
+		       qPrintable(labels.join(QStringLiteral(", "))));
+		CHECK(labels.contains(QStringLiteral("Next pane")),
+		      "the shadow report names an action by its text, which is the"
+		      " control for the two rungs below");
+		CHECK(labels.contains(QStringLiteral("zoom_in")),
+		      "and falls back to an objectName for an action with no text,"
+		      " an icon-only toolbar action being the ordinary case");
+		CHECK(labels.contains(QStringLiteral("a QAction")),
+		      "and says at least what KIND of thing took the chord when it"
+		      " has neither, rather than reporting an empty name");
+		set_keyboard_conventions(had_conventions);
+	}
+
 	return fails;
 }
