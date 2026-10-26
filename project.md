@@ -49327,3 +49327,44 @@ becomes noise gets switched off and then guards nothing. Whether the
 answer is to audit an exempt ancestor's offset once, to check absolute
 rects and widen the exemptions, or to leave it, is the holder's. The
 reproduction is here so the decision does not need re-taking first.
+
+### 8.591 The file with no sabotage entry, and why (2026-10-26)
+
+**Counted 2026-10-26: 792 sabotage entries name 24 of the 48 source files,
+and of the 24 with none, 23 are headers.** The exception is
+`src/runtime/tray.cpp` -- **371 lines of implementation with no entry at
+all**, which on the census reads as the least defended file in the tree.
+
+**It is structural rather than neglect.** `sabotage.py` requires the check
+an entry names to exist in `test/`, and the tray's assertions do not: they
+live in `tool/tray/qtty-tray-check`, because publishing an icon needs a
+**session bus** and `make check` has to pass on a machine with none -- a
+build server, a container, and this project's own sanitizer and valgrind
+arms all run without one. So a tray entry cannot be written with the
+present tool, and the zero is a property of the spec's reach.
+
+**So the question the spec would have answered was answered by hand, which
+is what the project did for every entry once.** `set_icon_name()` was
+changed to drop the name it is given, the gate re-run, and it failed:
+
+    info: the desktop reads IconName= Status=NeedsAttention ToolTipTitle=md0 degraded
+    FAIL: carrying the name, status and tooltip it was given
+    test-tray: 1 failure(s)
+
+Restored, and green again. **The tray's checks discriminate**, which is
+the thing a census of entries cannot tell you either way.
+
+**And that gate already carries the control this tree asks for**: it runs
+the check once against a deliberately absent bus and FAILS THE GATE if
+that passes, so it cannot report success over a run that measured nothing.
+Fourteen assertions, end to end -- availability before and after the
+watcher is registered, the published `IconName`, a 22x22 pixmap's bytes,
+`Activate` arriving as `Trigger`, and `show_message` refused without the
+Notifications service and accepted with it.
+
+**Whether `sabotage.py` should learn to name a tool's checks is not
+answered here.** It would need a second harness -- `make test-tray` per
+entry, under `dbus-run-session`, where the present one rebuilds and runs
+the suite -- which is real work for one file whose gate has now been shown
+to work. Recorded so the next reader of the census does not mistake a
+limit of the instrument for an undefended file.
