@@ -2,8 +2,22 @@
 // the wire as itself".
 //
 // INTERNAL. Not shipped in include/qtty/: nothing outside the library needs
-// it, because every public write path -- CellBuffer::put_cluster(), text(),
-// set_glyph() -- already applies it.
+// it, because the library applies it on the way in and on the way out.
+//
+// THE "EVERY PUBLIC WRITE PATH" CLAIM THIS CARRIED WAS FALSE, and it named
+// the three paths that are one: text() and set_glyph() both call
+// put_cluster(), so there was one sanitising entry, not three. What it left
+// out are the two writers that take a value -- CellBuffer::fill(), which
+// wrote a Cell verbatim, and the mutable CellBuffer::at() reference, whose
+// writes cannot be enumerated at all, which is why no list of entry points
+// could ever have been complete. Measured on the wire 2026-10-26, an ESC, a
+// C1 CSI, a U+2028 and a BEL all reached the terminal as themselves. 8.578.
+//
+// So the entry guards keep the BUFFER clean -- which is what to_text() and
+// the snapshot fixtures read, and the reason the substitution is not only
+// in the backend -- and one guard at the single wire exit covers at(). Two
+// sites for two different properties, and neither is a clamp repeated per
+// caller.
 //
 // IT LIVES HERE BECAUSE IT HAD TWO SPELLINGS AND ONE WAS NARROWER. The cell
 // path has always had the full rule; AnsiBackend::set_title() open-coded
@@ -53,6 +67,46 @@ inline bool is_control(char32_t u) {
 	if (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)
 		return true;
 	return u < 0x20 || u == 0x7f || (u >= 0x80 && u <= 0x9f);
+}
+
+// THE RULE APPLIED, not merely named, because having one predicate and two
+// applications of it is how the narrower spelling survived 8.510. Both
+// callers want "this string with nothing in it that must not reach the
+// wire", and they had written that out twice: the title path scanned every
+// character and the cell path read only the first one.
+//
+// A GLYPH IS A GRAPHEME CLUSTER, so position 0 is not where a control has
+// to be. Measured on the wire 2026-10-26: put_cluster() with "a" followed
+// by U+009B emitted `61 c2 9b`, a base and then C1 CSI, past the guard --
+// and the bytes after an injected CSI are read as its parameters. The
+// cheap check was not a smaller version of the rule, it was a different
+// rule that happened to catch the common input.
+//
+// Returns the string itself when there is nothing to do, which is every
+// ordinary glyph, so the common path copies no characters.
+inline QString without_controls(const QString &s) {
+	int i = 0;
+	while (i < s.size() && !is_control(s.at(i).unicode())) ++i;
+	if (i == s.size()) return s;
+	QString out = s.left(i);
+	out.reserve(s.size());
+	for (++i; i < s.size(); ++i)
+		if (!is_control(s.at(i).unicode())) out += s.at(i);
+	return out;
+}
+
+// A CELL SUBSTITUTES WHERE A TITLE STRIPS, and the difference is columns.
+// Dropping a glyph's only character leaves a cell with nothing to emit, so
+// every cell after it on the row moves one left -- a corrupted frame rather
+// than a corrupted character. A space is what a carriage return already
+// became: one column, nothing shown, no meaning on the wire.
+//
+// An EMPTY cluster is left empty rather than becoming a space, because an
+// empty one means "no glyph here" to the emitters and a space does not.
+inline QString safe_glyph(const QString &cluster) {
+	if (cluster.isEmpty()) return cluster;
+	const QString g = without_controls(cluster);
+	return g.isEmpty() ? QStringLiteral(" ") : g;
 }
 
 } // namespace Qtty

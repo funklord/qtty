@@ -269,12 +269,19 @@ QString elide_to_cells(const QString &s, int cells, Qt::TextElideMode mode) {
 // It is reachable from ordinary drawing rather than from a fixture: this
 // style clears a widget's rect with fill() before drawing it, and a wide
 // glyph belonging to the widget beside it can sit across that boundary.
+// THE GLYPH IS SANITISED ONCE, not per cell: a fill writes one value, so
+// the rule costs one scan however large the rectangle. This wrote the Cell
+// verbatim, which made it a public route for a control into the buffer and
+// from there to the wire -- measured, a Cell holding BEL filled four cells
+// and sent four 0x07. 8.578.
 void CellBuffer::fill(const QRect &r, const Cell &v) {
+	Cell safe = v;
+	safe.ch = safe_glyph(v.ch);
 	for (int y = r.top(); y <= r.bottom(); ++y) {
 		clear_wide_partner(r.left(), y);
 		clear_wide_partner(r.right(), y);
 		for (int x = r.left(); x <= r.right(); ++x)
-			if (writable(x, y)) at(x, y) = v;
+			if (writable(x, y)) at(x, y) = safe;
 	}
 }
 
@@ -323,10 +330,14 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 	// A control never reaches a cell as itself. Substituted here rather than
 	// in the backend because to_text() and the snapshot fixtures read the
 	// buffer directly, and a buffer holding an escape character is already
-	// wrong whoever writes it out.
-	QString glyph = cluster;
-	if (!glyph.isEmpty() && is_control(glyph.at(0).unicode()))
-		glyph = QStringLiteral(" ");
+	// wrong whoever writes it out. The backend guards its own exit as well,
+	// for the one writer this cannot see: at() hands out a reference.
+	//
+	// THE WHOLE CLUSTER, not its first character. This read glyph.at(0)
+	// alone, which is not a cheaper version of the rule but a different one
+	// -- measured, "a" followed by U+009B went out as `61 c2 9b`, a base and
+	// then C1 CSI. 8.578.
+	QString glyph = safe_glyph(cluster);
 	// A CELL IS ONE COLUMN AND ITS CONTENTS ARE NOT BOUNDED BY THAT.
 	// Grapheme clustering puts a base and every mark after it in one
 	// cell, and nothing counted them: measured, 5000 combining marks on

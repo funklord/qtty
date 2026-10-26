@@ -1458,7 +1458,15 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			const Cell &c = composed.at(x, y);
 			if (c.width == 0) continue;              // continuation of wide cell
 			emit_sgr(out, c, cur, depth_);
-			out += c.ch.toUtf8();
+			// THE ONE WIRE EXIT FOR A GLYPH, and the only guard that can
+			// cover CellBuffer::at(): it hands out a mutable reference, so
+			// its writes are not a set anybody can enumerate, and the entry
+			// guards cannot see them. An application composing cells itself
+			// is a shape application.h supports, and a filename or a remote
+			// string written straight into a cell carried an ESC to the
+			// terminal -- measured as `1b` emitted between a cursor home and
+			// the rest of the row. 8.578.
+			out += safe_glyph(c.ch).toUtf8();
 		}
 	};
 	if (damage.isEmpty()) {
@@ -1963,10 +1971,13 @@ void AnsiBackend::set_title(const QString &title) {
 	// and whatever follows is executed -- which is the escape injection the
 	// paragraph above is about, reached by the one class it did not name. A
 	// cell's glyph goes out as text; a title goes out as part of a sequence.
-	QString safe;
-	safe.reserve(title.size());
-	for (const QChar c : title)
-		if (!is_control(c.unicode())) safe += c;
+	//
+	// AND THE APPLICATION IS SHARED NOW, not just the predicate. 8.510 gave
+	// the two paths one is_control() and left them two loops over it, and
+	// the cell one turned out to read a single character where this one
+	// reads them all -- so the narrower spelling survived unifying the
+	// predicate, in the half nobody re-read. 8.578.
+	QString safe = without_controls(title);
 
 	// Bounded, because this goes out on every title change and a terminal
 	// has to keep it. The cut is at a character rather than a byte so a

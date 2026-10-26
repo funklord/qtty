@@ -532,18 +532,23 @@ check = "next_window moves to another window and previous_window"
 # ends early and what follows is executed. The entry below catches an ESC
 # getting through, which the narrow test already stopped; this one catches
 # the classes it did not name. 8.510.
+#
+# RE-ANCHORED at 8.578, when the loop both entries pointed at became a call
+# to the shared without_controls(). The faults are unchanged -- the narrow
+# rule here, no rule at all below -- and they are written out as the code
+# they replace, which is what the loop used to be.
 name = "a title keeps C1 controls and line separators"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tif (!is_control(c.unicode())) safe += c;"
-into = "\t\tif (c.unicode() >= 0x20 && c.unicode() != 0x7f) safe += c;"
+find = "\tQString safe = without_controls(title);"
+into = "\tQString safe;\n\tfor (const QChar c : title)\n\t\tif (c.unicode() >= 0x20 && c.unicode() != 0x7f) safe += c;"
 count = 1
 check = "and no C1 control or line separator reaches the wire inside it -- U+009C is ST, which would end the OSC string and let what follows be executed"
 
 [[sabotage]]
 name = "a title goes out with its control characters intact"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tif (!is_control(c.unicode())) safe += c;"
-into = "\t\tsafe += c;"
+find = "\tQString safe = without_controls(title);"
+into = "\tQString safe = title;"
 count = 1
 check = "an escape inside a title does not reach the terminal"
 
@@ -8604,3 +8609,36 @@ find = "\t\t\tif (pending_.size() < 3) return false;      // still arriving\n"
 into = "\t\t\tif (pending_.size() < 2) return false;      // still arriving\n"
 count = 1
 check = "and the final arriving in a later read completes it, so F1 is delivered once rather than swallowed and followed by a letter"
+
+[[sabotage]]
+# The glyph's one wire exit stops applying the rule, so a control written
+# through the mutable CellBuffer::at() reference -- which no entry guard can
+# see -- reaches the terminal as itself. 8.578.
+name = "a cell glyph goes to the wire unsanitised"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tout += safe_glyph(c.ch).toUtf8();"
+into = "\t\t\tout += c.ch.toUtf8();"
+count = 1
+check = "a control character written through fill(), through the mutable at() reference, or behind a base in a cluster does not reach the wire as itself"
+
+[[sabotage]]
+# fill() copies the Cell verbatim again, so one control fills a rectangle of
+# cells. Invisible on the wire now that the backend guards its own exit,
+# which is why this entry names a BUFFER check. 8.578.
+name = "a filled cell carries a control into the buffer"
+file = "src/core/cell_buffer.cpp"
+find = "\tsafe.ch = safe_glyph(v.ch);"
+into = "\tsafe.ch = v.ch;"
+count = 1
+check = "a control filled through fill() reaches the buffer as a space, the one writer that copies a whole Cell"
+
+[[sabotage]]
+# put_cluster() goes back to reading glyph.at(0) alone -- the exact code this
+# replaced -- so a control behind an ordinary base survives into the cell.
+# 8.578.
+name = "a cluster is checked at its first character only"
+file = "src/core/cell_buffer.cpp"
+find = "\tQString glyph = safe_glyph(cluster);"
+into = "\tQString glyph = cluster;\n\tif (!glyph.isEmpty() && is_control(glyph.at(0).unicode()))\n\t\tglyph = QStringLiteral(\" \");"
+count = 1
+check = "and a control behind an ordinary base is dropped from the cluster, the base keeping its cell"

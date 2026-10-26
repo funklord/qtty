@@ -755,6 +755,43 @@ int suite_cells() {
 		      "line and paragraph separators and not their category's "
 		      "third member");
 	}
+
+	// THE TWO WRITERS THAT TAKE A VALUE, which the rule did not cover, and
+	// the POSITION it did not look at. Asserted on the BUFFER rather than on
+	// the wire, which is a distinction the fix created: AnsiBackend guards
+	// its own glyph exit now, because CellBuffer::at() hands out a mutable
+	// reference and no entry guard can see what is written through it -- so
+	// breaking either guard below leaves the WIRE clean and nothing would
+	// fail. What they are for is the buffer that to_text() and the snapshot
+	// fixtures read, and that is what these ask. 8.578.
+	{
+		// fill() copied the Cell verbatim, so one control filled a rectangle.
+		CellBuffer f(4, 1);
+		Cell v;
+		v.ch = QStringLiteral("\a");
+		f.fill(QRect(0, 0, 4, 1), v);
+		// READ THE CELLS, not to_text(): it right-trims spaces and ends each
+		// row with a newline, so a row of four spaces is "\n" and an
+		// expectation of "    " fails against correct code. The to_text()
+		// half is kept as the surface the comment above names, asked for
+		// what it can answer -- that no BEL survived anywhere in it.
+		bool filled_clean = true;
+		for (int x = 0; x < 4; ++x)
+			if (f.at(x, 0).ch != QStringLiteral(" ")) filled_clean = false;
+		CHECK(filled_clean && !f.to_text().contains(QLatin1Char('\a')),
+		      "a control filled through fill() reaches the buffer as a space,"
+		      " the one writer that copies a whole Cell");
+		// And a glyph is a grapheme cluster, so position 0 is not where a
+		// control has to be: this read glyph.at(0) alone and "a" followed by
+		// C1 CSI went through it, out to the terminal as `61 c2 9b`.
+		CellBuffer c(2, 1);
+		QString late = QStringLiteral("a");
+		late.append(QChar(0x9b));
+		c.put_cluster(0, 0, late, Color(), Color(), Attrs());
+		CHECK(c.at(0, 0).ch == QStringLiteral("a"),
+		      "and a control behind an ordinary base is dropped from the"
+		      " cluster, the base keeping its cell");
+	}
 	{
 		// A zero-width character was given a whole cell, which pushed
 		// everything after it one column right.

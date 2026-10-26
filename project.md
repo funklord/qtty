@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2440 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2444 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48571,3 +48571,118 @@ the counterpart of the entry the complex surface has carried since 8.480.
 **A sabotage that can no longer be expressed is the structural fix
 reporting itself**, and the honest answer is to delete it rather than to
 re-anchor it somewhere it does not belong. 787 entries.
+
+### 8.578 A control character on the wire, four ways (2026-10-26)
+
+**`control_chars.h` opens by saying nothing outside the library needs it
+"because every public write path -- `CellBuffer::put_cluster()`, `text()`,
+`set_glyph()` -- already applies it". Three claims in that sentence are
+wrong**, and the lens that found them is 8.577's: a comment asserting an
+invariant holds *everywhere*, maintained only by local reasoning at each
+site.
+
+- **The three named paths are one.** `text()` and `set_glyph()` both call
+  `put_cluster()`, so there was a single sanitising entry, not three.
+- **The two writers that take a VALUE are missing.** `fill()` copied a
+  `Cell` verbatim, and `at()` returns a **mutable reference** -- its writes
+  are not a set anybody can enumerate, which is why no list of entry points
+  could ever have been complete.
+- **`put_cluster()` read `glyph.at(0)` alone**, and a glyph is a grapheme
+  cluster. A control behind an ordinary base went through the guard.
+
+**Measured on a real pty before any fix, as bytes rather than as a
+predicate:**
+
+    1b 5b 48 1b 5b 30 6d 1b c2 9b e2 80 a8 61 c2 9b 20 20 ...
+                         ^^ ^^^^^ ^^^^^^^^    ^^^^^
+                        ESC  C1 CSI  U+2028     CSI behind 'a'
+
+plus four `07` from the `fill()`. **U+009B IS CSI**, so the bytes after it
+are read as its parameters and the rest of the row configures the terminal
+instead of appearing on it. This is the escape injection 8.510 fixed for a
+window title, reached through a cell instead -- and a cell is the easier
+route, because a filename or a remote string written into one needs no
+dialog.
+
+**The fix is shaped by 8.577, one level up.** There is exactly **one** wire
+exit for a glyph -- `out += c.ch.toUtf8()` -- and it is the only place that
+can cover `at()`. So the backend guards its own exit. The entry guards stay
+because they serve a different property: a buffer holding an escape
+character is already wrong, which is what `to_text()` and the snapshot
+fixtures read. **Two sites for two properties, not one clamp repeated per
+caller.**
+
+**And the title path moved onto the same helper.** 8.510 unified the
+PREDICATE and left the two paths a loop each over it -- which is exactly
+how the narrower spelling survived: the cell path read one character where
+the title path read them all, in the half nobody re-read. `without_controls()`
+and `safe_glyph()` are the application of the rule, shared, and the
+difference between them is deliberate -- a title STRIPS and a cell
+SUBSTITUTES, because dropping a glyph's only character would move every
+later cell on the row one column left. A corrupted frame in place of a
+corrupted character.
+
+**THE FUNNEL MADE THE ENTRY GUARDS UNOBSERVABLE FROM THE WIRE, which is
+the part worth keeping.** Sabotaging `fill()` now leaves the wire clean,
+because the exit catches it -- so a sabotage entry naming a wire check
+would report the entry guard as defended when nothing tests it. Each guard
+is therefore asserted at the property it actually serves: two cell checks
+on the buffer, one byte check on the wire, three sabotage entries. **A
+backstop silently retires the checks in front of it.**
+
+**Three instrument faults of mine, all in the same hour.**
+
+**The ESC indicator never discriminated anything.** It looked for
+`\033[H` followed by ESC and reported 1 before the fix and 1 after: the
+bytes are `1b 5b 48 1b`, where the second escape is the backend's own SGR
+introducer, not a glyph. Only the hex dump settled it, and the check now
+names each control and asserts the row's shape beside their absence.
+
+**TWO checks disappeared, at two placements, for two different reasons --
+and only one of the two is explained.**
+
+The first: placed between the resize checks, the new block made *"a
+terminal reporting zero rows is refused"* stop **running** rather than
+failing -- 2441 where 2442 was due, no `FAIL` line anywhere. Moving the
+block fixed it. **I wrote down that the cause was a second `AnsiBackend`
+constructed inside a live fixture, two notifiers on one descriptor. That
+was a comfortable explanation and it is now disproved.** Each candidate
+went back at that exact position on its own: a bare
+`{ AnsiBackend probe; }`, the `fflush`-and-`dup2` pair with no backend,
+and the pty drain loop. **All three left the check running and the suite
+at 422 PASS.** What is untested is the combination, and `present()`
+through a second backend on a live fixture's pty is the remaining
+suspect. The entry says so rather than keeping the story, because a
+comfortable explanation that ends an investigation costs more than no
+explanation: it is the placement that is forbidden, not the mechanism
+that is known.
+
+The second, at the new placement, **is** isolated. The check that vanished
+was the one *before* the block -- the opposite direction -- because
+`printf` is buffered and the block redirected fd 1 to its pty **without
+flushing first**. The earlier `PASS` was still in the buffer, went out on
+the next flush into the frame bytes, and the drain threw it away. One
+`fflush(stdout)` before the redirect, verified by the check coming back
+and the count reaching 2444. It is the same disappearance
+`suite_backend.cpp`'s own tail records, reached from the other side: that
+one restored too late, this one redirected too early.
+
+**`count-check` caught both and nothing else would have.** Neither
+produced a failure, a warning, or a changed byte of output -- only a
+number that was one short.
+
+**And `to_text()` right-trims.** The first `fill()` assertion expected
+`"    "` where the function returns `"\n"` -- it strips trailing spaces and
+ends each row with a newline -- so a correct fix failed its own check. The
+assertion reads the cells now, and asks `to_text()` only what it can
+answer.
+
+**The geometry failure I suspected was my own was not.** Running
+`qtty-tests backend` alone reports six widget geometries off the grid,
+where the full run is green. I suspected the new block, which constructs a
+backend and could move `GridMetrics` -- so rather than reasoning about it I
+restored `HEAD`'s `suite_backend.cpp`, rebuilt and ran it alone: **the
+committed file fails identically.** It is a property of running that suite
+in isolation and it predates this work. Worth knowing for whoever runs one
+suite alone, as I did: the backend suite's own geometry audit is not valid
+on its own.

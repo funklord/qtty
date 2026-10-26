@@ -7220,6 +7220,130 @@ int suite_backend() {
 		      " the emergency path");
 	}
 
+	// A CONTROL CHARACTER ON THE WIRE, THROUGH THE WRITERS THE RULE DID NOT
+	// COVER. control_chars.h said "every public write path" applied it and
+	// named three -- put_cluster(), text() and set_glyph() -- which are ONE
+	// path, the latter two calling the first. The writers it left out are the
+	// two that take a value: fill(), which copied a Cell verbatim, and the
+	// mutable at() reference, whose writes are not a set anybody can
+	// enumerate -- which is why no list of entry points could have been
+	// complete. And put_cluster() itself read glyph.at(0) alone, so a control
+	// behind an ordinary base went through the guard.
+	//
+	// Measured on a pty before the fix, as BYTES rather than as a predicate,
+	// which is the only reason the fourth of them was believed:
+	//
+	//     1b 5b 48 1b 5b 30 6d 1b c2 9b e2 80 a8 61 c2 9b 20 ...
+	//                          ^^ ^^^^^ ^^^^^^^^    ^^^^^
+	//                         ESC  C1 CSI  U+2028     CSI after 'a'
+	//
+	// U+009B IS CSI, so the bytes after it are read as its parameters and the
+	// rest of the row configures the terminal instead of appearing on it --
+	// the escape injection 8.510 fixed for a window title, reached through a
+	// cell instead. 8.578.
+	//
+	// ASSERTED AS BYTES AND IN BOTH DIRECTIONS. "No ESC in the frame" cannot
+	// be the check: the backend's own cursor home and SGR reset are escapes,
+	// and an indicator looking for \033[H followed by ESC matches the SGR
+	// introducer whether the defect is there or not -- it reported 1 before
+	// the fix and 1 after, discriminating nothing. So each control is named,
+	// and the row's SHAPE is asserted beside their absence: each becomes
+	// exactly one space and the cluster keeps its base, because stripping a
+	// glyph outright would move every later cell one column left -- a
+	// corrupted frame in place of a corrupted character.
+	//
+	// LAST IN THIS SUITE AND ON ITS OWN PTY, for the reason the keyboard
+	// block in suite_exec() gives. Written first between the resize
+	// checks, it made "a terminal reporting zero rows is refused" stop
+	// RUNNING rather than failing -- 2441 where 2442 was due, no FAIL line
+	// anywhere -- and moving it here fixed that.
+	//
+	// WHY is NOT established, and the three comfortable answers are
+	// disproved rather than untested. Each was put back at that exact
+	// position on its own: a bare `{ AnsiBackend probe; }`, the
+	// fflush-and-dup2 pair with no backend, and the pty drain loop. All
+	// three left the check running and the suite at 422 PASS. What is
+	// untested is the combination, and present() through a second backend
+	// on a live fixture's pty is the remaining suspect. Do not reinstate
+	// that placement on the strength of the probes passing.
+	//
+	// count-check caught both disappearances and nothing else would have,
+	// which is the second and third time that sentence has been needed in
+	// this file.
+	{
+		int cw_m = -1, cw_s = -1;
+		if (::openpty(&cw_m, &cw_s, nullptr, nullptr, nullptr) != 0) {
+			printf("FAIL: no pty for the control-character check\n");
+			++fails;
+		} else {
+			::fcntl(cw_m, F_SETFL, O_NONBLOCK);
+			const QByteArray cw_term = qgetenv("TERM");
+			const QByteArray cw_tmux = qgetenv("TMUX");
+			qputenv("TERM", "xterm-kitty");
+			qunsetenv("TMUX");
+			const int cw_in = ::dup(0), cw_out = ::dup(1);
+			QByteArray wire;
+			{
+				// FLUSHED BEFORE THE REDIRECT, not only after it. stdout is
+				// buffered, so anything printed earlier and not yet written goes
+				// out on the NEXT flush -- and with fd 1 pointed at the pty by
+				// then, that is into the frame bytes, where the drain below throws
+				// it away. Measured: the emergency-path check just above this one
+				// stopped appearing, 2443 where 2444 was due, with no FAIL line --
+				// its PASS had been written into the pty. Same disappearance the
+				// keyboard block in suite_exec() records, reached from the other
+				// side: that one restored too late, this one redirected too early.
+				fflush(stdout);
+				::dup2(cw_s, 0);
+				::dup2(cw_s, 1);
+				AnsiBackend cb;
+				CellBuffer f(8, 2);
+				f.at(0, 0).ch = QStringLiteral("\033");     // the raw reference
+				f.at(1, 0).ch = QString(QChar(0x9b));       // C1 CSI
+				f.at(2, 0).ch = QString(QChar(0x2028));    // LINE SEPARATOR
+				QString late = QStringLiteral("a");         // past the old guard
+				late.append(QChar(0x9b));
+				f.put_cluster(3, 0, late, Color(), Color(), Attrs());
+				Cell bell;
+				bell.ch = QStringLiteral("\a");             // and through fill()
+				f.fill(QRect(0, 1, 4, 1), bell);
+				char drain[8192];
+				while (::read(cw_m, drain, sizeof(drain)) > 0) { }
+				cb.present(f, QRegion());
+				for (int spin = 0; spin < 64; ++spin) {
+					const ssize_t n = ::read(cw_m, drain, sizeof(drain));
+					if (n <= 0) break;
+					wire.append(drain, int(n));
+				}
+			}
+			// RESTORED OUTSIDE THE SCOPE ABOVE, because the backend's destructor
+			// writes its teardown to fd 1 and that has to be the pty.
+			fflush(stdout);
+			::dup2(cw_out, 1);
+			::dup2(cw_in, 0);
+			const bool none = !wire.contains(QByteArray("\xc2\x9b"))
+			                  && !wire.contains(QByteArray("\xe2\x80\xa8"))
+			                  && !wire.contains('\a');
+			const bool shape = wire.contains(QByteArray("   a"));
+			printf("info: cell wire %d byte(s), controls gone %d, shape %d\n",
+			       int(wire.size()), int(none), int(shape));
+			CHECK(none,
+			      "a control character written through fill(), through the mutable"
+			      " at() reference, or behind a base in a cluster does not reach"
+			      " the wire as itself");
+			CHECK(shape,
+			      "and each becomes exactly one space with the cluster's own base"
+			      " kept, so the row's remaining cells do not shift");
+			::close(cw_in);
+			::close(cw_out);
+			::close(cw_m);
+			::close(cw_s);
+			if (cw_term.isEmpty()) qunsetenv("TERM");
+			else qputenv("TERM", cw_term);
+			if (!cw_tmux.isEmpty()) qputenv("TMUX", cw_tmux);
+		}
+	}
+
 	return fails;
 }
 
