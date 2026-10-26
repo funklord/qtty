@@ -422,11 +422,19 @@ public:
 	void polish(QWidget *) override;
 
 private:
-	// The answer before it is made safe to read. subControlRect() above is a
-	// wrapper that clamps a negative side and clips to the control's own
-	// rect, for the reason subElementRect()'s valid_rect() gives: a clamp at
-	// each `return` misses the branches that return early, which is how two
-	// of eighteen invalid rectangles survived the first attempt at it.
+	// The answer before it is made safe to read. subElementRect() and
+	// subControlRect() above are wrappers that clamp a negative side and
+	// clip to the option's own rect, for the reason valid_rect() gives in
+	// the implementation: a clamp at each `return` misses the branches that
+	// return early. Two of eighteen invalid rectangles survived the first
+	// attempt at it, and 8.576 is the second time the per-site shape lost a
+	// branch -- an arm added later escaped its item by a cell.
+	//
+	// So a new branch in either helper may return whatever its own
+	// arithmetic gives and does not clamp: that is the wrapper's one job,
+	// and a clamp repeated at the site is how the convention came back.
+	QRect sub_element_rect(SubElement, const QStyleOption *,
+	                       const QWidget *) const;
 	QRect sub_control_rect(ComplexControl, const QStyleOptionComplex *,
 	                       SubControl, const QWidget *) const;
 };

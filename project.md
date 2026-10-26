@@ -48524,3 +48524,50 @@ every element stays inside at this size. **An exemption that tolerates
 nothing is a weakening with no case behind it**, so the stricter form
 stands and any future escape is a failure rather than a silent addition
 to a tolerated set.
+
+### 8.577 One clamp per surface, not one per `return` (2026-10-26)
+
+**8.576 was the instance; this is the class.** `subControlRect()` is a
+wrapper over a private `sub_control_rect()` helper, and the wrapper is the
+only place an answer is clamped -- the comment on it records why, from
+8.477: the first attempt clamped at each `return` instead, corrected 16 of
+18 invalid rectangles, and missed the two branches that correct a case of
+their own and return before reaching the clamp. `subElementRect()` was
+still that per-site shape, under a comment at `valid_rect()` claiming
+every exit went through it.
+
+**Two exits did not**, found by enumerating the `return` statements in the
+function body rather than by reading it: the item-view text rect, which is
+inside its own rect only by construction, and the check indicator -- whose
+own escape is 8.576, an arm added later, with a hand-written
+`.intersected(opt->rect)` as its fix. **The convention predicted its own
+failure and the prediction was already in the header**, which says a clamp
+per `return` "misses the branches that return early".
+
+So the sub-element surface is the same funnel now: `subElementRect()`
+returns `valid_rect(sub_element_rect(se, opt, w), opt)`, the four per-site
+clamps and 8.576's `.intersected()` are gone, and the one remaining
+`valid_rect()` call per surface is the whole of the invariant. **Two call
+sites, grepped, one per surface.** A new branch in either helper returns
+whatever its arithmetic gives; clamping is the wrapper's job, and a clamp
+repeated at the site is how the convention came back.
+
+**The refactor can only clamp more, never less**, which is what makes it
+safe to assert against the existing checks: `valid_rect()` is idempotent
+and monotone -- it raises a negative side to zero and intersects with the
+option's own rect -- so a path that was already clamped is unchanged and a
+path that was not can only lose area it did not own. A changed check would
+have been a finding, not noise. 2440 checks pass on both arms, and the
+sub-element sweep is unmoved at 354 asks under Qt 6.8 and 366 under
+Qt 5.15.
+
+**AND 8.576'S SABOTAGE ENTRY BECAME THE SHIPPED CODE.** Its `into` was
+exactly the line without the per-site `.intersected()`, which is what the
+file now says, so `--validate` refused it: the fault it reproduced can no
+longer be written at that site, because every arm is clipped a level up.
+It is removed and superseded by `a sub-element rect is handed out
+unclamped`, which breaks the funnel itself and reddens the same check --
+the counterpart of the entry the complex surface has carried since 8.480.
+**A sabotage that can no longer be expressed is the structural fix
+reporting itself**, and the honest answer is to delete it rather than to
+re-anchor it somewhere it does not belong. 787 entries.

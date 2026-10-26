@@ -215,10 +215,20 @@ private:
 // so nothing reads it as space; what a caller can read wrongly is the
 // numbers.
 //
-// Every exit from subElementRect() goes through this, including the branches
-// that correct a case of their own -- those were the two that still leaked
-// after the first attempt put the clamp at the final return only, because
-// they return before reaching it.
+// BOTH rect surfaces funnel through this. subElementRect() and
+// subControlRect() each wrap a helper that computes the answer, and the
+// wrapper is the only place it is clamped. The first attempt put the clamp
+// at the final return of subElementRect() instead, and the two branches
+// that correct a case of their own returned before reaching it: 16 of 18
+// invalid rects corrected, 2 left.
+//
+// AND THE PER-SITE SHAPE FAILED A SECOND TIME before it was given up. The
+// complex side became a wrapper at 8.477, and the sub-element side was left
+// as a clamp per `return` with every branch correct by its own reasoning.
+// 8.576 is what that cost: an arm added later answered a check indicator
+// reaching one cell outside a narrow item, under a comment here that said
+// every exit was covered. Nobody can audit "every exit" on each edit and a
+// compiler will not do it either, so neither surface asks them to.
 //
 // AND IT IS INSIDE THE THING IT DESCRIBES, which is a second question and
 // was a second fault. A rect can be positive, clear of its neighbours and
@@ -1533,6 +1543,11 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 // of them: the style is asked, so the style can answer.
 QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
                                 const QWidget *w) const {
+	return valid_rect(sub_element_rect(se, opt, w), opt);
+}
+
+QRect GridStyle::sub_element_rect(SubElement se, const QStyleOption *opt,
+                                  const QWidget *w) const {
 	QRect r = QProxyStyle::subElementRect(se, opt, w);
 	// The vertical half of a framed widget's inset, which
 	// PM_DefaultFrameWidth cannot supply: it is one number and a cell is not
@@ -1570,8 +1585,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		const QRect pane = QProxyStyle::subElementRect(SE_TabWidgetTabPane,
 		                                              opt, w);
 		if (pane.isValid() && pane.width() > 2 * cw)
-			return valid_rect(QRect(pane.left() + cw, r.top(),
-			                        pane.width() - 2 * cw, r.height()), opt);
+			return QRect(pane.left() + cw, r.top(),
+			             pane.width() - 2 * cw, r.height());
 	}
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
@@ -1597,9 +1612,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// it refused to copy: r is invalid in precisely the case that
 			// needs correcting, so guarding on it declines exactly there.
 			if (opt->rect.height() >= 3 * ch)
-				return valid_rect(QRect(r.left(), opt->rect.top() + ch,
-				                        r.width(),
-				                        opt->rect.height() - 2 * ch), opt);
+				return QRect(r.left(), opt->rect.top() + ch, r.width(),
+				             opt->rect.height() - 2 * ch);
 			// Below that, override ONLY where Qt's own answer is smaller
 			// than a single row -- which is where it stops being a viewport
 			// at all. The frame's border rows are given up rather than the
@@ -1622,8 +1636,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// rows less one pixel and no longer a whole number of anything.
 			if (opt->rect.height() > 0 && opt->rect.height() % ch == 0
 			    && r.height() < ch)
-				return valid_rect(QRect(r.left(), opt->rect.top(),
-				                        r.width(), opt->rect.height()), opt);
+				return QRect(r.left(), opt->rect.top(),
+				             r.width(), opt->rect.height());
 		}
 	}
 	// The VERTICAL half of a line edit's inset, from the same number and for
@@ -1654,8 +1668,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		const int ch = GridMetrics::ch();
 		// Nothing below three rows, as above: two borders and a content row.
 		const int v = opt->rect.height() >= 3 * ch ? ch : 0;
-		return valid_rect(QRect(r.left(), opt->rect.top() + v,
-		                        r.width(), opt->rect.height() - 2 * v), opt);
+		return QRect(r.left(), opt->rect.top() + v,
+		             r.width(), opt->rect.height() - 2 * v);
 	}
 	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
 	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
@@ -1691,8 +1705,9 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// the check box is tested against, so the escape means a press
 			// one cell OUTSIDE a narrow checkable item toggles it.
 			//
-			// Intersected rather than declined: part of the box is visible
-			// in a narrow item and a click there should still reach it,
+			// Intersected rather than declined -- by the wrapper, which is
+			// where the one clamp lives: part of the box is visible in a
+			// narrow item and a click there should still reach it,
 			// which is the difference from the scroll bar's arrows at
 			// 8.549 -- those are not drawn at all below two cells, so they
 			// decline the cell instead.
@@ -1704,8 +1719,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// nothing upstream to inherit this from.
 			return QRect(leading_edge(opt->rect.left(), opt->rect.right(),
 			                          cw, 3 * cw, opt->direction),
-			             opt->rect.top(), 3 * cw, opt->rect.height())
-			    .intersected(opt->rect);
+			             opt->rect.top(), 3 * cw, opt->rect.height());
 	}
 	// AND THE CELLS THE TEXT IS DRAWN IN, which nothing here answered and
 	// which is not only about drawing: Qt's own delegate places an inline
@@ -1770,7 +1784,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// a contents rect for a sub-element with no consumer would be choosing a
 	// layout nobody asked for. Clamping removes the invalid value and leaves
 	// the shape to whoever finds a use for it.
-	return valid_rect(r, opt);
+	return r;
 }
 
 // One row for a title, none without one. A check box in the title takes the
