@@ -6896,7 +6896,7 @@ int suite_backend() {
 		// Qt 5 under xcb: all three went red together, which an empty
 		// capture explains and a broken cap does not.
 		printf("info: the 300-message child %s and said %d byte(s)%s\n",
-		       how_it_left(many_status).constData(), many.size(),
+		       how_it_left(many_status).constData(), int(many.size()),
 		       many.isEmpty() ? " -- NOTHING, so the checks below are about"
 		                        " the child rather than the cap" : "");
 		// AND A CHILD THAT HAD TO BE KILLED IS NOT EVIDENCE ABOUT THE
@@ -7072,7 +7072,7 @@ int suite_backend() {
 		}, QByteArray(), nullptr, &at_exit_status);
 		printf("info: the exit(0) child %s and said %d byte(s), the"
 		       " _exit(0) one %d\n", how_it_left(at_exit_status).constData(),
-		       at_exit.size(), quiet.size());
+		       int(at_exit.size()), int(quiet.size()));
 		// Same precondition as the cap above, and for the same reason: this
 		// is the check that the atexit end exists at all, so a child that
 		// never finished exiting cannot answer it.

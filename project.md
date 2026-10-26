@@ -48686,3 +48686,57 @@ committed file fails identically.** It is a property of running that suite
 in isolation and it predates this work. Worth knowing for whoever runs one
 suite alone, as I did: the backend suite's own geometry audit is not valid
 on its own.
+
+### 8.579 The "every X" lens, swept to the end (2026-10-26)
+
+**The lens that produced 8.577 and 8.578 is: a comment asserting an
+invariant holds EVERYWHERE, maintained only by local reasoning at each
+site.** Both were found by enumerating what the comment quantified over
+rather than by reading it -- `valid_rect()`'s "every exit from
+subElementRect() goes through this" (two did not) and
+`control_chars.h`'s "every public write path ... already applies it"
+(the three named were one, and two more existed).
+
+**Swept to the end rather than stopped after two payouts**, which is the
+rule that earned itself in the sub-element sweep. Four more claims of the
+same shape, each checked by enumeration:
+
+- **`TitleKeeper`: "every publication goes through here".** True, and
+  structurally: `publish()` is private with exactly one caller.
+- **`reset_sgr()`: "every caller wants the same guarantee".** True by
+  construction -- `Sgr cur` is default-constructed per frame, so the
+  state it skips a write on cannot go stale across frames.
+- **`Compositor`: "every path below that sets a cell sets a shape with
+  it".** True; there is one such path, and the member is private.
+- **`CellImage::key`: "the conversion is written out at every call
+  site".** True, **and my first reading of it was wrong.** Two sites in
+  `cell_paint.cpp` appear to omit the cast and do not: `Tiling::src` is
+  `qint64`, which is what `cacheKey()` returns, so there is no conversion
+  to write. I had grepped for uses of `cacheKey()` rather than for
+  conversions INTO `CellImage::key` -- the count inheriting its detector,
+  one more time, caught by reading the field's type before reporting.
+
+**Two of six.** Worth knowing for whoever runs this next: the claims that
+broke were both about a FUNNEL -- a rule with many entries and one
+intended choke point -- and the four that held were about a member nothing
+outside its class can reach. **Privacy makes the claim checkable by the
+compiler; a convention across call sites does not**, which is the whole
+of the difference and is where to point the lens next.
+
+**And the build's own warnings, counted once.** A full rebuild emits eight,
+in two classes. Three are `%d` against a `qsizetype` in `suite_backend.cpp`
+-- passing a 64-bit argument where `printf` is promised an `int`, which is
+undefined however reliably x86-64 varargs make it print -- and those are
+cast now, as every other size printed in that file already was. The other
+five are `-Wmissing-field-initializers` on `CellImage::clip`, and they are
+**by design rather than a defect**: `cell.h` says `has_clip = false` is
+"the quiet default" exactly so that an application appending a placement
+without naming a clip gets no clipping. Naming the field at five sites
+would be churn and silencing the flag would hide the real case, so whether
+that warning should be configured away is a build-convention question and
+is left as one.
+
+**A second `make` shows no warnings at all**, which is how this nearly went
+uncounted: nothing recompiles, so nothing warns. The sweep had to touch
+every source first, and a warning count taken from an incremental build is
+a count of what happened to be rebuilt.
