@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2444 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2446 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48786,3 +48786,64 @@ cheaper than the paragraph that deferred it.
 cost is not taking the decision the cost was blocking, and an overlay
 appearing where callers expect none is exactly the kind of change that
 belongs to whoever owns the interface.
+
+### 8.581 The input path's load-bearing rule, now watched (2026-10-26)
+
+**§0b asks whether every printable should carry its `Qt::Key`, and records
+that giving them one "passes the whole suite". That sentence is the
+finding**: the rule such a change would break was asserted nowhere
+outside an open menu, so the most load-bearing rule in the input path had
+nothing watching it.
+
+`match_shortcut()` refuses on its first line -- `if (!k.qt_key || k.qt_key
+== Qt::Key_unknown) return false;` -- and a terminal sends a printable as
+TEXT with no key code, so a bare letter matches nothing and falls through
+to the focus widget. The one existing check that sends a bare letter with
+its code does it **inside an open menu**, where `match_shortcut()` stands
+down for popups anyway, so it tests the popup path rather than the rule.
+
+**Asserted in both directions, which is what makes it capable of
+failing.** An action whose shortcut is the bare letter `O`, a focused
+`QLineEdit`, and the printable sent as the backend sends it: fired 0
+times, and the field holds `o`. Then the same letter WITH `Qt::Key_O`:
+fired once. **So the rule is the missing key code and not an empty
+shortcut table** -- without the second half the check would pass just as
+happily against a table that matches nothing at all.
+
+**This measures §0b's cost rather than deciding it.** The row said "a
+plain-letter shortcut would fire where a desktop types the letter", and
+that is now a number: 0 against 1, with the letter arriving in the field
+in the first case. The decision is still the holder's, and the point of
+the check is that it will go red and name itself the day somebody takes
+it, rather than reaching a user whose letter fired a menu item.
+
+**ITS OWN WINDOW AND ROUTER, not the suite's shared fixture**, and the
+reason is a trap this session had already sprung once. An action carrying
+a bare-letter shortcut added to the shared window would outlive the
+block, and a check three thousand lines later sends a bare `o` to a menu
+and expects the menu to answer it. Borrowing the fixture would have armed
+a failure far from its cause -- the same shape as the check that stopped
+RUNNING in 8.578, which is the second reason this session has had to
+isolate a fixture rather than reuse one.
+
+**No sabotage entry, and the reason was MEASURED rather than reasoned
+about.** The obvious entry -- drop the `!k.qt_key` test so a zero key
+reaches the table -- was written, run, and reported `FAILED`: *"the code
+was broken and nothing noticed"*. It does not redden the check, so by the
+tool's own rule the entry is invalid, and it is removed rather than kept
+as a green decoration.
+
+**What that measurement says is better than the entry would have been.**
+The guard is a short-circuit, not the thing that produces the behaviour:
+a bare letter fails to fire because `QKeySequence(Qt::Key(0))` matches no
+action, and the early return only saves the search. **So if printables
+were given their keys, the guard is not what would change** -- the
+matching would simply start succeeding, one line further down, where
+nothing is watching except the check added here. The two checks are each
+other's control instead, which is what the both-directions form buys.
+
+**And the guard line is covered by nothing**, which this run also
+establishes: removing it alters no check in 2446. That is defensible
+rather than a gap -- it documents an intent the matching already
+enforces -- but it is worth knowing that the line carries no weight a
+test can feel.

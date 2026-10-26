@@ -17551,5 +17551,69 @@ int suite_router() {
 		set_keyboard_conventions(had_conventions);
 	}
 
+	// A PRINTABLE CANNOT FIRE A SHORTCUT, which is the most load-bearing
+	// rule in the input path and was asserted nowhere outside an open menu.
+	// match_shortcut() refuses on its first line -- `if (!k.qt_key ||
+	// k.qt_key == Qt::Key_unknown) return false;` -- and a terminal sends a
+	// printable as TEXT with no key code, so a bare letter matches nothing
+	// and falls through to the focus widget.
+	//
+	// SECTION 0b ASKS WHETHER EVERY PRINTABLE SHOULD CARRY ITS Qt::Key, and
+	// records that doing so "passes the whole suite". That is the finding
+	// this check answers: not that the change is wrong -- it is the holder's
+	// question and this takes no view on it -- but that nothing was watching
+	// the rule it would change. A decision of that size should be announced
+	// by a red check naming it, not discovered afterwards by a user whose
+	// letter fired a menu item.
+	//
+	// ITS OWN WINDOW AND ROUTER, not the fixture at the top of this suite.
+	// An action carrying a bare-letter shortcut would outlive this block on
+	// the shared window, and a later check sends a bare `o` to a menu and
+	// expects the menu to answer it -- so borrowing the fixture would have
+	// armed a trap thousands of lines away.
+	{
+		QWidget own;
+		own.setAttribute(Qt::WA_DontShowOnScreen);
+		own.resize(GridMetrics::cells(20, 6));
+		auto *field = new QLineEdit(&own);
+		auto *lay = new QVBoxLayout(&own);
+		lay->addWidget(field);
+		own.show();
+		QCoreApplication::processEvents();
+		field->setFocus();
+		InputRouter own_router(&own);
+
+		int bare_fired = 0;
+		auto *bare = new QAction(QStringLiteral("Open"), &own);
+		bare->setShortcut(QKeySequence(QStringLiteral("O")));
+		own.addAction(bare);
+		QObject::connect(bare, &QAction::triggered, [&] { bare_fired++; });
+
+		// As the backend sends a printable: text, and no key code.
+		own_router.on_key({0, QStringLiteral("o"), false, false, false});
+		QCoreApplication::processEvents();
+		const int after_printable = bare_fired;
+		const QString typed = field->text();
+
+		// THE CONTROL, and it is what makes this capable of failing: the same
+		// chord WITH its key code does fire, so the fixture can reach the
+		// action and the only thing standing between a letter and a shortcut
+		// is the missing code. Without this half the check would pass against
+		// a shortcut table that matches nothing at all.
+		own_router.on_key({Qt::Key_O, QStringLiteral("o"), false, false, false});
+		QCoreApplication::processEvents();
+		const int after_keyed = bare_fired;
+		printf("info: bare printable fired %d, keyed fired %d, field %s\n",
+		       after_printable, after_keyed - after_printable,
+		       qPrintable(typed));
+		CHECK(after_printable == 0 && typed == QStringLiteral("o"),
+		      "a printable carrying no key code cannot fire a shortcut and"
+		      " reaches the focus widget as text, which is what lets a bare"
+		      " letter be typed into a field that has an action for it");
+		CHECK(after_keyed - after_printable == 1,
+		      "while the same letter WITH its key code does fire it, so the"
+		      " rule above is the missing code and not an empty table");
+	}
+
 	return fails;
 }
