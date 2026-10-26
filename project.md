@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2450 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2449 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49401,14 +49401,31 @@ check: all 297 are class 230 non-spacing marks under 6.8.2 and under
 5.15.15 alike, 297 unique, anchors U+0305, U+030D, U+030E, placeholder
 U+10EEEE.
 
-**AND ORDER IS A SECOND CHECK, because no property of the values can
-express it.** A table of the right shape in the wrong order places every
-cell of every image at the wrong row while every entry in it is still a
-class 230 mark. The anchors come from the specification's worked examples,
-which is the one part of the ordering that has an external witness.
+**AND THE SECOND CHECK I WROTE WAS REDUNDANT, which the census said and
+I had not asked before writing it.** It asserted the three anchors and the
+placeholder, on the argument that no property of the VALUES can express
+ORDER -- which is true, and does not mean nothing was checking the order.
+Sabotaging it, the first two entries swapped, reddened **eight** checks,
+**seven already in this file**: the placeholder's own worked example,
+(1,0), (0,1), (1,1), a big id's most-significant byte, a clipped
+placement, and the per-cell encoding. Each asserts the exact cluster bytes
+for its cells, so between them they pin indices 0 and 1 and the
+placeholder constant.
 
-**Two sabotage entries, chosen to separate them**: one value changed to a
-letter, which only the Unicode check can see, and the first two entries
-swapped, which only the anchors check can. The first anchor also had to be
-corrected -- it was written as a line start and the value sits mid-line --
-which `--validate` refused before any of it ran.
+**So it is unwound, which is 8.559's lesson arriving a second time.** That
+record is this tree's own: a spin-box agreement check whose sabotage
+reddened eleven, naming five existing checks, removed again. **The census
+is a free answer to "does anything already cover this" and it costs one
+rebuild** -- asked BEFORE writing, it would have saved the check and the
+entry both.
+
+**The other check stands, and its own sabotage is why**: a value changed
+to a letter reddens **exactly one** check of 2449 -- itself. A table entry
+that stops being a combining mark was invisible to everything else, which
+is the half of this that was genuinely unguarded. What remains uncovered
+is index 2 alone, one entry of 297, and a regeneration that moved it would
+move its neighbours into the seven.
+
+**The surviving entry's anchor also had to be corrected** -- written as a
+line start where the value sits mid-line -- which `--validate` refused
+before any of it ran.

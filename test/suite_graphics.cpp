@@ -3033,16 +3033,19 @@ int suite_graphics() {
 		          && int(seen.size()) == 297 && ccc_wrong == 0 && not_mark == 0,
 		      "the generated diacritic table is 297 distinct combining class 230"
 		      " non-spacing marks, asked of Unicode rather than of the table");
-		// THE SPECIFICATION'S OWN WORKED EXAMPLES, which no property above can
-		// express: a table of the right SHAPE in the wrong ORDER places every
-		// cell of every image at the wrong row, and every value in it would
-		// still be a class 230 mark.
-		CHECK(Qtty::KITTY_DIACRITICS[0] == 0x0305
-		          && Qtty::KITTY_DIACRITICS[1] == 0x030D
-		          && Qtty::KITTY_DIACRITICS[2] == 0x030E
-		          && Qtty::KITTY_PLACEHOLDER == 0x10EEEE,
-		      "and begins where kitty's worked examples say, under the"
-		      " placeholder those examples name");
+		// NO CHECK ON THE ORDER HERE, and the census is why rather than an
+		// oversight. A first version asserted the three anchors and the
+		// placeholder; sabotaging the order -- the first two entries swapped --
+		// reddened EIGHT checks, seven of them already in this file: the
+		// placeholder's own worked example, (1,0), (0,1), (1,1), a big id's
+		// most-significant byte, a clipped placement, and the per-cell
+		// encoding. They assert the exact cluster bytes for those cells, so
+		// they pin indices 0 and 1 and the placeholder constant between them.
+		// An eighth check saying it again is what 8.559 unwound, and the
+		// check above is kept because its own sabotage reddens exactly one
+		// thing -- itself. What remains uncovered is index 2 alone, one entry
+		// of 297, and a regeneration that moved it would move its neighbours
+		// into the seven.
 	}
 
 	return fails;
