@@ -2,6 +2,7 @@
 #include <qtty/qtty.h>
 #include "src/cell_geometry.h"
 #include <QtWidgets>
+#include <QMetaEnum>
 #include <cstdio>
 
 using Qtty::GridMetrics;
@@ -1260,6 +1261,126 @@ int suite_grid() {
 		CHECK(negative.isEmpty(),
 		      "and no sub-control rect has a negative dimension, which would"
 		      " lie about its area rather than merely be empty");
+
+		// EVERY SUB-ELEMENT, AS A TABLE RATHER THAN A LOOP OVER AN ENUM.
+		// 8.566 found a negative rect one enumerator along from the
+		// CC_/SC_ tally above, and 8.567 measured why the obvious
+		// extension does not work: these options are TYPE-SPECIFIC, and
+		// asking with the wrong one segfaults in Qt itself -- plain Fusion,
+		// no qtty in the path. So each element gets the option its name
+		// implies.
+		//
+		// Keyed off QMetaEnum rather than written out, so it cannot drift
+		// from the enum and a new element is swept the moment Qt adds one.
+		// The key INDEX is not the value -- index 53 carries value 52 --
+		// so the value comes from value(i), which is the mistake a reading
+		// of the header's order makes.
+		//
+		// TWO elements need a widget: SE_TabBarScrollLeftButton and
+		// SE_TabBarScrollRightButton dereference the tab bar and crash on
+		// a null one. Measured both ways -- they segfault with nullptr and
+		// answer 16x19 with a real QTabBar.
+		//
+		// The rect is three cells, which is 8.566's degenerate case: an
+		// item narrower than its own indent is where the subtraction goes
+		// negative.
+		{
+			const QMetaEnum se_enum =
+			    QMetaEnum::fromType<QStyle::SubElement>();
+			QStyle *st = QApplication::style();
+			const int cwq = GridMetrics::cw(), chq = GridMetrics::ch();
+			QTabBar scroll_bar;
+			scroll_bar.addTab(QStringLiteral("one"));
+			scroll_bar.resize(cwq * 20, chq);
+			QStringList bad;
+			int asked = 0;
+			for (int i = 0; i < se_enum.keyCount(); ++i) {
+				const QString name =
+				    QString::fromLatin1(se_enum.key(i));
+				QStyleOption plain;
+				QStyleOptionButton button;
+				QStyleOptionComboBox combo;
+				QStyleOptionSlider slider;
+				QStyleOptionProgressBar progress;
+				QStyleOptionToolBox toolbox;
+				QStyleOptionHeader header;
+				QStyleOptionTabWidgetFrame tabframe;
+				QStyleOptionTab tab;
+				QStyleOptionViewItem item;
+				// THE FEATURES THAT WIDEN THE INDENT, without which this
+				// sweep is vacuous for the very element 8.566 fixed. A
+				// default-constructed option has no check indicator, so
+				// the item-text arithmetic subtracts ONE cell and three
+				// cells never reaches the subtraction that goes negative.
+				// Measured: the sweep passed against the sabotaged code
+				// until this line, and the census said so -- only the
+				// hand-written check reddened.
+				item.features |= QStyleOptionViewItem::HasCheckIndicator
+				               | QStyleOptionViewItem::HasDecoration
+				               | QStyleOptionViewItem::HasDisplay;
+				QStyleOptionFrame frame;
+				QStyleOptionDockWidget dock;
+				QStyleOptionToolBar toolbar;
+				QStyleOptionGroupBox group;
+				QStyleOptionSpinBox spin;
+				QStyleOption *o = &plain;
+				if (name.contains(QStringLiteral("PushButton"))
+				    || name.contains(QStringLiteral("CheckBox"))
+				    || name.contains(QStringLiteral("RadioButton")))
+					o = &button;
+				else if (name.contains(QStringLiteral("ComboBox")))
+					o = &combo;
+				else if (name.contains(QStringLiteral("Slider")))
+					o = &slider;
+				else if (name.contains(QStringLiteral("ProgressBar")))
+					o = &progress;
+				else if (name.contains(QStringLiteral("ToolBox")))
+					o = &toolbox;
+				else if (name.contains(QStringLiteral("Header")))
+					o = &header;
+				else if (name.contains(QStringLiteral("TabWidget")))
+					o = &tabframe;
+				else if (name.contains(QStringLiteral("TabBar")))
+					o = &tab;
+				else if (name.contains(QStringLiteral("ItemView"))
+				         || name.contains(QStringLiteral("ViewItem"))
+				         || name.contains(QStringLiteral("TreeView")))
+					o = &item;
+				else if (name.contains(QStringLiteral("LineEdit"))
+				         || name.contains(QStringLiteral("Frame")))
+					o = &frame;
+				else if (name.contains(QStringLiteral("DockWidget")))
+					o = &dock;
+				else if (name.contains(QStringLiteral("ToolBar")))
+					o = &toolbar;
+				else if (name.contains(QStringLiteral("GroupBox")))
+					o = &group;
+				else if (name.contains(QStringLiteral("SpinBox")))
+					o = &spin;
+				o->rect = QRect(0, 0, cwq * 3, chq);
+				const QWidget *w =
+				    name.contains(QStringLiteral("TabBarScroll"))
+				        ? &scroll_bar : nullptr;
+				++asked;
+				const QRect r = st->subElementRect(
+				    QStyle::SubElement(se_enum.value(i)), o, w);
+				if (r.width() < 0 || r.height() < 0)
+					bad << name + QStringLiteral("(%1x%2)")
+					              .arg(r.width()).arg(r.height());
+			}
+			bad.sort();
+			printf("info: swept %d sub-element(s) at 3 cells, %d negative%s%s\n",
+			       asked, int(bad.size()), bad.isEmpty() ? "" : ": ",
+			       qPrintable(bad.join(QStringLiteral(", "))));
+			// The COUNT is asserted with the emptiness, so a sweep that
+			// stopped asking -- an enum that shrank, a loop that broke
+			// early -- cannot report clean by asking nothing.
+			CHECK(asked == se_enum.keyCount() && asked >= 59
+			      && bad.isEmpty(),
+			      "no sub-element rect has a negative dimension at a width"
+			      " narrower than its own indent, swept over every"
+			      " enumerator Qt declares");
+		}
 
 		// AND THE SUB-ELEMENT THAT SWEEP DOES NOT REACH. The tally above
 		// walks CC_/SC_ pairs; SE_ItemViewItemText is a sub-ELEMENT and is

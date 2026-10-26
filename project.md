@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2439 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2440 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48405,3 +48405,46 @@ entry point untested" is one a reader will ask again, and asking it costs
 a session the same two greps every time unless the answer is written down
 with its date and its scope. This is 8.572's reason repeated: the
 alternative to recording a measured negative is paying for it twice.
+
+### 8.575 The sub-element sweep, as a table (2026-10-26)
+
+**8.566 found a negative rect one enumerator along from the `CC_`/`SC_`
+tally, and 8.567 measured why a loop could not extend it. This is the
+table that can.** Fifty-nine sub-elements, each asked with the option type
+its name implies, at a rect of three cells -- 8.566's degenerate width,
+where an item narrower than its own indent is what sends the subtraction
+negative. Swept clean.
+
+**Keyed off `QMetaEnum::fromType<QStyle::SubElement>()` rather than
+written out**, so it cannot drift from the enum and a new element is swept
+the moment Qt declares one. **The key INDEX is not the value** -- index 53
+carries value 52 -- so the element comes from `value(i)`. That is the trap
+that made 8.567 name the wrong crasher from the header's declaration
+order.
+
+**Two elements need a widget, measured both ways.**
+`SE_TabBarScrollLeftButton` and `SE_TabBarScrollRightButton` dereference
+the tab bar: they segfault with a null one and answer 16x19 with a real
+`QTabBar`. With correct option types those two are the ONLY crashers of
+the fifty-nine -- 8.567's blanket attempt died because every element got a
+`QStyleOptionViewItem`, not because the surface is hostile.
+
+**AND THE FIRST VERSION OF THIS SWEEP WAS VACUOUS, which the census
+caught.** It used default-constructed options -- so the view-item option
+carried no check indicator, the item-text arithmetic subtracted ONE cell
+instead of five, and three cells never reached the subtraction. Running
+8.566's sabotage reddened only the hand-written check and **not the
+sweep**: a fifty-nine element sweep that would have passed against the
+defect it was built for. Setting the features that widen the indent fixes
+it, and both now redden.
+
+**So the lesson is about defaults, not about this element.** A sweep over
+default-constructed options reaches only the behaviour that needs no
+configuration, and any case gated on a FEATURE flag -- a check indicator,
+a decoration, a frame -- is invisible to it while the sweep's breadth
+makes it look thorough. **Breadth is not depth, and the census is what
+tells them apart.**
+
+**The count is asserted with the emptiness**, so a sweep that stopped
+asking -- an enum that shrank, a loop that broke early -- cannot report
+clean by asking nothing.
