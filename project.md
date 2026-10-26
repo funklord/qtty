@@ -48887,3 +48887,55 @@ absolute numbers across runs would be quoting the machine's load.
 before anybody timed it, in the one loop where a per-cell addition is
 paid 12000 times a frame. Measuring took one scratch program and found
 38 per cent of it was a table lookup nobody needed.
+
+### 8.583 The rest was not inherent either (2026-10-26)
+
+**8.582 said the 0.268 ms left after the lookup reorder was "the scan and
+the QString handling and is inherent". Wrong, and wrong the same way as
+the claim it was correcting** -- a cost asserted instead of measured, in
+the same loop, one record later.
+
+About half of it is the **return by value**. `safe_glyph()` hands back a
+`QString`, which is a refcount pair per cell, and on the wire nearly every
+glyph needs no correction at all. Asking a predicate first and skipping the
+builder saves **0.059, 0.143 and 0.166 ms** across three runs of a 200x60
+frame. So the guard 8.578 added now costs roughly a quarter of what it did
+when it was called acceptable: 0.432, then 0.268, then about 0.10 -- under
+one per cent of a 16 ms budget.
+
+**The deltas were stable while the machine was not.** The raw loop measured
+0.933, 1.325 and 1.378 ms across those same three runs -- half a
+millisecond of spread on one machine, minutes apart -- which is why every
+figure here is a within-run delta and why `suite_budget` prints durations
+rather than asserting them.
+
+**And the structure is better rather than merely faster, which decided
+it.** A bare predicate beside the builder would be the fault this file's
+own header describes: one rule with two applications, where the narrower
+one survives in the half nobody re-reads. So `has_control()` is the scan,
+and **both builders are written in terms of it** -- `without_controls()`
+and `safe_glyph()` call it rather than repeating the loop. One scan, one
+builder, and the hot call site uses the scan to skip the builder.
+
+**Verified on the bytes, not by reasoning.** The pty probe emits
+`20 20 20 61` before and after -- three substituted spaces and the
+surviving base -- so the frame is identical, which is the only claim that
+matters for a change made for speed.
+
+**Twice in one session is a pattern worth naming.** Both wrong claims were
+about a cost, both were written in a commit message rather than taken from
+a measurement, and both took one scratch program to settle. **A cost is a
+number; if the sentence asserting it has no number in it, it has not been
+measured.**
+
+**AND THE ANCHOR CHURN IS THE OTHER PATTERN, three times today.** Editing
+a line broke a sabotage anchor on the title sanitiser, on `is_control()`'s
+reordered body, and here on an entry **written four commits earlier in
+this same session**. Each time `sabotage-check` refused the commit and
+named the entry. That is the cost of anchoring on an exact source line and
+the benefit stated in one breath: a refactor near an anchor is guaranteed
+to be interrupted, and an anchor can never drift silently into matching
+something else. The alternative -- a looser pattern -- would buy quiet
+refactors and pay for them with entries that still apply and no longer
+reproduce anything, which is the failure mode 8.577 found when 8.576's
+`into` had become the shipped code.

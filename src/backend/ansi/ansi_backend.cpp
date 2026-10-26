@@ -1466,7 +1466,11 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			// string written straight into a cell carried an ESC to the
 			// terminal -- measured as `1b` emitted between a cursor home and
 			// the rest of the row. 8.578.
-			out += safe_glyph(c.ch).toUtf8();
+			// has_control() FIRST, because safe_glyph() returns by value
+			// and that is a refcount pair per cell for every glyph that
+			// needs no correction -- which is nearly all of them. 8.583.
+			out += has_control(c.ch) ? safe_glyph(c.ch).toUtf8()
+			                         : c.ch.toUtf8();
 		}
 	};
 	if (damage.isEmpty()) {
