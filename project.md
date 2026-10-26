@@ -49166,6 +49166,29 @@ replaced, not the thing you stopped doing around it.**
 `1b 5b 48 1b 5b 30 6d 20 20 20 61 ...` before and after, identical, which
 is the only claim that matters for a change made for speed.
 
+**THE NEXT ENTRY IN THE PROFILE WAS MEASURED AND LEFT ALONE, which is the
+half of this that nearly cost a pointless change.** Re-profiled after the
+fix, the largest library entry is `CellBuffer::at()` at 6.98 per cent with
+`QList<Cell>::operator[]` behind it at 4.35. `at()` is an INLINE accessor
+holding `static Cell junk;`, and `Cell` has a `QString` member, so the
+compiler emits a thread-safe initialisation guard **on every call** -- a
+hypothesis with a mechanism, a hot path, and arithmetic behind it: 7.2M
+instructions over the calls in the run looked like tens of instructions
+each.
+
+**Timed, it is worth 0.005 to 0.015 ms per 12000 accesses** -- about a
+hundredth of a millisecond a frame, against a `present()` of 0.9. The
+guard is a few perfectly-predicted instructions, and **callgrind ranks by
+instruction COUNT rather than by time**, so a cheap instruction repeated
+often outranks an expensive one. The accessor is unchanged, and the entry
+says so rather than leaving the next reader to re-derive it from the same
+profile.
+
+**Where the frame's time actually is now**: `present()` about 0.9 ms,
+`render_once` about 3 ms by `suite_budget`'s own figure. The wire is no
+longer the expensive half, so the next place to look is the render path --
+and that sentence is a pointer rather than a plan.
+
 **And the anchor moved a fourth time today.** The sabotage entry for the
 wire guard pointed at the line this replaced -- 8.578 wrote it, 8.583
 re-anchored it, this re-anchors it again -- and `sabotage-check` refused
