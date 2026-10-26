@@ -8616,11 +8616,15 @@ check = "and the final arriving in a later read completes it, so F1 is delivered
 # The glyph's one wire exit stops applying the rule, so a control written
 # through the mutable CellBuffer::at() reference -- which no entry guard can
 # see -- reaches the terminal as itself. 8.578, re-anchored at 8.583 when the
-# call site gained the has_control() test that skips the builder.
+# call site gained the has_control() test that skips the builder, and again at
+# 8.587 when printable ASCII took a branch of its own. The fault is unchanged:
+# the sanitiser stops being reached. Note the ASCII arm cannot carry this --
+# 0x20..0x7e holds no control -- so the entry has to break the arm that
+# handles everything else.
 name = "a cell glyph goes to the wire unsanitised"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\t\tout += has_control(c.ch) ? safe_glyph(c.ch).toUtf8()\n\t\t\t                         : c.ch.toUtf8();"
-into = "\t\t\tout += c.ch.toUtf8();"
+find = "\t\t\telse if (has_control(c.ch))\n\t\t\t\tout += safe_glyph(c.ch).toUtf8();"
+into = "\t\t\telse if (false)\n\t\t\t\tout += safe_glyph(c.ch).toUtf8();"
 count = 1
 check = "a control character written through fill(), through the mutable at() reference, or behind a base in a cluster does not reach the wire as itself"
 

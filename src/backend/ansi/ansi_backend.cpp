@@ -1469,8 +1469,28 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			// has_control() FIRST, because safe_glyph() returns by value
 			// and that is a refcount pair per cell for every glyph that
 			// needs no correction -- which is nearly all of them. 8.583.
-			out += has_control(c.ch) ? safe_glyph(c.ch).toUtf8()
-			                         : c.ch.toUtf8();
+			// PRINTABLE ASCII WITHOUT BUILDING A QByteArray, which is
+			// nearly every cell of nearly every frame. toUtf8() allocates
+			// one per cell -- 12000 allocations for a 200x60 frame -- and
+			// a single code unit in 0x20..0x7e is its own UTF-8 byte, so
+			// there is nothing to convert. Measured on 12000 cells, best
+			// of 40 over three runs: 1.216, 1.281 and 1.221 ms for the
+			// toUtf8() loop against 0.214, 0.225 and 0.213 for this one.
+			//
+			// The range is the test, and it does double duty: a code unit
+			// at or above 0x20 and below 0x7f cannot be a control --
+			// is_control() answers true only below 0x20, at 0x7f, in
+			// 0x80..0x9f, or for the line and paragraph separators -- so
+			// this arm skips the has_control() scan as well, and the
+			// guard below is reached only by what might need it. 8.587.
+			const char16_t u =
+			    c.ch.size() == 1 ? c.ch.at(0).unicode() : 0;
+			if (u >= 0x20 && u < 0x7f)
+				out += char(u);
+			else if (has_control(c.ch))
+				out += safe_glyph(c.ch).toUtf8();
+			else
+				out += c.ch.toUtf8();
 		}
 	};
 	if (damage.isEmpty()) {

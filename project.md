@@ -49129,3 +49129,46 @@ assert its COUNT -- 2 violations in a low-contrast frame, 0 in a readable
 one -- and the function is unchanged. Nothing asserted that the backend
 calls it, and nothing could have: the warning it would produce is not
 compiled.
+
+### 8.587 Printable ASCII, without building a QByteArray (2026-10-26)
+
+**`present()` on a 200x60 frame cost 2.311 and 2.561 ms. It costs 0.912 to
+0.952 now** -- about two and a half times faster, measured on the same
+harness, with the emitted bytes identical.
+
+**8.586 said a fifth of `present()` was a walk with no output, and that
+invited the obvious next question: where does the rest go.** A callgrind
+profile of the same frame answered it, and the honest reading matters as
+much as the answer. Of its top entries, **twelve per cent is dynamic
+symbol resolution** -- a short-lived probe's startup, not the library's
+work, and attributing it would have been the first mistake available.
+`QByteArray::insert` at 5.22 per cent looked like a prepend into a frame
+buffer and is not: Qt 6 implements `append` through `insert`, and the
+tree's only `prepend` is in `elide_to_cells()`, bounded by a terminal
+width and called per label rather than per cell.
+
+**What was real: `QUtf8::convertFromUnicode` and a QByteArray allocated
+per cell.** `out += c.ch.toUtf8()` builds one for every cell -- 12000 of
+them for a 200x60 frame -- and a single code unit in 0x20..0x7e **is** its
+own UTF-8 byte. Appending the byte costs 0.214, 0.225 and 0.213 ms where
+`toUtf8()` costs 1.216, 1.281 and 1.221.
+
+**The range test does double duty, which is why the end-to-end saving beat
+the micro-benchmark's.** A code unit at or above 0x20 and below 0x7f
+cannot be a control -- `is_control()` is true only below 0x20, at 0x7f, in
+0x80..0x9f, and for the two separators -- so the fast arm skips the
+`has_control()` scan as well as the conversion, and the guard is reached
+only by what might need it. The bench predicted about 1.0 ms and the
+system gave 1.4 to 1.6: **a micro-benchmark measures the thing you
+replaced, not the thing you stopped doing around it.**
+
+**Verified on the bytes.** The control-character probe emits
+`1b 5b 48 1b 5b 30 6d 20 20 20 61 ...` before and after, identical, which
+is the only claim that matters for a change made for speed.
+
+**And the anchor moved a fourth time today.** The sabotage entry for the
+wire guard pointed at the line this replaced -- 8.578 wrote it, 8.583
+re-anchored it, this re-anchors it again -- and `sabotage-check` refused
+the commit until it did. The entry now breaks the arm that handles
+everything **except** printable ASCII, because the ASCII arm cannot carry
+a control at all: 0x20..0x7e holds none.
