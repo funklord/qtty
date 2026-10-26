@@ -48847,3 +48847,43 @@ establishes: removing it alters no check in 2446. That is defensible
 rather than a gap -- it documents an intent the matching already
 enforces -- but it is worth knowing that the line carries no weight a
 test can feel.
+
+### 8.582 What the wire guard costs, measured after claiming it was fine (2026-10-26)
+
+**8.578 put `safe_glyph()` on the per-cell emit loop and the record said
+the cost was acceptable without measuring it.** That was a claim about the
+hottest path in the library, so here is the number.
+
+**0.432 ms per 200x60 frame**, best of twenty on 12000 cells of ordinary
+Latin -- the frame the budget suite times -- against roughly 1.5 ms for
+the wire stage. A 27 per cent increase on that stage and 2.7 per cent of
+a 16 ms frame budget, and it buys not sending escape sequences to a
+terminal, which is the right trade. **But most of it was avoidable.**
+
+**`is_control()` asked `QChar::category()` first**, a Unicode table lookup,
+and before 8.578 that ran only for cells being WRITTEN. On the wire it
+runs for every cell of every frame. Testing the cheap ranges first and
+skipping the lookup below U+00A0 costs **0.268 ms** instead: the reorder
+returns 38 per cent of what the guard added. The remainder is the scan
+itself and the QString handling, and is inherent.
+
+**The reorder is exact and the proof is exhaustive rather than sampled.**
+No code point below U+00A0 is `Separator_Line` or `Separator_Paragraph` --
+Zl is U+2028 alone and Zp is U+2029 alone -- so returning false there
+skips a lookup whose answer is already known. Both forms were compared
+across the **whole** code-point space: they disagree on **0 of 1114112**.
+That is the mechanical-change rule paid in full -- state what must not
+change, check it in the tool, and the tool here was the comparison itself
+rather than the suite.
+
+**AND THE TIMINGS ARE ONLY COMPARABLE WITHIN A RUN.** The raw loop
+measured 0.830 ms in one run and 1.612 ms in the next, on the same
+machine minutes apart, which is the same variance `suite_budget`'s header
+records and the reason that suite prints durations rather than asserting
+them. **Every figure above is a delta taken inside one run**; quoting the
+absolute numbers across runs would be quoting the machine's load.
+
+**The lesson is the plain one.** The cost was asserted in a commit message
+before anybody timed it, in the one loop where a per-cell addition is
+paid 12000 times a frame. Measuring took one scratch program and found
+38 per cent of it was a table lookup nobody needed.

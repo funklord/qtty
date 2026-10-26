@@ -5380,9 +5380,11 @@ check = "a spacing combining mark still takes one"
 name = "a line separator reaches a cell as itself"
 # Re-pointed 8.510: is_control() moved to src/control_chars.h, where the
 # title sanitiser can reach the same rule instead of spelling a narrower one.
+# Re-anchored 8.582, when the category test moved below the cheap ranges to
+# stop paying a Unicode lookup per cell on the wire. Both faults unchanged.
 file = "src/control_chars.h"
-find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)\n\t\treturn true;"
-into = "\t(void)cat;"
+find = "\treturn cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph;"
+into = "\t(void)cat;\n\treturn false;"
 count = 1
 check = "nor does a line or paragraph separator"
 
@@ -5394,8 +5396,8 @@ name = "a no-break space is treated as a control"
 # Re-pointed 8.510, with the entry above: is_control() moved to
 # src/control_chars.h.
 file = "src/control_chars.h"
-find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)"
-into = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph\n\t    || cat == QChar::Separator_Space)"
+find = "\treturn cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph;"
+into = "\treturn cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph\n\t       || cat == QChar::Separator_Space;"
 count = 1
 check = "a no-break space is left alone"
 

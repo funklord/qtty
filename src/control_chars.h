@@ -63,10 +63,24 @@ inline bool is_control(char32_t u) {
 	//
 	// Separator_Space is NOT here: a no-break space is a space and
 	// belongs in a cell as itself.
+	// THE RANGES FIRST, AND THE LOOKUP SKIPPED BELOW U+00A0. This asked
+	// QChar::category() before anything else, which is a Unicode table
+	// lookup, and since 8.578 it runs for every cell on the wire rather than
+	// only for cells being written. Measured on 12000 cells of ordinary
+	// Latin -- a 200x60 frame, which is what the budget suite times: the
+	// category-first form costs 0.432 ms per frame and this one 0.268 ms, so
+	// the reorder returns 38 per cent of what the wire guard added.
+	//
+	// EXACT, not a fast path with a different answer. No code point below
+	// U+00A0 is Separator_Line or Separator_Paragraph -- Zl is U+2028 alone
+	// and Zp is U+2029 alone -- so returning false there skips a lookup
+	// whose answer is known. Proved by comparing the two forms over the
+	// WHOLE code-point space rather than a sample: they disagree on 0 of
+	// 1114112.
+	if (u < 0x20 || u == 0x7f || (u >= 0x80 && u <= 0x9f)) return true;
+	if (u < 0xA0) return false;
 	const QChar::Category cat = QChar::category(u);
-	if (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)
-		return true;
-	return u < 0x20 || u == 0x7f || (u >= 0x80 && u <= 0x9f);
+	return cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph;
 }
 
 // THE RULE APPLIED, not merely named, because having one predicate and two
