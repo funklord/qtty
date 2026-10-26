@@ -48928,6 +48928,17 @@ a measurement, and both took one scratch program to settle. **A cost is a
 number; if the sentence asserting it has no number in it, it has not been
 measured.**
 
+**The two axes outside `check` were re-taken, because this work added new
+scanning loops to the hot path and neither axis runs in the gate.** The
+sanitizers: 0 failures, with the instrument verified rather than trusted --
+`-fsanitize=address,undefined` in the compile lines and 51 `__asan`
+symbols in the binary, since a clean run over an uninstrumented binary
+looks exactly like a real one. The soak: **0 kB of growth over 3999
+frames** after warm-up, RSS flat at 38192 kB, and its own control shows
+the measurement can see growth at all -- 38112 kB, 99556 kB touched,
+38112 kB freed. So the guard costs time, which is measured above, and no
+memory.
+
 **AND THE ANCHOR CHURN IS THE OTHER PATTERN, three times today.** Editing
 a line broke a sabotage anchor on the title sanitiser, on `is_control()`'s
 reordered body, and here on an entry **written four commits earlier in
