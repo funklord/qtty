@@ -1536,7 +1536,32 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	// legibility rule has nothing to say about those. Checking the composed
 	// frame would report every image as hundreds of violations and drown the
 	// theme faults this exists to find.
+	//
+	// GUARDED BY THE CONDITION ITS OUTPUT ALREADY CARRIES, which it was not.
+	// The only effect of this call is the per-cell qWarning() in theme.cpp,
+	// and that sits inside `#ifndef QT_NO_DEBUG` -- which qmake's release
+	// config defines, so it is compiled out of the library AND the suite,
+	// both Qt arms, every build this project makes. The return value is
+	// discarded here. So the walk ran over every glyph-bearing cell of every
+	// frame, quantising two colours and comparing luminance, to produce a
+	// number nobody read and a warning that did not exist.
+	//
+	// Measured on a 200x60 frame of ordinary text, best of 30 over three
+	// runs: 0.340, 0.353 and 0.396 ms -- more than the whole glyph
+	// sanitising guard costs after 8.583, and about 2 per cent of a 16 ms
+	// frame budget, for nothing at all.
+	//
+	// WHETHER A RELEASE BUILD SHOULD REPORT contrast violations is a
+	// different question and is not settled here: GridGuard warns an
+	// application about geometry in release, and theme.cpp's own comment
+	// reads as though this reports too, so the debug-only gate may be the
+	// anomaly rather than the intent. That is a change to what every shipped
+	// application prints, which makes it the holder's -- section 0b. Until
+	// then the cost matches the effect, and removing this one line is what
+	// restores release reporting if the answer is yes.
+#ifndef QT_NO_DEBUG
 	contrast_violations(frame, depth_);
+#endif
 	if (pixel_placements) {                           // real pixels (section 5.7)
 		// Every tier crops to the viewport first (section 16.3). A sticker
 		// scrolled half out of view has a cell_rect running past the grid, and

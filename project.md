@@ -49056,3 +49056,48 @@ correct one and the dynamic type would be wrong. The router's chord-owner
 labels carry an object name beside the class and name actions as often as
 widgets; they are candidates rather than faults, and changing them was not
 this record's subject.
+
+### 8.586 A per-frame walk whose only output was compiled out (2026-10-26)
+
+**`contrast_violations()` is called from the ANSI emit path on every frame
+and its result is discarded. Its only effect is a per-cell `qWarning()` in
+`theme.cpp` -- and that sits inside `#ifndef QT_NO_DEBUG`, which qmake's
+release config defines.** Confirmed rather than assumed: `-DQT_NO_DEBUG`
+is in the library's Makefile and the suite's, so in every build this
+project makes, on both Qt arms, the warning does not exist. The walk ran
+anyway, over every glyph-bearing cell of every frame, quantising two
+colours and comparing luminance, to produce a number nobody read.
+
+**Measured on a 200x60 frame of ordinary text, best of 30 over three
+runs: 0.340, 0.353 and 0.396 ms.** That is more than the entire glyph
+sanitising guard costs after 8.583, and about two per cent of a 16 ms
+budget, for nothing. The call carries the same condition as its output
+now, so the cost matches the effect.
+
+**HOW IT WAS FOUND is the part worth keeping.** 8.585 left a lens -- a
+diagnostic whose text nothing asserts -- so the library's sixteen `qtty:`
+messages were enumerated and matched against the suite. Six have no
+assertion on their text at all. Reading those six for the faults a
+compiler cannot catch, since `qWarning` carries a printf format attribute
+and type errors would already be errors, meant checking argument ORDER
+and semantics: the refused-cell pair before the kept pair, `(x,y)` in that
+order, the size before the limit. **All three were correct.** What the
+reading found instead was one of them sitting inside a conditional, which
+no amount of asserting its text would have revealed -- **a message that
+cannot be wrong because it is never emitted.**
+
+**The design question is NOT settled here and is the holder's.** GridGuard
+warns an application about geometry in a release build, and `theme.cpp`'s
+comment -- "Reporting only, and never fatal" -- reads as though this
+reports as well, so the debug-only gate may be the anomaly rather than the
+intent. Whether a shipped application should print contrast warnings
+changes what every such program says to its user. Removing the one line
+added here is what restores it if the answer is yes; the measurement is
+recorded so the decision does not need re-taking first.
+
+**And the suite's own checks are unaffected**, which is what makes the
+change safe to assert: they call `contrast_violations()` directly and
+assert its COUNT -- 2 violations in a low-contrast frame, 0 in a readable
+one -- and the function is unchanged. Nothing asserted that the backend
+calls it, and nothing could have: the warning it would produce is not
+compiled.
