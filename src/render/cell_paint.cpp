@@ -6,11 +6,9 @@
 #include <QVarLengthArray>
 #include <QCoreApplication>
 #include <QEvent>
-#if defined(__GNUG__)
-#include <cxxabi.h>
-#endif
 #include <QSet>
 #include <QWidget>
+#include "../type_name.h"
 #include "qtty/grid.h"
 #include "qtty/theme.h"
 #include "../cell_geometry.h"
@@ -64,29 +62,6 @@ CellPaintDevice::~CellPaintDevice() { s_active = outer_; delete eng_; }
 // with OpenGL or into a scene issues no primitive this engine ever sees. The
 // walk is up the metaObject chain so an application's own subclass of one of
 // these is recognised too, which is how they are actually used.
-// THE DYNAMIC TYPE, not the nearest Q_OBJECT ancestor. A widget that
-// implements an interface and declares no Q_OBJECT -- which is every widget
-// in this tree's own fixtures and most of the ones an application writes for
-// a plot or a meter -- answers metaObject()->className() with a BASE class.
-// Measured: the first version of the both-interfaces warning named every
-// such widget "QWidget", which tells an author nothing they can grep for.
-// typeid gives the real class and __cxa_demangle makes it readable; the
-// mangled form is the fallback and is still recognisable, being the name
-// behind a length prefix. 8.584.
-static QString dynamic_type_name(const QObject *o) {
-	const char *const raw = typeid(*o).name();
-#if defined(__GNUG__)
-	int status = 0;
-	char *const plain = abi::__cxa_demangle(raw, nullptr, nullptr, &status);
-	if (plain) {
-		const QString out = QString::fromLatin1(status == 0 ? plain : raw);
-		::free(plain);
-		return out;
-	}
-#endif
-	return QString::fromLatin1(raw);
-}
-
 static const char *unsupported_class(const QObject *o) {
 	static const char *const names[] = {
 		"QGraphicsView", "QOpenGLWidget", "QQuickWidget", "QQuickView",
@@ -451,7 +426,7 @@ public:
 			// anything.
 			if (dynamic_cast<ICellPainted *>(o)) {
 				static QSet<QByteArray> told;
-				const QByteArray key(typeid(*o).name());
+				const QByteArray key = dynamic_type_key(o);
 				if (!told.contains(key)) {
 					told.insert(key);
 					qWarning("qtty: %s implements both PixelSurface"

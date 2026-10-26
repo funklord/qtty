@@ -5,6 +5,7 @@
 #include "qtty/runtime.h"          // keyboard_conventions(), for the tip below
 #include "qtty/application.h"      // terminal_focused(), for the focus mark
 #include "../cell_geometry.h"
+#include "../type_name.h"
 #include "../standard_icons.h"
 #include "../runtime/late_font.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
@@ -1243,9 +1244,17 @@ bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
 			// widget tree and is_aligned() reads a rectangle.
 			if (!GridMetrics::is_aligned(asked) && !is_exempt(w)) {
 				++s_violations;
+				// NAMED BY ITS DYNAMIC TYPE, which is the whole point of
+				// this message: it exists so an author can find the widget
+				// whose geometry they can correct, and
+				// metaObject()->className() is the nearest class that
+				// declared Q_OBJECT. A custom widget needs no signals,
+				// slots or properties and so often declares none, at which
+				// point this warning said `QWidget` about every one of
+				// them. See type_name.h. 8.585.
 				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
 				         "%dx%d grid",
-				         w->metaObject()->className(),
+				         qPrintable(dynamic_type_name(w)),
 				         qPrintable(w->objectName()),
 				         g.width(), g.height(), g.x(), g.y(),
 				         GridMetrics::cw(), GridMetrics::ch());

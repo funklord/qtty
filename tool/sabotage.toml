@@ -8658,3 +8658,14 @@ into = "\t\t\t\t\tif (false) qWarning(\"qtty: %s implements both PixelSurface\""
 count = 1
 check = "and says so, naming the class, rather than taking the pixel path in silence"
 
+[[sabotage]]
+# GridGuard names the nearest class that declared Q_OBJECT again, so a widget
+# an application wrote without the macro is reported as QWidget and the author
+# has nothing to search their tree for. 8.585.
+name = "the off-grid warning names a base class"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t         qPrintable(dynamic_type_name(w)),"
+into = "\t\t\t\t         w->metaObject()->className(),"
+count = 1
+check = "and names the widget's own class rather than the nearest one that declared Q_OBJECT, which is what an author has to search their tree for"
+

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2447 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2448 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49013,3 +49013,46 @@ name now.
 path wins" passed throughout -- the behaviour was right the whole time
 and the diagnostic was useless. **An assertion on a diagnostic has to read
 what it says, not that it spoke.**
+
+### 8.585 GridGuard could not name the widget it was about (2026-10-26)
+
+**8.584's lens, pointed at the diagnostic this project most relies on, and
+it had the same fault.** `GridGuard`'s whole job is to name a widget whose
+geometry an application can correct, and it named the widget with
+`metaObject()->className()` -- the nearest class that declared `Q_OBJECT`.
+
+**A custom widget needs no signals, slots or properties, so it often
+declares none.** A plot, a meter, a view that draws itself: none of the
+three needs the macro, and this tree's own fixtures do not carry it. For
+every such widget the warning read `qtty: QWidget '' geometry 120x19+10+43
+is off the 10x19 grid` -- a base class and an empty object name, which is
+nothing an author can search their own tree for. The message existed to
+answer "which widget", and that is the one thing it could not say.
+
+It reads `qtty: OffGridPlot '' geometry ...` now. The helper is
+`src/type_name.h`, shared with the both-interfaces warning rather than
+copied -- one file, because the question "what do we CALL this object in a
+message" is one question, and 8.578 is this session's standing lesson about
+a rule with two spellings.
+
+**The checks here never read the message.** They count
+`GridGuard::violations()`, so the warning could have said anything at all
+and stayed green for as long as the count was right -- which is exactly how
+8.584's two faults survived until something asserted the text. The new
+check reads it, and its fixture declares no `Q_OBJECT` **deliberately**: a
+widget carrying the macro was named correctly all along and cannot tell
+the two spellings apart.
+
+**What the demangled name actually looks like is worth recording**, because
+it is not quite a class name: a function-local struct comes out
+`suite_runtime()::OffGridPlot`, carrying its enclosing scope. That is
+correct and more useful than the bare name, and an application's widget
+declared where widgets normally are reads as `MyPlot` or `ns::MyPlot`.
+
+**The other `className()` sites were read and left alone.** Most are
+identity comparisons against Qt's own classes -- `qstrcmp(...,
+"QStyleSheetStyle")` and its like -- where the metaobject's answer is the
+correct one and the dynamic type would be wrong. The router's chord-owner
+labels carry an object name beside the class and name actions as often as
+widgets; they are candidates rather than faults, and changing them was not
+this record's subject.

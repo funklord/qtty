@@ -33,6 +33,16 @@ public slots:
 	void handle(const QUrl &url) { seen = url; ++count; }
 };
 
+// What Qt said while a call was being made. A plain function because
+// qInstallMessageHandler takes a function pointer, so the sink is a file
+// static either way -- the shape suite_graphics and suite_render use.
+static QString g_said;
+static void keep_message(QtMsgType, const QMessageLogContext &,
+                        const QString &m) {
+	g_said += m;
+	g_said += QLatin1Char('\n');
+}
+
 static int fails = 0;
 // The failure carries the condition that was false, not only the sentence.
 // A message that cannot separate the hypotheses it will generate guarantees
@@ -954,6 +964,37 @@ int suite_runtime() {
 		QCoreApplication::processEvents();
 		CHECK(GridGuard::violations() > 0,
 		      "a width one pixel off the grid is caught");
+
+		// AND THE MESSAGE NAMES THE WIDGET'S OWN CLASS, which the checks
+		// here never read: they count violations, so the warning could have
+		// said anything. It said the nearest class that declared Q_OBJECT --
+		// and a custom widget needs no signals, slots or properties, so one
+		// that declares none was reported as `QWidget`. This message exists
+		// so an author can FIND the widget whose geometry they can correct,
+		// and a base class name is nothing to search a tree for. 8.585.
+		//
+		// The fixture declares no Q_OBJECT deliberately, because that is the
+		// case that was broken; a widget carrying the macro was named
+		// correctly all along and cannot tell the two spellings apart.
+		{
+			struct OffGridPlot : QWidget { using QWidget::QWidget; };
+			OffGridPlot plot;
+			plot.setAttribute(Qt::WA_DontShowOnScreen);
+			plot.show();
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+			g_said.clear();
+			QtMessageHandler prev = qInstallMessageHandler(keep_message);
+			plot.resize(10 * cw + 3, 4 * ch);
+			QCoreApplication::processEvents();
+			qInstallMessageHandler(prev);
+			printf("info: the guard said '%s'\n", qPrintable(g_said.trimmed()));
+			CHECK(g_said.contains(QStringLiteral("OffGridPlot"))
+			          && !g_said.contains(QStringLiteral("QWidget '")),
+			      "and names the widget's own class rather than the nearest one"
+			      " that declared Q_OBJECT, which is what an author has to"
+			      " search their tree for");
+		}
 
 		// F5: QHeaderView and QScrollBar self-size and land off the grid however
 		// the style is written. They are exempt by name so that the guard does not
