@@ -1,5 +1,6 @@
 // suite_graphics -- section 17.3: encoders, negotiation, halfblock composite, overlays.
 #include <qtty/qtty.h>
+#include "src/graphics/kitty_diacritics.h"
 #include <QtWidgets>
 #include <QTextBlock>
 #include <QTextFragment>
@@ -2991,6 +2992,57 @@ int suite_graphics() {
 		      "a null image puts nothing on the wire through the virtual"
 		      " transmitter either, where the empty payload is a PNG"
 		      " that was never written");
+	}
+
+	// THE GENERATED DIACRITIC TABLE, CHECKED AGAINST UNICODE RATHER THAN
+	// AGAINST ITSELF. kitty_diacritics.h is generated and says so, names the
+	// upstream file it came from, and records what its generator asserted:
+	// 297 entries, index 0 is U+0305, indices 1 and 2 are U+030D and U+030E as
+	// the specification's worked examples require, no duplicates, every value a
+	// valid code point. Nothing re-asserted any of it afterwards -- the only
+	// guard was a static_assert in graphics.cpp that the table is big enough to
+	// index by a byte -- so a hand edit to a file whose first line says do not
+	// edit it by hand, or a regeneration that read the wrong column, would pass
+	// every gate in this tree. 8.592.
+	//
+	// THE DERIVATION IS THE CHECK, which is what makes this independent rather
+	// than a restatement of the data. The header says the values are combining
+	// class 230 marks, so Qt is asked -- its own Unicode tables, not ours --
+	// whether each one still is. A round trip against a decoder written from the
+	// same table would agree with itself and be wrong, which that header warns
+	// about in as many words.
+	//
+	// Measured on both arms before being asserted, because Qt 5 and Qt 6 carry
+	// different Unicode data and a check that holds on one is not a check: all
+	// 297 are combining class 230 and category Mark_NonSpacing under 6.8.2 and
+	// under 5.15.15 alike.
+	{
+		int ccc_wrong = 0, not_mark = 0, dupes = 0;
+		QSet<char32_t> seen;
+		for (int i = 0; i < Qtty::KITTY_DIACRITIC_COUNT; ++i) {
+			const char32_t u = Qtty::KITTY_DIACRITICS[i];
+			if (seen.contains(u)) ++dupes;
+			seen.insert(u);
+			if (QChar::combiningClass(u) != 230) ++ccc_wrong;
+			if (QChar::category(u) != QChar::Mark_NonSpacing) ++not_mark;
+		}
+		printf("info: %d diacritic(s), %d unique, %d off class 230, %d not a"
+		       " non-spacing mark\n", Qtty::KITTY_DIACRITIC_COUNT,
+		       int(seen.size()), ccc_wrong, not_mark);
+		CHECK(Qtty::KITTY_DIACRITIC_COUNT == 297 && dupes == 0
+		          && int(seen.size()) == 297 && ccc_wrong == 0 && not_mark == 0,
+		      "the generated diacritic table is 297 distinct combining class 230"
+		      " non-spacing marks, asked of Unicode rather than of the table");
+		// THE SPECIFICATION'S OWN WORKED EXAMPLES, which no property above can
+		// express: a table of the right SHAPE in the wrong ORDER places every
+		// cell of every image at the wrong row, and every value in it would
+		// still be a class 230 mark.
+		CHECK(Qtty::KITTY_DIACRITICS[0] == 0x0305
+		          && Qtty::KITTY_DIACRITICS[1] == 0x030D
+		          && Qtty::KITTY_DIACRITICS[2] == 0x030E
+		          && Qtty::KITTY_PLACEHOLDER == 0x10EEEE,
+		      "and begins where kitty's worked examples say, under the"
+		      " placeholder those examples name");
 	}
 
 	return fails;

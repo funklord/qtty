@@ -8676,3 +8676,26 @@ into = "\t\t\t\t         w->metaObject()->className(),"
 count = 1
 check = "and names the widget's own class rather than the nearest one that declared Q_OBJECT, which is what an author has to search their tree for"
 
+[[sabotage]]
+# One value in the generated table stops being a combining mark, which is what
+# a hand edit or a regeneration off the wrong column looks like. The table's
+# SHAPE is untouched -- still 297 distinct entries -- so only the check that
+# asks Unicode can see it. 8.592.
+name = "a diacritic in the generated table is not a mark"
+file = "src/graphics/kitty_diacritics.h"
+find = " 0x0483, 0x0484,"
+into = " 0x0041, 0x0484,"
+count = 1
+check = "the generated diacritic table is 297 distinct combining class 230 non-spacing marks, asked of Unicode rather than of the table"
+
+[[sabotage]]
+# And the ORDER, which no property of the values can express: the first two
+# entries are swapped, so every image places its cells one row out while every
+# value in the table is still a class 230 mark. 8.592.
+name = "the diacritic table is right but out of order"
+file = "src/graphics/kitty_diacritics.h"
+find = "\t0x0305, 0x030D, 0x030E,"
+into = "\t0x030D, 0x0305, 0x030E,"
+count = 1
+check = "and begins where kitty's worked examples say, under the placeholder those examples name"
+

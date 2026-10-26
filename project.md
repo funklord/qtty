@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2448 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2450 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49368,3 +49368,47 @@ entry, under `dbus-run-session`, where the present one rebuilds and runs
 the suite -- which is real work for one file whose gate has now been shown
 to work. Recorded so the next reader of the census does not mistake a
 limit of the instrument for an undefended file.
+
+### 8.592 A generated table nothing re-derived (2026-10-26)
+
+**`src/graphics/kitty_diacritics.h` is the most carefully documented file
+in this tree and nothing checked it.** Its first line says GENERATED, do
+not edit by hand; it names the upstream file its values come from, explains
+the derivation -- combining class 230 marks without decomposition
+mappings, minus those that fuse under normalisation -- and records what its
+generator asserted: 297 entries, index 0 is U+0305, indices 1 and 2 are
+U+030D and U+030E as kitty's worked examples require, no duplicates, every
+value a valid code point.
+
+**All of that was asserted once, at generation time, by a program that is
+not run again.** The only live guard was a `static_assert` in
+`graphics.cpp` that the table is big enough to index with a byte. So a hand
+edit to a file whose first line forbids hand edits, or a regeneration that
+read the wrong column, would pass every gate here -- and the consequence is
+the one the header itself names: a screenful of wrong marks, every image
+placing its cells at the wrong row.
+
+**THE CHECK ASKS UNICODE, NOT THE TABLE, which is what makes it worth
+having.** The header warns that "a round-trip against a decoder written
+from the same memory would agree with itself and be wrong", and a check
+restating the values would be exactly that. Qt's own Unicode tables are
+asked instead whether each entry is still combining class 230 and category
+`Mark_NonSpacing` -- the derivation re-run rather than the data copied.
+
+**Measured on both arms before being asserted**, because Qt 5 and Qt 6
+carry different Unicode data and a property that holds on one is not a
+check: all 297 are class 230 non-spacing marks under 6.8.2 and under
+5.15.15 alike, 297 unique, anchors U+0305, U+030D, U+030E, placeholder
+U+10EEEE.
+
+**AND ORDER IS A SECOND CHECK, because no property of the values can
+express it.** A table of the right shape in the wrong order places every
+cell of every image at the wrong row while every entry in it is still a
+class 230 mark. The anchors come from the specification's worked examples,
+which is the one part of the ordering that has an external witness.
+
+**Two sabotage entries, chosen to separate them**: one value changed to a
+letter, which only the Unicode check can see, and the first two entries
+swapped, which only the anchors check can. The first anchor also had to be
+corrected -- it was written as a line start and the value sits mid-line --
+which `--validate` refused before any of it ran.
