@@ -961,6 +961,16 @@ test-tools: all
 	*"widget tree"*aligned*"Enable telemetry"*) echo "    inspect: ok";; \
 	*) echo "    inspect: FAILED -- it did not dump a tree"; fail=1;; \
 	esac; \
+	btn_row=$$(printf '%s\n' "$$out" | awk '/^  QPushButton/ { \
+		split($$0, f, ","); split(f[2], g, " "); print g[1]; exit }'); \
+	ok_row=$$(printf '%s\n' "$$out" | awk '/^rendering:/ { r = NR + 1; next } \
+		r && /<OK>/ { print NR - r; exit }'); \
+	if [ -n "$$btn_row" ] && [ "$$btn_row" = "$$ok_row" ]; then \
+		echo "    inspect: the reported row is the row it draws on ($$btn_row)"; \
+	else \
+		echo "    inspect: FAILED -- a button reports row '$$btn_row' and" \
+		     "<OK> is drawn on row '$$ok_row'"; fail=1; \
+	fi; \
 	out=$$(printf 'text hi\nframe\n' \
 		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	case "$$out" in \

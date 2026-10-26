@@ -49252,3 +49252,78 @@ library, the tools, the example and the suite from an export emits no
 warnings at all. The gate 8.378 left for whoever decides it would start
 green again -- and that is the sentence that went stale once already, so
 it carries its date.
+
+### 8.589 A tool that printed one coordinate space as another (2026-10-26)
+
+**`qtty-inspect` dumps a widget tree with cell geometry and then renders
+the same dialog underneath, which invites the reader to compare the two.
+The two did not agree.** The push buttons read `cells 28, 0` and `37, 0`
+while being drawn on row 7, at columns 29 and 38.
+
+`geometry()` is **parent-relative** and `findChildren()` walks the whole
+subtree, so the buttons -- children of the `QDialogButtonBox` -- were
+reported relative to the box while everything else was reported relative
+to the dialog. One column, one heading, two coordinate spaces, and no
+sentence saying so. Both coordinates were wrong against the picture: the
+row entirely, and the column by the box's own inset of one cell.
+
+**The `aligned` verdict had the same fault and it is the worse half.** It
+was computed on the parent-relative rect, so a widget sitting squarely
+inside an off-grid parent reads `aligned` while its own cells are not.
+`mapTo(&dlg, ...)` answers the position and the verdict together, and the
+tool now says in its heading which space it means.
+
+**FOUND BY RUNNING IT, which is what this session had not been doing.**
+Every lens before this read the source; this took sixty seconds and the
+tool's own output, and the defect was in the first five lines of it.
+
+**AND THE CHECK THAT GUARDED IT ASSERTED ONLY THAT IT SPOKE.** `test-tools`
+globbed the output for `"widget tree"*aligned*"Enable telemetry"` -- all
+three present before the fix and after, because `aligned` appears either
+way and no row number was ever read. It now extracts the first
+`QPushButton`'s reported row and the row `<OK>` is drawn on and compares
+them, which is the property the tool exists to have. **Seen to fail**: with
+the defect restored it says *"a button reports row '0' and `<OK>` is drawn
+on row '7'"*.
+
+**My first extractor was wrong in the way this session keeps meeting.**
+Splitting the line on the comma and stripping non-digits turned
+`" 7   8x1   aligned"` into **781** -- a plausible number rather than an
+error, which is the count inheriting its detector, now in a shell
+one-liner. It takes the first field after the comma.
+
+### 8.590 GridGuard's induction, and the ancestor that is exempt from it (2026-10-26)
+
+**A question with a reproduction, not a fix.** `GridGuard` checks each
+widget's **parent-relative** rect. That is equivalent to checking absolute
+cell alignment only while every ancestor is checked too -- the offsets
+compose -- and **an exempt ancestor breaks the chain.**
+
+Measured 2026-10-26, a `QScrollArea` with a widget and a label inside it:
+
+    cell 10x19; exempt viewport? 1
+    QScrollArea     rel  10, 0  280x190  aligned    | abs 10, 0  aligned
+    viewport        rel  10,10  250x151  MISALIGNED | abs 20,10  MISALIGNED
+    inner widget    rel   0, 0  400x380  aligned    | abs 20,10  MISALIGNED
+    label in inner  rel   0, 0   80x19   aligned    | abs 20,10  MISALIGNED
+    GridGuard violations: 0
+
+The viewport is exempt by its `qt_scrollarea_viewport` objectName, and it
+is off the grid by 10 pixels of 19 -- half a row -- so **an application's
+own widgets inside a scroll area are off-grid absolutely while every one of
+them reports aligned, and the guard counts nothing.**
+
+**The rendering is correct anyway**, which is why this is a question rather
+than a defect: Channel A snaps rects to cells on the way, so the frame
+lands at rows 0 and 9 and the content at row 1 exactly as it should. **The
+hole is unexploited here rather than harmless in general** -- the GridSnap
+record measured content under an off-grid coordinate landing a WHOLE CELL
+from where it belongs, 35 times.
+
+**And the obvious fix would flood, which is what makes it a decision.**
+Checking absolute geometry would report every descendant of an exempt
+off-grid parent, and `grid.h`'s own reasoning is that a guard which
+becomes noise gets switched off and then guards nothing. Whether the
+answer is to audit an exempt ancestor's offset once, to check absolute
+rects and widen the exemptions, or to leave it, is the holder's. The
+reproduction is here so the decision does not need re-taking first.

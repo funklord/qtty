@@ -93,10 +93,20 @@ int main(int argc, char **argv) {
 	dlg.show();
 	QCoreApplication::processEvents();
 
-	printf("widget tree (cell geometry, CW=%d CH=%d):\n", cw, ch);
+	// IN THE DIALOG'S COORDINATES, not each widget's parent's. geometry()
+	// is parent-relative and findChildren() walks the whole subtree, so the
+	// two push buttons -- children of the QDialogButtonBox -- reported row 0
+	// while being drawn on row 7, in one column, under one heading, directly
+	// above a rendering this tool invites the reader to compare against.
+	//
+	// And the verdict was computed on the same relative rect, so a widget
+	// sitting squarely inside an off-grid parent read `aligned` while its
+	// own cells were not. mapTo() answers both questions at once. 8.589.
+	printf("widget tree (cell geometry in the dialog's own coordinates,"
+	       " CW=%d CH=%d):\n", cw, ch);
 	for (QWidget *c : dlg.findChildren<QWidget *>()) {
 		if (c->geometry().isNull() || !c->isVisible()) continue;
-		QRect g = c->geometry();
+		const QRect g(c->mapTo(&dlg, QPoint(0, 0)), c->geometry().size());
 		printf("  %-24s cells %3d,%2d %3dx%-2d  %s\n",
 		       c->metaObject()->className(),
 		       g.x() / cw, g.y() / ch, g.width() / cw, g.height() / ch,
