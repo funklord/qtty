@@ -49075,8 +49075,13 @@ budget, for nothing. The call carries the same condition as its output
 now, so the cost matches the effect.
 
 **HOW IT WAS FOUND is the part worth keeping.** 8.585 left a lens -- a
-diagnostic whose text nothing asserts -- so the library's sixteen `qtty:`
-messages were enumerated and matched against the suite. Six have no
+diagnostic whose text nothing asserts -- so the library's `qtty:` messages
+were enumerated and matched against the suite. **Fifteen**, counted by
+reading only string literals, and the first count said sixteen: a grep for
+the bare string `qtty: ` matched a COMMENT in `input_router.cpp` whose line
+happens to begin that way, quoting a measurement against plain Qt. The
+detector counted prose as a message, which is this session's recurring
+instrument fault in its smallest form. Six of the fifteen have no
 assertion on their text at all. Reading those six for the faults a
 compiler cannot catch, since `qWarning` carries a printf format attribute
 and type errors would already be errors, meant checking argument ORDER
