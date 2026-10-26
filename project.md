@@ -2730,12 +2730,20 @@ In the order I would take them:
    blurred: the rule forbids a pointer the reader NEEDS to follow and says
    a rule must not be "only cited from here", so a citation that states
    its principle and names the source for provenance is compliant.
-   Sampled, both kinds are there -- "`evidence.md` names this exactly:"
-   followed by the rule is fine, while "the falsifier problem in
-   `evidence.md`" gives a reader without the file only a label. **How many
-   are of the second kind is unmeasured**, so the size of any pass is
-   unknown and whether to take one over a 48,000-line file is the
-   holder's call. Entries written after the rule landed state their
+   **Measured 2026-10-26 on a sample of twelve**, spread across the
+   document and classified by one criterion -- does the sentence STATE the
+   rule, or only name it? **Ten state it and two do not.** The ten read
+   like "a passing check is not evidence until you know what it
+   inspected", "a wrapper bounding the wrapper rather than what it
+   launches", "the countable present-tense claim as the kind that rots" --
+   the rule is there and the citation is provenance, which the rule
+   permits. The two are "`evidence.md` names that shape" and "`evidence.md`'s
+   vacuous pass in its purest form", which hand a reader without the file
+   a label and nothing to act on.
+   **So roughly one in six, or about twenty-five of the 148, would need
+   rewording -- not 148.** On a twelve-sample that figure carries real
+   uncertainty, and it is an estimate of SITES rather than of effort: each
+   is one clause. Entries written after the rule landed state their
    principles inline.
 
 5. **The GUI twin's `z`**, unchanged and still unassertable: the
