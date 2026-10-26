@@ -49602,6 +49602,36 @@ the three reasons are worth naming because two of them look like finds:
   second time was asking whether the FEATURE was tested before writing a
   check for it.
 
+**AND THE LOWEST COVERAGE FIGURE IN THE TREE IS THE MOST MISLEADING ONE,
+which is where this method stops being worth running.** Swept across the
+six largest files, line coverage is 95 to 99 per cent and arcs taken 57 to
+74. The outlier is `application.cpp`: **95.33 per cent of lines and 56.61
+per cent of 454 arcs**, the lowest of either, in the file holding
+`setup()`, `exec()` and the fatal message handler.
+
+Its uncovered lines are three groups and **not one is a gap**:
+
+- **The fatal handler and the font-fatal path**, which suspend the
+  terminal before letting a message through. Both are exercised -- and
+  `suite_backend.cpp` says from where, in its own words: *"A forked child
+  is the only seat from which a fatal message can be watched."* **A child
+  that dies by signal or `qFatal` never flushes its `.gcda`**, so the
+  coverage of everything only reachable from that seat is lost by
+  construction. The file with the most fork-based tests therefore reports
+  the thinnest coverage in the tree while being among the better tested.
+- **A documented-unreachable guard.** The late `set_font()` declines a
+  font measuring zero, and the comment above it says that a font passing
+  `grid_font_problem()` with a zero advance "is not a case anybody has
+  met" -- kept because the late path must decline rather than abort. The
+  code pre-empts the finding.
+
+**So the method is exhausted here as a source of defects**, and the reason
+is worth more than another sweep: in this tree an untaken arc is a `throw`
+arm, a null-widget fallback, an inlined arc on a line carrying a call, a
+clause whose removal nothing can observe, or a path only a dying child
+reaches. It found one real gap, 8.594, in the one file where none of those
+five applied.
+
 **The transferable part is about the probe, not the parser.** A probe
 compiled differently from the thing it models answers a different
 question, and it answers it confidently. The three builds disagreed, the
