@@ -48503,6 +48503,19 @@ going negative. This one never goes negative -- it escapes -- so the
 negative sweep passed over it. **Two faults, one cause, two different
 symptoms: a sweep finds only the symptom it asks about.**
 
+**Swept at six widths now, not one.** Both faults this family produced
+were size-dependent -- 8.566's text rect goes negative only below its own
+indent, this escape happens only when the box does not fit -- so a single
+size tests one arithmetic rather than the rule. One cell and two are below
+every indent here, forty is roomier than anything asks for, and the middle
+three are where a real column sits. **354 asks and 170 answering
+non-empty under Qt 6.8, 366 and 175 under Qt 5.15, none negative and none
+escaping on either** -- the arm is named because the enum differs by
+version, 59 keys to 61, and a count written without it reads as a
+disagreement between runs. The extra widths found nothing today,
+which is the reason to keep them: a size-specific fault is invisible to
+the width that does not provoke it.
+
 **AND AN EXEMPTION I ADDED ON A GUESS TOLERATED NOTHING.** The first
 version of the containment check exempted `TabWidget` elements by name,
 reasoning that a pane and its corners are placed around the bar rather

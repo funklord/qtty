@@ -1294,7 +1294,31 @@ int suite_grid() {
 			scroll_bar.resize(cwq * 20, chq);
 			QStringList bad, escaped;
 			int asked = 0, answered = 0;
-			for (int i = 0; i < se_enum.keyCount(); ++i) {
+			// SIX WIDTHS, not one. Both faults this family has produced
+			// were size-dependent -- 8.566's text rect goes negative only
+			// below its own indent, 8.576's check indicator escapes only
+			// when the box does not fit -- so a single size tests one
+			// arithmetic rather than the rule. One cell and two are below
+			// every indent here, forty is roomier than anything asks for,
+			// and the middle three are where a real column sits.
+			//
+			// Measured across all six, on both arms and named by arm
+			// because the enum differs: 354 asks and 170 answering
+			// non-empty under Qt 6.8 (59 keys), 366 and 175 under Qt 5.15
+			// (61 keys), none negative and none escaping on either. The
+			// extra widths found nothing today, which is the point of
+			// keeping them -- a size-specific fault is invisible to the
+			// width that does not provoke it.
+			// ONE loop over element-and-width pairs rather than two
+			// nested, so the body keeps its indentation: a bare outer
+			// `for` leaves every line below it a tab short of what the
+			// structure implies, which the style gate reads as ninety-three
+			// violations.
+			static const int widths[] = {1, 2, 3, 5, 10, 40};
+			const int nwidths = int(sizeof(widths) / sizeof(widths[0]));
+			for (int k = 0; k < se_enum.keyCount() * nwidths; ++k) {
+				const int i = k / nwidths;
+				const int wcells = widths[k % nwidths];
 				const QString name =
 				    QString::fromLatin1(se_enum.key(i));
 				QStyleOption plain;
@@ -1357,7 +1381,7 @@ int suite_grid() {
 					o = &group;
 				else if (name.contains(QStringLiteral("SpinBox")))
 					o = &spin;
-				o->rect = QRect(0, 0, cwq * 3, chq);
+				o->rect = QRect(0, 0, cwq * wcells, chq);
 				const QWidget *w =
 				    name.contains(QStringLiteral("TabBarScroll"))
 				        ? &scroll_bar : nullptr;
@@ -1365,8 +1389,8 @@ int suite_grid() {
 				const QRect r = st->subElementRect(
 				    QStyle::SubElement(se_enum.value(i)), o, w);
 				if (r.width() < 0 || r.height() < 0)
-					bad << name + QStringLiteral("(%1x%2)")
-					              .arg(r.width()).arg(r.height());
+					bad << name + QStringLiteral("@%1(%2x%3)")
+					              .arg(wcells).arg(r.width()).arg(r.height());
 				if (!r.isEmpty()) ++answered;
 				// AND INSIDE THE RECTANGLE IT WAS ASKED ABOUT, which is
 				// the second property the CC_/SC_ tally asserts and this
@@ -1385,12 +1409,12 @@ int suite_grid() {
 				// future escape is a failure rather than a silent addition
 				// to a tolerated set.
 				if (!r.isEmpty() && !o->rect.contains(r))
-					escaped << name;
+					escaped << name + QStringLiteral("@%1").arg(wcells);
 			}
 			bad.sort();
 			escaped.sort();
-			printf("info: swept %d sub-element(s) at 3 cells, %d answered"
-			       " non-empty, %d negative%s%s\n", asked, answered,
+			printf("info: swept %d sub-element ask(s) over six widths, %d"
+			       " answered non-empty, %d negative%s%s\n", asked, answered,
 			       int(bad.size()), bad.isEmpty() ? "" : ": ",
 			       qPrintable(bad.join(QStringLiteral(", "))));
 			if (!escaped.isEmpty())
@@ -1409,9 +1433,14 @@ int suite_grid() {
 			// 6.8, 61 under Qt 5.15 -- which is why this is keyed off
 			// QMetaEnum. A written-out list would have been wrong on one
 			// arm, and the count asserted below is a floor rather than an
-			// equality for the same reason.
-			CHECK(asked == se_enum.keyCount() && asked >= 59
-			      && answered >= 20 && bad.isEmpty()
+			// equality for the same reason. The floor is 300 and not 354:
+			// a floor set to an arm's exact count PINS that arm, so a
+			// future Qt dropping one enumerator would fail here as though
+			// the sweep had broken. What it is for is reflection
+			// collapsing -- keyCount() returning nothing or a handful --
+			// and 300 catches that while neither version sits on it.
+			CHECK(asked == se_enum.keyCount() * nwidths && asked >= 300
+			      && answered >= 120 && bad.isEmpty()
 			      && escaped.isEmpty(),
 			      "no sub-element rect has a negative dimension at a width"
 			      " narrower than its own indent, swept over every"
