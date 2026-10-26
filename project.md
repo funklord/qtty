@@ -28072,6 +28072,12 @@ two are real. **That is the wrong ratio for a habit to survive**, which is
 why the measurement that works is a clean build from `git archive HEAD`
 rather than a sweep of what the day left behind.
 
+**AND THE ZERO THIS ENTRY RECORDS WENT STALE, which 8.588 re-measured and
+restored on 2026-10-26.** Five warnings had collected since, all one kind,
+by precisely the mechanism the paragraph above names. The figure below is
+true as of 2026-09-30 and the tree is at zero again now; what the drift
+proves is that recording a mechanism does not prevent it.
+
 **Not fixed: a gate.** `-Werror`, or a `check` arm that counts warnings,
 would hold this closed, and it is a convention change rather than a
 bugfix -- `working-practice.md` says that is its own piece of work and not
@@ -49195,3 +49201,54 @@ re-anchored it, this re-anchors it again -- and `sabotage-check` refused
 the commit until it did. The entry now breaks the arm that handles
 everything **except** printable ASCII, because the ASCII arm cannot carry
 a control at all: 0x20..0x7e holds none.
+
+### 8.588 The warning-free build was not, a month later (2026-10-26)
+
+**8.378 measured this tree at zero warnings on 2026-09-30 and offered that
+as the reason a `-Werror` gate "would start green". A clean census today
+says five**, all of one kind: `missing initializer for member
+'Qtty::CellImage::clip'`.
+
+**They arrived with the field.** `CellImage` grew a `clip` member -- the
+struct's own comment marks the moment, having said "LAST in the struct
+deliberately" until then -- and every partial aggregate initialisation of
+it started warning. Two in the library and three in `suite_render.cpp`.
+
+**The mechanism is the one 8.378 wrote down**, which is the part worth
+keeping: an incremental build never recompiles a file nobody touched, so
+each warning printed once, in the commit that introduced it, and never
+again. **An entry recording a mechanism does not prevent the mechanism.**
+That is an argument for the gate it left open rather than for better
+attention.
+
+**MEASURED BY THE INSTRUMENT THAT ENTRY PRESCRIBES, and the scope has to
+be stated with the number.** A clean build from an export of the tracked
+files rather than a sweep of the day's logs, because 66 of 68 `warning:`
+hits in a day's scratch logs come from sabotage builds where code broken
+on purpose produces unused variables by construction. And the DEFAULT
+target excludes the suite, so that build alone reports **two**; the suite
+adds **three**. Both figures are true of different scopes, and 8.378's
+claim covered "the library, the suite, the four tools and the example", so
+five is the comparable one.
+
+**Fixed by assigning field by field rather than by naming the trailing
+members.** Enumerating them would satisfy the compiler today and put all
+five sites back on the treadmill the next field addition starts -- which
+is this drift again, with the same cause. Assignment is immune to it, and
+`CellImage` keeps its defaults for everything a site does not set, which
+is what those sites meant.
+
+**AND IT MOVED A SABOTAGE ANCHOR, the fifth today.** The entry for *the
+engine decides a small image on cell extent* pointed at the very partial
+aggregate this replaced -- an entry about image placement, broken by a
+change about a compiler warning, in a file neither is really about.
+`sabotage-check` refused the commit and named it. Five anchors in one
+session is the cost of exact-line anchoring, and the fifth is the clearest
+illustration of what that cost buys: nothing else in the build would have
+noticed that an unrelated entry had stopped reproducing its fault.
+
+**Verified at zero afterwards, in both scopes**: a clean build of the
+library, the tools, the example and the suite from an export emits no
+warnings at all. The gate 8.378 left for whoever decides it would start
+green again -- and that is the sentence that went stale once already, so
+it carries its date.

@@ -318,7 +318,11 @@ int suite_render(bool record) {
 		const QString bare = b.to_snapshot();
 		QPixmap pm(20, 20);
 		pm.fill(Qt::red);
-		b.images.append(Qtty::CellImage{1, QRect(2, 1, 2, 1), pm});
+		Qtty::CellImage one;                // field by field: see 8.588
+		one.key = 1;
+		one.cell_rect = QRect(2, 1, 2, 1);
+		one.pixmap = pm;
+		b.images.append(one);
 		const QString imaged = b.to_snapshot();
 		if (bare != imaged)
 			printf("PASS: a frame carrying a picture does not snapshot the "
@@ -350,7 +354,11 @@ int suite_render(bool record) {
 		c.text(0, 0, QStringLiteral("hello"));
 		QPixmap other(20, 20);
 		other.fill(Qt::blue);
-		c.images.append(Qtty::CellImage{99, QRect(2, 1, 2, 1), other});
+		Qtty::CellImage ninety_nine;        // field by field: see 8.588
+		ninety_nine.key = 99;
+		ninety_nine.cell_rect = QRect(2, 1, 2, 1);
+		ninety_nine.pixmap = other;
+		c.images.append(ninety_nine);
 		if (c.to_snapshot() == imaged)
 			printf("PASS: while a different picture of the same size in the "
 			       "same place compares equal, which is the limit and not "
@@ -369,7 +377,10 @@ int suite_render(bool record) {
 		// starts using it -- and stop covering it silently.
 		Qtty::CellBuffer d(10, 3);
 		d.text(0, 0, QStringLiteral("hello"));
-		Qtty::CellImage lifted{1, QRect(2, 1, 2, 1), pm};
+		Qtty::CellImage lifted;             // field by field: see 8.588
+		lifted.key = 1;
+		lifted.cell_rect = QRect(2, 1, 2, 1);
+		lifted.pixmap = pm;
 		lifted.z = 2;
 		d.images.append(lifted);
 		if (d.to_snapshot() != imaged)

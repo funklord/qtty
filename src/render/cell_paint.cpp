@@ -606,8 +606,18 @@ private:
 		// what it says here.
 		const QByteArray bits(reinterpret_cast<const char *>(img.constBits()),
 		                      int(img.sizeInBytes()));
-		CellImage placement{quint64(qHash(bits)), cells,
-		                    QPixmap::fromImage(img)};
+		// FIELD BY FIELD, not a partial aggregate. CellImage gives every
+		// member a default and these sites want the defaults for the rest,
+		// but -Wmissing-field-initializers warns about exactly that shape
+		// and the warnings had been riding along since `clip` was added to
+		// the struct -- 8.378 measured the tree at zero and offered that as
+		// the reason a -Werror gate would start green. Assigning rather than
+		// enumerating keeps it at zero without putting every call site on a
+		// treadmill the next field would restart. 8.588.
+		CellImage placement;
+		placement.key = quint64(qHash(bits));
+		placement.cell_rect = cells;
+		placement.pixmap = QPixmap::fromImage(img);
 		placement.has_clip = has_clip;
 		placement.clip = clip;
 		dev->placements.append(placement);
@@ -1152,7 +1162,11 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 				if (qAlpha(img.pixel(x, y)) >= 40) { any = true; break; }
 		if (!any) return;
 	}
-	dev_->placements.append({quint64(pm.cacheKey()), c, pm});
+	CellImage tiled;                            // field by field: see 8.588
+	tiled.key = quint64(pm.cacheKey());
+	tiled.cell_rect = c;
+	tiled.pixmap = pm;
+	dev_->placements.append(tiled);
 }
 
 // TILED, as ONE placement rather than one per tile. QPaintEngine's own

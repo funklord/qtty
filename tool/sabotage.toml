@@ -5868,8 +5868,11 @@ check = "a CSI whose parameters never end is dropped once it passes the cap"
 [[sabotage]]
 name = "the engine decides a small image on cell extent again"
 file = "src/render/cell_paint.cpp"
-find = "\tdev_->placements.append({quint64(pm.cacheKey()), c, pm});"
-into = "\tif (c.width() < 2 || c.height() < 2) return;\n\tdev_->placements.append({quint64(pm.cacheKey()), c, pm});"
+# Re-anchored 8.588: the partial aggregate this pointed at became a field-by-
+# field construction to clear a -Wmissing-field-initializers warning. The
+# fault is unchanged -- a small image stops becoming a placement.
+find = "\tCellImage tiled;                            // field by field: see 8.588"
+into = "\tif (c.width() < 2 || c.height() < 2) return;\n\tCellImage tiled;                            // field by field: see 8.588"
 count = 1
 check = "every image is a placement over the cells it occupies, one cell wide or eight"
 
