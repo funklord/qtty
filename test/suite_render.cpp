@@ -13,6 +13,16 @@ using Qtty::GridMetrics;
 
 namespace {
 
+// What Qt said while a call was being made. A named function rather than a
+// lambda because qInstallMessageHandler takes a plain function pointer, so
+// the sink has to be a file static either way -- the same shape
+// suite_graphics and suite_backend use for this.
+QString g_said;
+void keep_message(QtMsgType, const QMessageLogContext &, const QString &m) {
+	g_said += m;
+	g_said += QLatin1Char('\n');
+}
+
 // A widget that draws itself in cells rather than in pixels. Inherits QWidget
 // first and the interface second, which is the only legal order: two QObject
 // bases are illegal, which is why ICellPainted is not one.
@@ -2128,9 +2138,18 @@ int suite_render(bool record) {
 
 		// Both interfaces on one class. It compiles and the pixel path wins,
 		// because the filter tests for a surface first -- so paint_cells() is
-		// never called and the widget is harvested as an image with no
-		// warning. qtty/paint.h says not to do this; this is what says the
-		// consequence has not quietly changed, in either direction.
+		// never called and the widget is harvested as an image.
+		// qtty/paint.h says not to do this; this is what says the consequence
+		// has not quietly changed, in either direction.
+		//
+		// AND THE WARNING IS ASSERTED BESIDE THE BEHAVIOUR, which is new at
+		// 8.584. This block's own comment used to end "with no warning", and
+		// that was the finding rather than the design: paint.h states the
+		// contract and its violation was the one thing the library would not
+		// say out loud, so an author got an image where they had written
+		// paint_cells() and nothing to learn it from. Both halves are
+		// checked, because a warning that fires while the path changed, or a
+		// path that holds while the warning stops, are different faults.
 		QWidget bh;
 		bh.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *both = new Both(&bh);
@@ -2140,7 +2159,12 @@ int suite_render(bool record) {
 		QCoreApplication::processEvents();
 		Qtty::CellBuffer bb(20, 4);
 		QVector<Qtty::CellImage> placements;
+		g_said.clear();
+		QtMessageHandler prev_h = qInstallMessageHandler(keep_message);
 		Qtty::render_once(bh, bb, &placements);
+		qInstallMessageHandler(prev_h);
+		const bool told = g_said.contains(QStringLiteral("implements both"))
+		                  && g_said.contains(QStringLiteral("Both"));
 		if (both->cell_calls == 0 && placements.size() == 1
 		    && !buffer_has(bb, QStringLiteral("BOTH")))
 			printf("PASS: a widget claiming both interfaces takes the pixel path\n");
@@ -2148,6 +2172,19 @@ int suite_render(bool record) {
 			printf("FAIL: a widget claiming both interfaces takes the pixel path\n"
 			       "      condition: paint_cells called %d time(s), "
 			       "%d placement(s)\n", both->cell_calls, int(placements.size()));
+			++r;
+		}
+		// NAMED IN THE MESSAGE, because a warning that does not say which
+		// class it is about leaves an author grepping their own tree for a
+		// contract they did not know they had broken.
+		if (told)
+			printf("PASS: and says so, naming the class, rather than taking"
+			       " the pixel path in silence\n");
+		else {
+			printf("FAIL: and says so, naming the class, rather than taking"
+			       " the pixel path in silence\n"
+			       "      condition: Qt said '%s'\n",
+			       qPrintable(g_said.trimmed()));
 			++r;
 		}
 

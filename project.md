@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2446 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2447 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -48950,3 +48950,46 @@ something else. The alternative -- a looser pattern -- would buy quiet
 refactors and pay for them with entries that still apply and no longer
 reproduce anything, which is the failure mode 8.577 found when 8.576's
 `into` had become the shipped code.
+
+### 8.584 A contract paint.h stated and nothing enforced (2026-10-26)
+
+**`qtty/paint.h` says "a widget must not inherit both this and
+PixelSurface", and names the consequence itself: "It compiles, and the
+pixel path wins: qtty tests for a surface first, so `paint_cells()` is
+never called and the widget is harvested as an image with no warning."**
+The suite asserted that behaviour and the comment on the check ended with
+the same three words. **A documented contract whose violation the library
+would not say out loud** -- an author gets an image where they wrote
+`paint_cells()`, and nothing to learn it from.
+
+It says so now, once per offending class, naming the class. `GridGuard`
+already reports what an application got wrong about geometry; this is the
+same idea on the other interface, and the check that asserted the silence
+asserts the warning beside the behaviour instead -- **both halves, because
+a warning that fires while the path changes and a path that holds while
+the warning stops are different faults.**
+
+**THE CHECK CAUGHT TWO FAULTS IN MY OWN DIAGNOSTIC, immediately, which is
+the whole argument for writing it.**
+
+**It named the wrong class.** `metaObject()->className()` is the nearest
+**Q_OBJECT** ancestor, and a widget implementing an interface usually
+declares no `Q_OBJECT` -- the suite's own `Both` fixture does not, nor
+would most application widgets for a plot or a meter. So the first version
+warned about **`QWidget`**, for every such widget, which is nothing an
+author can grep for. `typeid(*o)` with `__cxa_demangle()` gives the real
+class; the mangled form is the fallback and is still recognisable, being
+the name behind a length prefix.
+
+**And the once-per-class key had the same bug one level up.** Keyed on the
+`QMetaObject`, every `Q_OBJECT`-less widget shares `QWidget`'s -- so the
+**second** offending class in a program would be found already told and
+never reported. **That is the same silent miss this warning exists to
+end, committed inside the warning itself.** Keyed on the dynamic type's
+name now.
+
+**Neither fault would have been visible without asserting the message.**
+"A warning was emitted" passes with the wrong class in it, and "the pixel
+path wins" passed throughout -- the behaviour was right the whole time
+and the diagnostic was useless. **An assertion on a diagnostic has to read
+what it says, not that it spoke.**

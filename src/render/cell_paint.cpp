@@ -6,6 +6,10 @@
 #include <QVarLengthArray>
 #include <QCoreApplication>
 #include <QEvent>
+#if defined(__GNUG__)
+#include <cxxabi.h>
+#endif
+#include <QSet>
 #include <QWidget>
 #include "qtty/grid.h"
 #include "qtty/theme.h"
@@ -60,6 +64,29 @@ CellPaintDevice::~CellPaintDevice() { s_active = outer_; delete eng_; }
 // with OpenGL or into a scene issues no primitive this engine ever sees. The
 // walk is up the metaObject chain so an application's own subclass of one of
 // these is recognised too, which is how they are actually used.
+// THE DYNAMIC TYPE, not the nearest Q_OBJECT ancestor. A widget that
+// implements an interface and declares no Q_OBJECT -- which is every widget
+// in this tree's own fixtures and most of the ones an application writes for
+// a plot or a meter -- answers metaObject()->className() with a BASE class.
+// Measured: the first version of the both-interfaces warning named every
+// such widget "QWidget", which tells an author nothing they can grep for.
+// typeid gives the real class and __cxa_demangle makes it readable; the
+// mangled form is the fallback and is still recognisable, being the name
+// behind a length prefix. 8.584.
+static QString dynamic_type_name(const QObject *o) {
+	const char *const raw = typeid(*o).name();
+#if defined(__GNUG__)
+	int status = 0;
+	char *const plain = abi::__cxa_demangle(raw, nullptr, nullptr, &status);
+	if (plain) {
+		const QString out = QString::fromLatin1(status == 0 ? plain : raw);
+		::free(plain);
+		return out;
+	}
+#endif
+	return QString::fromLatin1(raw);
+}
+
 static const char *unsupported_class(const QObject *o) {
 	static const char *const names[] = {
 		"QGraphicsView", "QOpenGLWidget", "QQuickWidget", "QQuickView",
@@ -397,6 +424,42 @@ public:
 		}
 		if (auto *surface = dynamic_cast<PixelSurface *>(o)) {
 			if (harvesting_) return false;         // our own render(): paint
+			// BOTH INTERFACES IS A CONTRACT VIOLATION paint.h names and
+			// nothing reported. It compiles, the pixel path wins because
+			// the surface is tested first, and paint_cells() is never
+			// called -- so a widget that answered "my content is cells"
+			// gets harvested as an image and the author has no way to
+			// learn it. The two interfaces answer opposite questions and a
+			// class claiming both has answered neither, which is a thing
+			// to say rather than to resolve silently.
+			//
+			// ONCE PER CLASS, not per occurrence. This runs for every
+			// widget of every frame, so a warning per call is one nobody
+			// can read and one that would bury GridGuard's.
+			//
+			// KEYED ON THE DYNAMIC TYPE rather than on the QMetaObject,
+			// for the reason dynamic_type_name() gives: a widget with no
+			// Q_OBJECT answers metaObject() with a BASE class, so a
+			// QMetaObject key would be QWidget's for every such widget
+			// and the SECOND offending class in a program would be
+			// reported as already told. The first version did exactly
+			// that -- which is the same silent miss this warning exists
+			// to end, one level up in the diagnostic itself.
+			//
+			// The extra cast is on the path that then rasterises the
+			// widget into an image, so it is not the expensive part of
+			// anything.
+			if (dynamic_cast<ICellPainted *>(o)) {
+				static QSet<QByteArray> told;
+				const QByteArray key(typeid(*o).name());
+				if (!told.contains(key)) {
+					told.insert(key);
+					qWarning("qtty: %s implements both PixelSurface"
+					         " and ICellPainted; the pixel path wins, so"
+					         " paint_cells() is never called",
+					         qPrintable(dynamic_type_name(o)));
+				}
+			}
 			return harvest(surface, dev);
 		}
 		// dynamic_cast, not qobject_cast: the latter needs Q_INTERFACES on the

@@ -8645,3 +8645,16 @@ find = "\tQString glyph = safe_glyph(cluster);"
 into = "\tQString glyph = cluster;\n\tif (!glyph.isEmpty() && is_control(glyph.at(0).unicode()))\n\t\tglyph = QStringLiteral(\" \");"
 count = 1
 check = "and a control behind an ordinary base is dropped from the cluster, the base keeping its cell"
+
+[[sabotage]]
+# The both-interfaces warning goes quiet, so a widget that implements
+# ICellPainted and PixelSurface together is harvested as an image and its
+# paint_cells() is never called, with nothing said -- which is the state
+# paint.h described and 8.584 ended.
+name = "a widget claiming both interfaces is taken in silence"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\t\tqWarning(\"qtty: %s implements both PixelSurface\""
+into = "\t\t\t\t\tif (false) qWarning(\"qtty: %s implements both PixelSurface\""
+count = 1
+check = "and says so, naming the class, rather than taking the pixel path in silence"
+
