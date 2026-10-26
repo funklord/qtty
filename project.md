@@ -2696,11 +2696,30 @@ In the order I would take them:
    count reaches with a print folded into the condition -- `if (cond &&
    (fprintf(...), true))` -- which answers "does this fire, and how often"
    in one build where gcov answers "was this arc taken" for a whole file.
-   What is left of this item is the defensive remainder: null guards and
-   failed casts, where the yield has fallen far enough that the next
-   family is worth a pass only if its arms protect something measured. `grid_style.cpp` takes 74.01 per cent of 2001 branches at
-   least once and `ansi_backend.cpp` 71.00 of 1376 -- and the METHOD
-   matters more than the number, because three readings of it have been
+   **CLOSED 2026-10-26, and the next reader should not repeat it.** The
+   whole tree was swept with `gcov -b` rather than a family at a time: ten
+   files, line coverage 95 to 100 per cent, arcs taken 57 to 80. Refreshed
+   where this item's own figures had rotted -- `grid_style.cpp` takes
+   **74.11** per cent of 2001 arcs at least once and `ansi_backend.cpp`
+   **71.94 of 1372**, which this said was 74.01 and 71.00 of 1376 before
+   today's commits moved the second one.
+
+   **One real gap in ten files**: 8.594, the background luminance a
+   foreground-only reply implies, in `color.cpp` -- and it was found
+   because that file is the only one where none of the five explanations
+   below applied. **In this tree an untaken arc is**: a `(throw)` arm (31
+   of 40 in the item delegate), a null-widget fallback no Qt view
+   produces, an **inlined arc on a line carrying a call** (which read as a
+   documented feature going untested and is not), a clause whose removal
+   nothing can observe (8.595: a `QByteArray` keeps a NUL terminator, so
+   dropping `j >= b.size()` passes the suite AND the sanitizer), or a path
+   **only a forked child that dies reaches**, whose `.gcda` is never
+   flushed -- which is why `application.cpp` reports the thinnest coverage
+   in the tree while being among the better tested.
+
+   So the defensive remainder is not worth a pass, and the reason is now
+   measured rather than suspected. **The METHOD below is still right and
+   is why the sweep was cheap**, because three readings of it have been
    wrong. Read gcov per BRANCH, not per line: a line carrying a call has
    inlined arcs of its own. Skip arcs labelled `(throw)`. A never-taken
    branch has three answers and only the first is a gap -- right and
