@@ -49070,9 +49070,32 @@ colours and comparing luminance, to produce a number nobody read.
 
 **Measured on a 200x60 frame of ordinary text, best of 30 over three
 runs: 0.340, 0.353 and 0.396 ms.** That is more than the entire glyph
-sanitising guard costs after 8.583, and about two per cent of a 16 ms
-budget, for nothing. The call carries the same condition as its output
-now, so the cost matches the effect.
+sanitising guard costs after 8.583. The call carries the same condition as
+its output now, so the cost matches the effect.
+
+**AND THE DENOMINATOR MATTERS MORE THAN THE FIGURE, which the first
+version of this entry got wrong by choosing the flattering one.** "About
+two per cent of a 16 ms frame budget" is true and makes this sound like
+nothing. Against the work `present()` actually does it is a fifth:
+measured on the same frame, `present()` costs **2.311 and 2.561 ms** over
+two runs and the walk **0.576 and 0.591 ms** of that -- **19 to 20 per
+cent of presenting a frame, for an output that does not exist.** A budget
+is the wrong denominator for a saving; the thing the saving came out of is
+the right one.
+
+**The absolute figures do not travel between harnesses and the ratio
+does.** The same walk measured 0.34-0.40 ms standalone and 0.58 ms when
+timed immediately after a `present()` in the same process. Quote the
+within-run share, as `suite_budget`'s header says of its own numbers.
+
+**AND THE PROBE THAT PRODUCED THEM HUNG FIRST, which is worth keeping
+because it is a sink nobody thinks about.** Timing `present()` by writing
+into a pty and draining the master BEFORE each call does not work: one
+200x60 frame is about 15 kB, the master's buffer fills mid-write, and the
+write blocks with nothing reading it. It hung until its timeout killed it.
+A pty is a channel, not a sink -- fd 1 goes to `/dev/null` for a timed
+call, which is what `make soak` already does and now for a reason this
+tree has measured rather than inherited.
 
 **HOW IT WAS FOUND is the part worth keeping.** 8.585 left a lens -- a
 diagnostic whose text nothing asserts -- so the library's `qtty:` messages
