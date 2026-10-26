@@ -1683,9 +1683,29 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	if (se == SE_ItemViewItemCheckIndicator && opt) {
 		const int cw = GridMetrics::cw();
 		if (r.isValid())
+			// CLAMPED TO THE ITEM, which it was not. The box is three cells
+			// at one cell of indent, so an item narrower than four cells
+			// got a rectangle running past its own right edge -- measured,
+			// a three-cell item answered 10,0 30x19 against an item of
+			// 0,0 30x19, one cell over. This rectangle is what a click on
+			// the check box is tested against, so the escape means a press
+			// one cell OUTSIDE a narrow checkable item toggles it.
+			//
+			// Intersected rather than declined: part of the box is visible
+			// in a narrow item and a click there should still reach it,
+			// which is the difference from the scroll bar's arrows at
+			// 8.549 -- those are not drawn at all below two cells, so they
+			// decline the cell instead.
+			//
+			// 8.566 gave the TEXT rectangle of this same family its guard;
+			// this is the adjacent element, missed because the fault is
+			// containment rather than a negative dimension. Qt's own answer
+			// stays inside at every width -- 3,2 14x14 -- so there was
+			// nothing upstream to inherit this from.
 			return QRect(leading_edge(opt->rect.left(), opt->rect.right(),
 			                          cw, 3 * cw, opt->direction),
-			             opt->rect.top(), 3 * cw, opt->rect.height());
+			             opt->rect.top(), 3 * cw, opt->rect.height())
+			    .intersected(opt->rect);
 	}
 	// AND THE CELLS THE TEXT IS DRAWN IN, which nothing here answered and
 	// which is not only about drawing: Qt's own delegate places an inline

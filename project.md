@@ -48471,3 +48471,43 @@ written-out list would have been wrong on one of them, and silently --
 too short a list reports clean over the elements it omits. The count is
 therefore asserted as a floor rather than an equality, for the same
 reason.
+
+### 8.576 The check indicator that escaped its item (2026-10-26)
+
+**The sub-element sweep found a real defect on its first day, and it was
+the property I had left out.** The `CC_`/`SC_` tally asserts two things of
+a rectangle -- that no dimension is negative, and that it lies inside the
+control it belongs to. 8.575 swept the sub-elements for the first. This
+adds the second, and it found one escape out of fifty-nine.
+
+**`SE_ItemViewItemCheckIndicator` ran past its own item.** Measured: a
+three-cell item, `0,0 30x19`, answered `10,0 30x19` -- one cell of indent
+plus a three-cell box, so the rectangle ends at x=40 where the item ends
+at x=30. **That rectangle is what a click on the check box is tested
+against**, so a press one cell OUTSIDE a narrow checkable item toggled
+it.
+
+**It is qtty's own answer, not something inherited.** Plain Qt returns
+`3,2 14x14` and stays inside at every width, so there was no upstream
+behaviour to blame or to match. The handler computes the box's cells and
+never asked whether the item had room for them.
+
+**Intersected with the item rather than declined**, which is the opposite
+choice from 8.549's scroll-bar arrows: those are not drawn at all below
+two cells, so they decline the cell, while part of this box IS visible in
+a narrow item and a click there should still reach it.
+
+**Same family as 8.566, adjacent element, and missed for a precise
+reason.** That entry gave the item's TEXT rectangle its guard against
+going negative. This one never goes negative -- it escapes -- so the
+negative sweep passed over it. **Two faults, one cause, two different
+symptoms: a sweep finds only the symptom it asks about.**
+
+**AND AN EXEMPTION I ADDED ON A GUESS TOLERATED NOTHING.** The first
+version of the containment check exempted `TabWidget` elements by name,
+reasoning that a pane and its corners are placed around the bar rather
+than within the rect handed in. Removing the exemption changed nothing:
+every element stays inside at this size. **An exemption that tolerates
+nothing is a weakening with no case behind it**, so the stricter form
+stands and any future escape is a failure rather than a silent addition
+to a tolerated set.

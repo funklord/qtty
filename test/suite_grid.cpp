@@ -1292,7 +1292,7 @@ int suite_grid() {
 			QTabBar scroll_bar;
 			scroll_bar.addTab(QStringLiteral("one"));
 			scroll_bar.resize(cwq * 20, chq);
-			QStringList bad;
+			QStringList bad, escaped;
 			int asked = 0, answered = 0;
 			for (int i = 0; i < se_enum.keyCount(); ++i) {
 				const QString name =
@@ -1368,12 +1368,34 @@ int suite_grid() {
 					bad << name + QStringLiteral("(%1x%2)")
 					              .arg(r.width()).arg(r.height());
 				if (!r.isEmpty()) ++answered;
+				// AND INSIDE THE RECTANGLE IT WAS ASKED ABOUT, which is
+				// the second property the CC_/SC_ tally asserts and this
+				// surface had none of. It found one: the item-view check
+				// indicator ran a cell past a three-cell item, and that
+				// rectangle is what a click on the box is tested against.
+				//
+				// NO EXEMPTIONS, and that was measured rather than
+				// assumed. A tab widget's pane and corners looked like
+				// legitimate escapes -- they are placed around the bar
+				// rather than within the rect handed in -- so this carried
+				// a name-based exemption for them. Removing it changed
+				// nothing: every element stays inside at this size. An
+				// exemption that tolerates nothing is a weakening with no
+				// case behind it, so the stricter form stands and any
+				// future escape is a failure rather than a silent addition
+				// to a tolerated set.
+				if (!r.isEmpty() && !o->rect.contains(r))
+					escaped << name;
 			}
 			bad.sort();
+			escaped.sort();
 			printf("info: swept %d sub-element(s) at 3 cells, %d answered"
 			       " non-empty, %d negative%s%s\n", asked, answered,
 			       int(bad.size()), bad.isEmpty() ? "" : ": ",
 			       qPrintable(bad.join(QStringLiteral(", "))));
+			if (!escaped.isEmpty())
+				printf("info: escaped the rect asked about: %s\n",
+				       qPrintable(escaped.join(QStringLiteral(", "))));
 			// The COUNT is asserted with the emptiness, so a sweep that
 			// stopped asking -- an enum that shrank, a loop that broke
 			// early -- cannot report clean by asking nothing.
@@ -1389,11 +1411,13 @@ int suite_grid() {
 			// arm, and the count asserted below is a floor rather than an
 			// equality for the same reason.
 			CHECK(asked == se_enum.keyCount() && asked >= 59
-			      && answered >= 20 && bad.isEmpty(),
+			      && answered >= 20 && bad.isEmpty()
+			      && escaped.isEmpty(),
 			      "no sub-element rect has a negative dimension at a width"
 			      " narrower than its own indent, swept over every"
-			      " enumerator Qt declares, with most of them answering"
-			      " real geometry rather than an empty rect");
+			      " enumerator Qt declares, nor escapes the rectangle it"
+			      " was asked about, with most of them answering real"
+			      " geometry rather than an empty rect");
 		}
 
 		// AND THE SUB-ELEMENT THAT SWEEP DOES NOT REACH. The tally above
