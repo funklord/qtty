@@ -49576,6 +49576,32 @@ gate here, **branch coverage on this file will not reach 100 per cent for
 that reason rather than for want of fixtures**, and the comment on the new
 check says so after claiming the opposite first.
 
+**THE METHOD IS NOW EXHAUSTED ON THE THIN FILES, and the negative is
+worth as much as the find.** The five thinnest-defended implementation
+files were swept: `color.cpp` gave a real gap (8.594), this file gave
+undefendable arcs, and `overlay.cpp`, `cell_item_delegate.cpp`,
+`drag.cpp` and `theme.cpp` are each **100 per cent of lines** with 69 to
+80 per cent of arcs taken. **None of their untaken arcs is a gap**, and
+the three reasons are worth naming because two of them look like finds:
+
+- **`(throw)` arms.** 31 of the delegate's 40 untaken arcs. Section 0e
+  says to drop them and the ratio is why.
+- **Null-widget and null-parent fallbacks** -- `widget ? widget->style()
+  : QApplication::style()` and its kind. Reachable only by a caller Qt's
+  own views never produce.
+- **INLINED ARCS ON A LINE THAT CARRIES A CALL**, which is the one that
+  cost time. The delegate's `beside ? leading_edge(...) :
+  leading_edge(...)` showed an untaken arc on each line and read as the
+  decoration-above feature going unexercised -- a feature the code
+  documents at length. It is tested, through `QListView::IconMode`, and
+  the suite says so in as many words: `decoration_beside()` has four
+  consumers and that check covers all four. The untaken arcs are inside
+  the inlined `leading_edge` calls, not in the ternary. **This is the
+  same trap that earlier declared four `PE_IndicatorArrow` cases
+  unreached when the suite asserted every one**, and what caught it the
+  second time was asking whether the FEATURE was tested before writing a
+  check for it.
+
 **The transferable part is about the probe, not the parser.** A probe
 compiled differently from the thing it models answers a different
 question, and it answers it confidently. The three builds disagreed, the
