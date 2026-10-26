@@ -8688,4 +8688,16 @@ into = " 0x0041, 0x0484,"
 count = 1
 check = "the generated diacritic table is 297 distinct combining class 230 non-spacing marks, asked of Unicode rather than of the table"
 
+[[sabotage]]
+# The background luminance derived from a foreground-only reply is inverted,
+# so a terminal that answered OSC 10 and withheld OSC 11 gets dark ink on a
+# dark ground. Coverage found the branch unreached and this found it
+# undefended: it reddened nothing of 2449 before the check it now names.
+# 8.594.
+name = "the derived background luminance is inverted"
+file = "src/core/color.cpp"
+find = "\t\treturn rgb_luminance(s_ground_fg.rgb()) < 128 ? light_ink : dark_ink;"
+into = "\t\treturn rgb_luminance(s_ground_fg.rgb()) < 128 ? dark_ink : light_ink;"
+count = 1
+check = "and dark ink with no ground stated implies a light ground, the same inference read the other way"
 

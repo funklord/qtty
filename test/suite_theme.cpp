@@ -565,6 +565,24 @@ int suite_theme() {
 			      "and a light ground with no foreground stated implies dark"
 			      " ink, not the light ink the old constant assumed");
 
+			// AND THE OTHER HALF NOBODY ANSWERS, which is this one read backwards:
+			// OSC 10 given and OSC 11 withheld. The same inference applies --
+			// the ground is at the far end from the ink -- and nothing asserted
+			// it. Found by coverage on color.cpp, the thinnest-defended
+			// implementation file in the tree at one sabotage entry per 136
+			// lines: 88 of 89 lines reached, and the one that was not is this
+			// branch. Inverting it reddened NOTHING of 2449, which is what
+			// makes this a gap rather than a second opinion. 8.594.
+			//
+			// THE RULE RATHER THAN THE CONSTANTS: that the ground lands past
+			// the midpoint and the ink below it, not that they are 210 and 20.
+			// The check above asserts only the inequality, which holds in this
+			// case too and so cannot tell the two branches apart.
+			Qtty::set_terminal_ground(QColor(20, 20, 20), QColor());
+			CHECK(dflt.luminance(true) < 128 && dflt.luminance(false) >= 128,
+			      "and dark ink with no ground stated implies a light ground,"
+			      " the same inference read the other way");
+
 			Qtty::set_terminal_ground(QColor(), QColor());   // global: put it back
 			CHECK(dflt.luminance(true) == unsaid_fg
 			      && dflt.luminance(false) == unsaid_bg,

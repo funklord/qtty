@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2449 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2450 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49474,3 +49474,63 @@ force it was being given from the shell -- so `none` and `halfblocks`
 first image was red over blue, which cannot distinguish "the colours were
 dropped" from "the glyph carries nothing"; the negative-image pair can,
 and is what makes the finding a measurement rather than an impression.
+
+### 8.594 The other half nobody answers (2026-10-26)
+
+**Found by coverage, targeted by measurement rather than instinct.** The
+thinnest-defended implementation file in this tree is `src/core/color.cpp`:
+one sabotage entry per 136 lines of code, where the median is about nine
+per hundred. (`tray.cpp` has none and 8.591 says why.) Coverage on it:
+**88 of 89 lines, and the one not reached is a branch.**
+
+    if (have_fg)
+        return rgb_luminance(s_ground_fg.rgb()) < 128 ? light_ink : dark_ink;
+
+That is the **background** luminance when the terminal answered OSC 10 and
+withheld OSC 11 -- the exact mirror of the case 8.381 decided and the suite
+already checks, where a light ground with no foreground stated implies dark
+ink. This tree's own pty fixture answers background-only, which is why that
+side is covered and this one was not.
+
+**UNREACHED IS NOT THE SAME AS UNDEFENDED, so it was asked.** Inverting the
+branch -- `light_ink : dark_ink` swapped -- **reddened nothing of 2449**.
+The check that looked like it ought to catch it,
+*"a foreground reply alone republishes the ground"*, exercises exactly this
+reply and does not reach this branch: it asks what the FOREGROUND luminance
+becomes, and the gap is what the BACKGROUND becomes from it.
+
+**The check states the rule rather than the constants** -- the ground lands
+past the midpoint and the ink below it, not that they are 210 and 20 -- and
+deliberately not the inequality the mirror check uses, because
+`luminance(true) < luminance(false)` is true in both cases and so cannot
+tell the two branches apart.
+
+**AND I SWAPPED TWO ENTRIES' CHECK NAMES WRITING THIS, which `--validate`
+passed green through.** Re-pointing the entry with a regular expression
+replaced the FIRST matching `check =` line in an 8700-line spec, and that
+line belonged to 8.554's entry -- *the ground republish ignores the
+foreground* -- which legitimately named the check mine had borrowed. So
+8.554's entry pointed at this record's check and this record's pointed at
+8.554's.
+
+**`--validate` cannot see that, and the reason is worth stating**: it
+verifies every named check still exists in `test/`, which both did. A name
+attached to the WRONG entry is spelled correctly, exists, and is wrong --
+a pass condition that admits the failure. What caught it was running the
+entry, whose output says *the named check PASSED against broken code* and
+then, helpfully, *(it did report: ...)* naming the check that actually
+went red. **Read the run, not the validation.**
+
+Both are re-pointed by walking from each entry's own `name =` to its
+`check =` rather than by matching a string, and both now redden the check
+they name. The lesson is this session's own, written down hours earlier
+about `sed` and a line number: **a pattern-computed edit changes whatever
+matches first, not what was meant.**
+
+**AND THE CENSUS ARTIFACT IS STALE AFTER A RUN THAT REDDENS NOTHING**,
+which nearly turned this finding upside down. `build/sabotage-reddened.txt`
+is rewritten only when something goes red, so reading it after a failed
+sabotage returns the PREVIOUS run's list -- in this case eight diacritic
+checks from 8.592, which look exactly like an answer. The run's own output
+says `FAILED` and names the fault; the file does not. **Read the tool's
+verdict, not the file it left behind.**
