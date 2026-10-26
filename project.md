@@ -49429,3 +49429,48 @@ move its neighbours into the seven.
 **The surviving entry's anchor also had to be corrected** -- written as a
 line start where the value sits mid-line -- which `--validate` refused
 before any of it ran.
+
+### 8.593 An image on a colourless terminal is one grey rectangle (2026-10-26)
+
+**Measured 2026-10-26, and the control is a photographic negative.** A
+4x2-cell placement of a black-over-white image and the same placement of a
+white-over-black image emit **byte-identical** output on a terminal
+reporting no colour: 72 bytes, eight `U+2580` upper half blocks, not one
+SGR colour sequence between them.
+
+The half-block mosaic puts every cell's information in its **foreground and
+background colours** and always writes the same glyph. At `Mono` depth the
+colours are dropped, so what reaches the terminal is a uniform field of
+`▀` -- the same bytes for any image whatsoever.
+
+**WHO IS IN THAT CONDITION, because the condition sounds narrower than it
+is.** `TERM` unset or `dumb` answers `Mono`, measured with
+`qtty-negotiate`: so a program in a container, under a logging pipe, or on
+a terminal that answers queries without claiming colour. Not ordinary use
+-- and for anyone in it, every image in the program is the same grey
+rectangle.
+
+**AND THE OBVIOUS FIX IS INERT, which is the part worth writing down.**
+`detect_graphics_mode()` ends `return Capabilities::Halfblocks; // every
+colour terminal` and returns it for colourless terminals too, so the
+comment names a condition the code does not test -- the shape 8.577 and
+8.578 were. Correcting the tier changes nothing: forced to `none` and
+forced to `halfblocks`, the wire is identical, 72 bytes each, because a
+placement falls back to the same mosaic under `NoGraphics`. **The tier is
+not what decides this**, and a reader who fixes the comment's condition
+would have fixed nothing while believing otherwise.
+
+**The remedy is a visual convention and therefore the holder's.** What
+carries an image with no colour is the glyph -- a shade ramp, space through
+`░▒▓█`, encoding luminance where colour cannot -- and which marks a
+picture may use is the same question section 0b already holds for a
+message box's severity icon, an HTML bullet and a drop indicator. It is
+one answer for all of them rather than four.
+
+**Two instrument errors on the way here, both mine.** The probe called
+`qunsetenv("QTTY_GRAPHICS")` before constructing the backend, erasing the
+force it was being given from the shell -- so `none` and `halfblocks`
+"agreed" for a reason that had nothing to do with the library. And the
+first image was red over blue, which cannot distinguish "the colours were
+dropped" from "the glyph carries nothing"; the negative-image pair can,
+and is what makes the finding a measurement rather than an impression.
