@@ -48448,3 +48448,18 @@ tells them apart.**
 **The count is asserted with the emptiness**, so a sweep that stopped
 asking -- an enum that shrank, a loop that broke early -- cannot report
 clean by asking nothing.
+
+**And a floor on what ANSWERED, because the same trap had a second
+door.** "Nothing was negative" is equally true of a style returning an
+empty rect for all fifty-nine. Measured: **27 answer non-empty under Qt 6
+and 28 under Qt 5**, so the sweep asks real questions of nearly half the
+surface, and the assertion carries a floor of twenty -- which neither
+version is near and neither pins.
+
+**THE ENUM ITSELF DIFFERS BY VERSION, which is the design choice paying
+off.** Qt 6.8 declares **59** sub-elements and Qt 5.15 declares **61**.
+Keying off `QMetaEnum` made both arms sweep their own surface; a
+written-out list would have been wrong on one of them, and silently --
+too short a list reports clean over the elements it omits. The count is
+therefore asserted as a floor rather than an equality, for the same
+reason.

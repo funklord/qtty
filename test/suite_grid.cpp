@@ -1293,7 +1293,7 @@ int suite_grid() {
 			scroll_bar.addTab(QStringLiteral("one"));
 			scroll_bar.resize(cwq * 20, chq);
 			QStringList bad;
-			int asked = 0;
+			int asked = 0, answered = 0;
 			for (int i = 0; i < se_enum.keyCount(); ++i) {
 				const QString name =
 				    QString::fromLatin1(se_enum.key(i));
@@ -1367,19 +1367,33 @@ int suite_grid() {
 				if (r.width() < 0 || r.height() < 0)
 					bad << name + QStringLiteral("(%1x%2)")
 					              .arg(r.width()).arg(r.height());
+				if (!r.isEmpty()) ++answered;
 			}
 			bad.sort();
-			printf("info: swept %d sub-element(s) at 3 cells, %d negative%s%s\n",
-			       asked, int(bad.size()), bad.isEmpty() ? "" : ": ",
+			printf("info: swept %d sub-element(s) at 3 cells, %d answered"
+			       " non-empty, %d negative%s%s\n", asked, answered,
+			       int(bad.size()), bad.isEmpty() ? "" : ": ",
 			       qPrintable(bad.join(QStringLiteral(", "))));
 			// The COUNT is asserted with the emptiness, so a sweep that
 			// stopped asking -- an enum that shrank, a loop that broke
 			// early -- cannot report clean by asking nothing.
+			// A FLOOR ON WHAT ANSWERED, because "nothing was negative" is
+			// also true of a style that returns an empty rect for all
+			// fifty-nine. Measured: 27 answer non-empty under Qt 6 and 28
+			// under Qt 5, so twenty is a floor neither version is near and
+			// neither pins.
+			//
+			// AND THE ENUM ITSELF DIFFERS BY VERSION -- 59 keys under Qt
+			// 6.8, 61 under Qt 5.15 -- which is why this is keyed off
+			// QMetaEnum. A written-out list would have been wrong on one
+			// arm, and the count asserted below is a floor rather than an
+			// equality for the same reason.
 			CHECK(asked == se_enum.keyCount() && asked >= 59
-			      && bad.isEmpty(),
+			      && answered >= 20 && bad.isEmpty(),
 			      "no sub-element rect has a negative dimension at a width"
 			      " narrower than its own indent, swept over every"
-			      " enumerator Qt declares");
+			      " enumerator Qt declares, with most of them answering"
+			      " real geometry rather than an empty rect");
 		}
 
 		// AND THE SUB-ELEMENT THAT SWEEP DOES NOT REACH. The tally above
