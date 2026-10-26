@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2450 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2451 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49534,3 +49534,51 @@ sabotage returns the PREVIOUS run's list -- in this case eight diacritic
 checks from 8.592, which look exactly like an answer. The run's own output
 says `FAILED` and names the fault; the file does not. **Read the tool's
 verdict, not the file it left behind.**
+
+### 8.595 Branch coverage that cannot be closed, and why (2026-10-26)
+
+**`term_caps.cpp` is the next thinnest-defended file after `color.cpp` --
+336 lines, 9 sabotage entries -- and coverage on it reads 100 per cent of
+lines.** The project's own `make coverage` says 222 of 222. `gcov -b` on
+the same data says something else: **"taken at least once: 74.67% of
+379"**, which is 65 never-taken arcs after dropping the `(throw)` ones.
+That is the gap section 0e warns about, in one file, with both numbers
+from one run.
+
+**Every arc at the top of that list is a bounds clause**: `j + 5 >=
+b.size()`, `j >= b.size() || b[j] != ';'` and their kind, in the parser
+that reads what the terminal sends back. The fixtures feed well-formed
+replies, so the bail-out clauses are never asked.
+
+**The parser is right, measured over every truncation.** A sweep feeding
+every strict prefix of every reply this tree knows how to ask for -- 150
+prefixes over 10 replies -- found **none that taught the parser something
+the whole reply does not**, with no sanitizer report from an
+ASan/UBSan build. That sweep is now a check, because over-learning from a
+truncated reply is a real property worth holding.
+
+**BUT THE ARCS CANNOT BE DEFENDED, and that took three measurements with
+the middle one wrong.** Dropping `j >= b.size()` from a guard:
+
+    ordinary suite        passes
+    Q_ASSERT probe        aborts -- and is not representative
+    ASan build, as shipped  passes
+
+The probe was built WITHOUT `QT_NO_DEBUG`, which every build here defines,
+so it hit Qt's own assertion and I took that for the shipped behaviour. The
+sanitizer arm says otherwise: **a QByteArray allocates one byte past its
+size for a NUL terminator, so reading at `size()` is IN BOUNDS for ASan**
+and returns `\0` -- which fails every character comparison those guards
+protect, producing exactly the outcome the guard produces.
+
+So the clauses are belt and braces. Their removal is unobservable by any
+gate here, **branch coverage on this file will not reach 100 per cent for
+that reason rather than for want of fixtures**, and the comment on the new
+check says so after claiming the opposite first.
+
+**The transferable part is about the probe, not the parser.** A probe
+compiled differently from the thing it models answers a different
+question, and it answers it confidently. The three builds disagreed, the
+shipped configuration is the one that counts, and the only reason the
+false lead was caught is that the claim was written as a prediction and
+then tested.

@@ -2241,6 +2241,71 @@ int suite_backend() {
 		      "and a reply whose channel separators are not slashes sets"
 		      " nothing, which is the one truncation the digits guard does"
 		      " not already refuse");
+		// EVERY PREFIX OF EVERY REPLY, which is where this parser's untaken
+		// branches are. Coverage on term_caps.cpp reads 100 per cent of lines
+		// and "taken at least once: 74.67% of 379" branches -- 65 arcs after
+		// dropping the (throw) ones, and the top of that list is every
+		// short-circuit clause of every bounds guard: `j + 5 >= b.size()`,
+		// `j >= b.size() || b[j] != ';'` and their kind. The fixtures above
+		// feed well-formed replies, so the bail-out clauses are never asked.
+		//
+		// A strict prefix may legitimately teach LESS than the whole reply. It
+		// must never teach MORE, and that is the assertion -- rather than a
+		// list of expected values per prefix, which would be this file
+		// restating the parser.
+		//
+		// WHAT THIS DOES AND DOES NOT DEFEND, measured rather than assumed,
+		// because the first version of this comment claimed the sanitizer arm
+		// judged it and that is false.
+		//
+		// It catches OVER-LEARNING: a parser that accepted a partial OSC 4
+		// index, or half a cell size, or a kitty status it had not finished
+		// reading. That is a real property and it is what the assertion says.
+		//
+		// It does NOT defend the bounds clauses whose arcs sent me here, and
+		// nothing can. Dropping `j >= b.size()` from a guard was tried three
+		// ways: the ordinary suite passed, and so did the ASan build. A
+		// QByteArray allocates one byte past its size for a NUL terminator,
+		// so reading at size() is IN BOUNDS for the sanitizer and returns
+		// `\0`, which fails every character comparison those guards protect --
+		// the same outcome the guard produces. They are belt and braces, their
+		// removal is unobservable, and term_caps.cpp's branch coverage will
+		// not reach 100 per cent for that reason rather than for want of
+		// fixtures. 8.595.
+		{
+			static const char *const replies[] = {
+				"\033_Gi=31;OK\033\\",
+				"\033]11;rgb:1c1c/1c1c/1c1c\033\\",
+				"\033]10;rgb:d0d0/d0d0/d0d0\033\\",
+				"\033]4;3;rgb:aaaa/bbbb/cccc\033\\",
+				"\033[?62;4c", "\033[4;304;760t", "\033[6;19;10t",
+				"\033P1+r524742=31\033\\", "\033[?2026;1$y", "\033[>1u",
+			};
+			int prefixes = 0, taught_more = 0;
+			for (const char *r : replies) {
+				const QByteArray full(r);
+				const TermCaps whole = caps_of(full);
+				for (int n = 0; n < full.size(); ++n) {
+					++prefixes;
+					const TermCaps part = caps_of(full.left(n));
+					if ((part.kitty && !whole.kitty)
+					    || (part.sixel && !whole.sixel)
+					    || (part.bg_known && !whole.bg_known)
+					    || (part.fg_known && !whole.fg_known)
+					    || (!part.palette16.isEmpty() && whole.palette16.isEmpty())
+					    || (part.cell_px.isValid() && !whole.cell_px.isValid()))
+						++taught_more;
+				}
+			}
+			printf("info: %d reply prefix(es) over %d replies, %d taught more"
+			       " than the whole\n", prefixes,
+			       int(sizeof(replies) / sizeof(replies[0])), taught_more);
+			CHECK(prefixes >= 150 && taught_more == 0,
+			      "no truncated capability reply teaches the parser something the"
+			      " whole reply does not, swept over every prefix of every reply"
+			      " this tree knows how to ask for");
+		}
+
 		const TermCaps both =
 		    caps_of("\033]11;rgb:1c1c/1c1c/1c1c\033\\\033]10;rgb:d0d0/d0d0/d0d0\033\\");
 		CHECK(both.bg_known && both.fg_known && both.bg[0] == 0x1c
