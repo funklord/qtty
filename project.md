@@ -1,6 +1,9 @@
 # qtty
 
-Read `~/.claude/CLAUDE.md` for prime directives.
+Read `~/.claude/CLAUDE.md` for prime directives, where a session is
+working under them. **This project does not depend on that file**: its own
+conventions are in `code-style.md` at this root, its design is here, and
+nothing in the build or the gates reads anything outside the tree.
 
 This document is authoritative. Where it and the code disagree, the
 document wins -- but the disagreement is raised rather than silently
@@ -2740,11 +2743,19 @@ In the order I would take them:
    permits. The two are "`evidence.md` names that shape" and "`evidence.md`'s
    vacuous pass in its purest form", which hand a reader without the file
    a label and nothing to act on.
-   **So roughly one in six, or about twenty-five of the 148, would need
-   rewording -- not 148.** On a twelve-sample that figure carries real
-   uncertainty, and it is an estimate of SITES rather than of effort: each
-   is one clause. Entries written after the rule landed state their
-   principles inline.
+   **~~So roughly one in six, or about twenty-five of the 148~~ -- the
+   twelve-sample over-counted by four times, and the job is DONE.**
+   Enumerated properly 2026-10-26 rather than sampled: 218 sentences in
+   this document cite a guidelines file, of which only 22 are short enough
+   to be label-shaped at all, and most of those state their rule in the
+   same breath. **Four were genuine labels** -- the pointer at the head of
+   this file, one *"per the rule in `working-practice.md`"*, and
+   `evidence.md`'s pipeline-status and wrapped-phrase traps named without
+   being said. Each states its rule inline now, and the head of the file
+   says outright that nothing here depends on that tree. **A sample
+   estimated the SHAPE of the population correctly and its SIZE by a
+   factor of four**, which is the cost of pricing a job from twelve of
+   218 when enumerating all 218 took one command.
 
 5. **The GUI twin's `z`**, unchanged and still unassertable: the
    offscreen platform does not support `raise()`, so the stacking cannot
@@ -12322,7 +12333,12 @@ Still not done from this list:
   rather than substituted, and "for tiny images" is conditional on the
   terminal where the document states it unconditionally.
 
-  Not resolved in either direction, per the rule in `working-practice.md`.
+  Not resolved in either direction: where this document and the code
+  disagree the discrepancy is FLAGGED rather than settled by editing
+  whichever is to hand, because which one is wrong is a real question and
+  the person who knows is usually not the one who noticed. (That rule is
+  `working-practice.md`'s; it is stated here because a reader of this
+  document should not need that one.)
   design.md §5.7 states the no-threshold behaviour the code now has, and
   §8.6 states a substitution for the same case, so the document disagrees
   with ITSELF and the holder is the one who settles which was meant. Worth
@@ -35103,9 +35119,11 @@ caught the same way: by somebody else running it.
 
 **An instrument note, mine.** Proving the new check could fail, I read
 `rc=0` from `./tool/tools-check 2>&1 | head -6` and nearly recorded that
-the check did not fire. It had fired; `$?` was `head`'s. That is
-`evidence.md`'s pipeline-status trap, in the act of verifying a gate
-against it.
+the check did not fire. It had fired; `$?` was `head`'s. That is the pipeline-status trap, in
+the act of verifying a gate against it: `$?` after a pipeline is the LAST
+process's status, so a check's own exit code is thrown away by the `| head`
+that was added to read its output. Named in `evidence.md`, stated here
+because the lesson is useless as a label.
 
 ### 8.259 Two hand-copied facts, and a measurement that held (2026-09-19)
 
@@ -35186,9 +35204,11 @@ both inside five minutes:
 
 1. The first version matched the literal sentence and **passed over the
    very claim it was written for**, because this document is wrapped at 75
-   columns and the phrase falls across a line break. That is
-   `evidence.md`'s wrapped-phrase trap, walked into by somebody who had
-   read it.
+   columns and the phrase falls across a line break. That is the
+   wrapped-phrase trap -- a search for a phrase misses it wherever the text
+   wraps, and this document is wrapped at 75 columns, so any grep for prose
+   longer than a few words is asking about line breaks rather than about
+   content. From `evidence.md`, walked into by somebody who had read it.
 2. With the text normalised it went red correctly -- and I then "fixed" the
    prose to read *"only FOURTEEN comes after them"*, which satisfies the
    gate and denies that thirteen comes after twelve. **I deformed the
