@@ -815,12 +815,18 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 	if (src.isNull()) return;
 	if (cell_rect.width() <= 0 || cell_rect.height() <= 0) return;
 
-	// THE SAMPLING, REMEMBERED. Every cell area-samples the image -- about
-	// 190 pixel reads across a 10x19 cell's two halves, some 2.3 million for
-	// a 200x60 terminal -- and 8.598 measured a frame carrying a full-screen
-	// overlay at over half of section 11's 16 ms budget, all of it
-	// re-deriving the same picture from an image and a geometry that had not
-	// moved. 8.599.
+	// THE SAMPLING, REMEMBERED. Every cell area-samples the image, and what
+	// that costs is set by the IMAGE's resolution rather than by the cell
+	// count: mean() below strides to at most 16 samples an axis within each
+	// cell's slice of the image, so a 400x120 picture stretched over a
+	// 200x60 terminal gives each cell a 2x2 slice and about four reads,
+	// while one at the terminal's own 2000x1140 gives it 10x19 and about
+	// 190 -- some 2.3 million for the frame. Measured on a quiet machine,
+	// this function alone: 2.44 ms for the first and 12.33 ms for the
+	// second, against 0.19 and 0.23 ms replayed. 8.602 has the method; the
+	// 4.15 ms in 8.598 and 8.599 is a render_now() delta on the low-
+	// resolution fixture and under load, which is why it is smaller than
+	// the figure its own prose describes. 8.599.
 	//
 	// TWO CALLERS, and both hand over a stable identity, which is what makes
 	// a cache keyed on one possible. The overlay fallback tier in

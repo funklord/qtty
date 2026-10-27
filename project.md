@@ -49844,7 +49844,12 @@ either guard individually, and the record says so rather than implying a
 proof the spec cannot give.
 
 **WHAT WAS LEFT WAS THE SAMPLING ITSELF, about 4.15 ms a frame, and 8.599
-took it.** `compose_halfblocks()` area-samples the image for every cell --
+took it.** (That figure is this record's own and 8.602 corrects it: it is a
+frame delta on a low-resolution fixture under load, where the function's
+own cost on an idle machine is 2.44 ms for this fixture's image and 12.33
+for one at the terminal's native resolution. The sentence below describing
+2.3 million pixel reads is the second case and the measurement was the
+first.) `compose_halfblocks()` area-samples the image for every cell --
 roughly 190 pixel reads across a 10x19 cell's two halves, some 2.3 million
 reads for a 200x60 terminal -- every frame, from an image and a geometry
 that typically have not moved. It was recorded here as the largest single
@@ -49945,6 +49950,18 @@ average of 158, which the minimum over twelve passes absorbs. **So the
 overlay tier costs about a fifth of what it did**, and the residue is not
 all sampling: the delta still carries the replay, a larger frame diff and a
 larger `present()`.
+
+**EVERY NUMBER IN THAT TABLE IS WEAKER THAN IT LOOKS, and 8.602 replaces
+it.** All four were taken under a load average around 158, and a quiet
+machine turns the no-overlay arm from 4.4 ms into 2.35 -- so the baseline
+this record offered as the yardstick was itself inflated by about a
+factor of two, on both sides of the comparison. The direction and the
+order of magnitude survive that; the RATIO was never measured on one
+machine state. And the figures are frame deltas, which carry the frame
+diff and `present()` as well as the sampling, so they understate what the
+cache does to the function and overstate what it does to the frame. 8.602
+measures the function itself, in one binary, cached against a fresh image
+identity, on an idle machine.
 
 **And the translucent case is now cached rather than refused**, which is
 the whole return on reading the branches. The first version measured it at
@@ -50209,3 +50226,63 @@ glyph substitution reddens **only** the one-column check. That asymmetry
 is the proof the second check is not redundant: the width fault is visible
 to both, and the glyph fault is visible to one -- so a tree carrying only
 the pair invariant would have accepted the half-fix.
+
+### 8.602 The overlay sampling, measured properly (2026-10-27)
+
+8.599 cached `compose_halfblocks()` and priced it with a `render_now()`
+delta under a load average of 158. The machine went idle an hour later,
+and re-running the probe showed the frame baseline halving -- 2.35 ms
+where that record had 4.4. **A baseline that moves by a factor of two is
+not a yardstick**, so the figures were taken again, and taking them
+properly turned up a second fault that had nothing to do with load.
+
+**MEASURE THE FUNCTION, NOT A FRAME CONTAINING IT.** A `render_now()`
+delta carries the frame diff and `present()` as well as the sampling, so
+it understates what a cache does to the function and overstates what it
+does to the frame. The cache keys on the image's identity, which gives a
+way to measure both arms in **one binary at one moment**: call the
+function twice per pass, once with the same image and once with
+`art.copy()`, whose fresh `cacheKey()` is a guaranteed miss. No rebuild,
+no cross-run comparison, nothing for load to do. The uncached arm also
+stores its entry, which makes it slightly pessimistic and is left in
+rather than corrected for.
+
+**THE SECOND FAULT: THE PROSE AND THE NUMBER DESCRIBED DIFFERENT
+FIXTURES.** 8.598, 8.599 and the comment in the function all say "about
+190 pixel reads across a 10x19 cell's two halves, some 2.3 million for a
+200x60 terminal". That is true of an image at the terminal's own pixel
+resolution. The fixture's image is **400x120**, which over 200x60 cells
+gives each cell a 2x2-pixel slice and about four reads -- because `mean()`
+strides to at most 16 samples an axis *within each cell's slice*, so the
+cost follows the IMAGE's resolution and not the cell count. The figure
+quoted was never the case the sentence beside it described.
+
+Measured, idle machine, interleaved, minimum of twelve passes:
+
+| image over 200x60 cells | uncached | cached | ratio |
+|---|---|---|---|
+| 400x120, opaque | 2.442 ms | 0.193 ms | 12.7x |
+| 400x120, alpha 120 | 2.454 ms | 0.218 ms | 11.3x |
+| 2000x1140, opaque | 12.331 ms | 0.229 ms | 53.9x |
+| 2000x1140, alpha 120 | 12.842 ms | 0.242 ms | 53.0x |
+
+**So the cache is worth more than 8.599 claimed, not less.** A full-screen
+overlay at the terminal's own resolution -- which is what an `Overlay`
+showing a real picture is -- costs 12.3 ms of section 11's 16 ms budget
+and now costs 0.23. The low-resolution fixture both earlier records
+happened to use is the cheap case, and it is the one they measured.
+
+**And the alpha no longer matters**, which is 8.599's design confirmed
+from a direction that record could not reach: 120 is the translucent tier,
+which the first version of the cache refused outright, and it is now
+within noise of the opaque case in both arms. The replayed cost is
+0.19-0.24 ms whatever the image and whatever the alpha, because a replay
+does not touch the image at all.
+
+**The lesson is the one 8.600 states from the other end.** A price has two
+halves and both age: there the denominator was a stale binary, here it was
+a loaded machine and a fixture that did not match its own description.
+**Measure the thing named in the claim** -- the function, at the
+resolution the prose says -- and prefer one binary over two runs whenever
+the code offers a way to switch the behaviour at runtime, as a cache keyed
+on identity always does.
