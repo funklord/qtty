@@ -30,6 +30,7 @@
 #   make sabotage-check -- every sabotage anchor still matches its source
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
+#   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
 #   make test-tray    -- publish a real tray icon on a private D-Bus session
 #   make test-pty     -- the suite on a real pseudo-terminal
 #   make coverage F=x -- line coverage for src/**/x.cpp
@@ -701,6 +702,48 @@ fuzz:
 	@echo "fuzz: $(FUZZ_SECONDS)s over $$(ls tool/fuzz/corpus | wc -l) seed(s)"
 	@ASAN_OPTIONS=detect_leaks=1 QT_QPA_PLATFORM=offscreen $(FUZZ_BIN) \
 		$(FUZZ_BUILD_DIR)/corpus -max_total_time=$(FUZZ_SECONDS) \
+		-rss_limit_mb=2048 -max_len=4096 -print_final_stats=1 \
+		-artifact_prefix=$(FUZZ_BUILD_DIR)/artifacts/
+
+# THE OTHER TRUST BOUNDARY, and the larger one: everything a terminal sends
+# while the program runs rather than the probe replies it sends at startup.
+# section 8.606.
+#
+# TWO DIFFERENCES FROM `fuzz` ABOVE, both forced by the target rather than
+# chosen. The decoder has no pure slice -- parse_csi() is a const member
+# reading pending_ -- so the harness drives a real AnsiBackend over a pipe
+# on fd 0, which is the suite's own Feeder arrangement and costs nothing at
+# construction because the capability probe is gated on `raw_ok_ &&
+# tty_out_` and a pipe is neither. And ansi_backend.cpp is compiled INTO
+# the harness rather than linked from the archive, because libFuzzer steers
+# by coverage and an archive built by g++ carries none: linked that way the
+# same harness reported 23 instrumented edges instead of 10072, and was
+# running an undirected random walk while looking identical from outside.
+#
+# detect_leaks=0, which is a real limitation and not a convenience. Qt's
+# own singletons are not torn down between libFuzzer iterations, so the
+# leak checker reports them rather than the decoder's; ASan's other checks
+# and all of UBSan are unaffected. A leak in this path would have to be
+# found another way.
+FUZZ_INPUT_BIN = $(FUZZ_BUILD_DIR)/input_fuzz
+fuzz-input:
+	@command -v $(FUZZ_CXX) >/dev/null 2>&1 || \
+		{ echo "fuzz-input: $(FUZZ_CXX) is not installed; this target needs clang" >&2; exit 1; }
+	@mkdir -p $(FUZZ_BUILD_DIR)/corpus-input $(FUZZ_BUILD_DIR)/artifacts
+	@cp tool/fuzz/corpus-input/* $(FUZZ_BUILD_DIR)/corpus-input/
+	@$(FUZZ_CXX) -g -O1 -fsanitize=fuzzer,address,undefined \
+		-fno-sanitize-recover=undefined \
+		-fno-omit-frame-pointer -std=gnu++17 -fPIC \
+		-I src/backend/ansi -I src -I include \
+		-DQT_NO_DEBUG -DQTTY_VERSION_STRING='"$(VERSION)"' \
+		$(shell pkg-config --cflags Qt6Widgets Qt6Gui Qt6Core Qt6DBus) \
+		-o $(FUZZ_INPUT_BIN) tool/fuzz/input_fuzz.cpp \
+		src/backend/ansi/ansi_backend.cpp src/backend/ansi/term_caps.cpp \
+		-L$(CURDIR)/$(BUILD_DIR)/lib -lqtty \
+		$(shell pkg-config --libs Qt6Widgets Qt6Gui Qt6Core Qt6DBus) -lutil
+	@echo "fuzz-input: $(FUZZ_SECONDS)s over $$(ls tool/fuzz/corpus-input | wc -l) seed(s)"
+	@ASAN_OPTIONS=detect_leaks=0 QT_QPA_PLATFORM=offscreen $(FUZZ_INPUT_BIN) \
+		$(FUZZ_BUILD_DIR)/corpus-input -max_total_time=$(FUZZ_SECONDS) \
 		-rss_limit_mb=2048 -max_len=4096 -print_final_stats=1 \
 		-artifact_prefix=$(FUZZ_BUILD_DIR)/artifacts/
 
@@ -1789,7 +1832,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         tools-check sabotage-check FORCE

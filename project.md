@@ -50560,3 +50560,149 @@ fail. The second is worse, because the first leaves no evidence while the
 second leaves evidence nobody will read. **Read the exit code of a tool
 you have just installed, against an input you know is bad** -- which is
 the positive control, applied to the harness rather than to the code.
+
+### 8.606 Fuzzing the boundary that carries keystrokes (2026-10-27)
+
+8.605 fuzzed `scan_caps()`, which reads the replies a terminal sends at
+startup. **The larger boundary is the one that reads everything it sends
+afterwards** -- every keystroke, mouse report, bracketed paste, focus
+change and resize claim -- and that is the decoder in `AnsiBackend`.
+
+**It is also the only surface in this library with a KNOWN integer fault
+behind it**, which is what made it the next lens rather than a guess.
+`ansi_backend.h` records `CSI < 0 ; 99999999999 ; 1 M` decoding to a mouse
+row of 1215752190 -- that number wrapped into 32 bits -- which
+`InputRouter::on_mouse()` then multiplied by a cell height. Signed
+overflow, undefined behaviour, fixed with `kCsiParamCap`. Fuzzing the same
+surface with UBSan watching the same arithmetic is the lens derived from
+the last bug, applied literally.
+
+**NO PURE SLICE, unlike scan_caps().** `parse_csi()` is a const member
+reading `pending_`, so the harness drives a real backend. That turned out
+cheap for a reason already in the constructor: the capability probe is
+gated on `raw_ok_ && tty_out_`, and fd 0 here is a **pipe**, which is
+neither -- so construction neither probes nor waits. It is the suite's own
+`Feeder` arrangement, reused.
+
+    exploratory build   843,811 runs, coverage  752 -> 1279 edges
+    `make fuzz-input` 1,268,614 runs, coverage  805 ->  901 edges
+    both: 0 crashes, 0 ASan or UBSan reports, 0 artifacts
+
+The committed target's figures are the second row and are the ones to
+compare against next time; the first was a build without
+`-fno-sanitize-recover`, which is why both its edge counts are higher --
+see below.
+
+**THE CONTROL IS THE HISTORICAL FAULT ITSELF, which is the strongest kind
+available.** In a scratch copy of `ansi_backend.cpp` -- never the tree --
+`kCsiParamCap`'s saturation was removed, leaving the code as it stood
+before that bound existed. UBSan names it exactly:
+
+    runtime error: signed integer overflow: 999999999 * 10 cannot be
+    represented in type 'int'
+
+on the three-byte-prefixed input the header records, and **the shipped
+decoder is clean on that same input**. So the harness does not merely run:
+it catches the one fault this surface is known to have had, and the code
+under test survives what broke its predecessor. The scratch copy and its
+artifacts were removed by name afterwards.
+
+**THE FUZZER WAS BLIND FOR ITS FIRST BUILD AND LOOKED IDENTICAL FROM
+OUTSIDE.** Linked against `libqtty.a` -- built by g++, carrying no
+coverage instrumentation -- the harness reported **23 instrumented edges**
+and 14,000 executions a second, with no crashes. Both numbers read as
+success. libFuzzer steers by coverage, so with none it was an undirected
+random walk over a surface it could not see. Compiling `ansi_backend.cpp`
+into the harness instead gave 10,072 edges and 752 at INITED. **A fuzzer
+that cannot see the code is a random byte generator with a progress
+counter**, and the only thing that distinguishes them is the edge count in
+the banner.
+
+**AND THE EDGE COUNT THEN DROPPED TO 7,438 WHEN THE TARGET WAS COMMITTED**,
+which is alarming until explained and so is explained here: the committed
+target adds `-fno-sanitize-recover=undefined` (8.607), and that removes
+UBSan's recovery continuation blocks, so there are fewer basic blocks to
+instrument. Checked rather than assumed -- the scratch harness rebuilt
+with only that flag added reports 7,438 exactly.
+
+**`detect_leaks=0`, which is a limitation rather than a convenience.** Qt's
+singletons are not torn down between libFuzzer iterations, so the leak
+checker reports Qt's allocations and not the decoder's. ASan's other
+checks and all of UBSan are unaffected; a leak in this path would have to
+be found another way, and is not covered by this target.
+
+Committed as `tool/fuzz/input_fuzz.cpp`, 24 seeds under
+`tool/fuzz/corpus-input/` named for what they are -- `sgr-mouse-drag`,
+`paste-with-esc`, `csi-subparams`, and `csi-huge-param` which is the
+historical input kept as a seed -- and `make fuzz-input`, out of the gate
+for 8.605's two reasons.
+
+### 8.608 clang-tidy, tried and declined, with the reasons (2026-10-27)
+
+8.603 brought clang in as a second front end and it paid out. clang-tidy
+is the obvious next instrument and had never been run here. It was run,
+across all fifteen library sources, with `bugprone-*`, `cert-*` and
+`clang-analyzer-*` enabled and `--header-filter='^$'` so only the main
+files report. **No compilation database was needed** -- flags go after
+`--`, which is why an earlier session's reason for skipping it was wrong.
+
+**45 diagnostics, and after reading every family, none is a defect in this
+code.** Written out so the next person does not re-derive it:
+
+| check | n | verdict |
+|---|---|---|
+| `bugprone-narrowing-conversions` | 20 | `qsizetype` to `int`, in a program counting cells |
+| `bugprone-branch-clone` | 15 | distinct conditions, shared body; metric tables |
+| `bugprone-incorrect-roundings` | 4 | `int(x + 0.5)`, where x cannot be negative |
+| `clang-diagnostic-error` | 2 | the instrument's own gap -- see below |
+| `bugprone-implicit-widening-...` | 2 | magnitudes that cannot occur |
+| `bugprone-integer-division` | 1 | deliberate integer round-up |
+| `bugprone-inc-dec-in-conditions` | 1 | correctly sequenced, guard deliberate |
+| `bugprone-return-const-ref-from-parameter` | 1 | QDBus's required signature |
+| `bugprone-switch-missing-default-case` | 1 | a switch over a Qt enum |
+
+**The four that needed real work to clear, since "false positive" is a
+claim and not a shrug:**
+
+- **`int(c.alpha() * opacity_ + 0.5)`** in `cell_paint.cpp` is the classic
+  rounding that is wrong for a negative operand. Whether it is reachable
+  is entirely `opacity_`'s sign, and `opacity_` comes from
+  `QPainter::setOpacity()`. Measured rather than read off the
+  documentation: Qt clamps to [0, 1] before a paint engine sees it --
+  `setOpacity(-5)` gives `opacity() == 0.000` -- so the product cannot be
+  negative and the rounding is correct.
+- **`if (g_owners > 0 && --g_owners == 0)`** sequences correctly: `&&`
+  orders the read before the decrement, and the guard is there on purpose
+  so the count cannot go negative. Traced at 0, 1 and 2 owners.
+- **`double((int(v) + step - 1) / step * step)`** is integer round-up, and
+  exact. It *is* wrong for negative `v` -- round-up of -15 to a multiple
+  of 10 gives 0 rather than -10 -- and unreachable, because the caller
+  rejects a non-positive width or height before this is called.
+- **`operator>>(const QDBusArgument &a, ArgbIcon &i)` returning `a`** is
+  the signature QDBus demarshalling requires. Not a dangling reference;
+  the API's own shape.
+
+**And the instrument has a blind spot worth more than the findings.** Two
+files -- `application.cpp` and `tray.cpp` -- end with `#include
+"<name>.moc"`, which clang-tidy cannot find without moc's output on the
+include path, so each reported `clang-diagnostic-error` and was analysed
+only up to that line. **A run that cannot compile a file reports nothing
+about it, in the same voice it uses for a clean one.** Passing `-I` at
+moc's output directory would close it, which is what would change the
+answer below.
+
+**Declined, and not wired into anything.** 45 diagnostics with no defect
+among them is a ratio that trains a reader to skip the output, which is
+how a real finding gets waved past later. What would change it: the moc
+include path fixed and the noisiest two families -- narrowing and
+branch-clone, 35 of the 45 -- suppressed, leaving a set small enough that
+a finding in it would be read. That is a deliberate configuration pass and
+not something to leave half done. The measurement is here so it starts
+from the numbers rather than from scratch.
+
+This is also the second instrument declined today: cppcheck 2.17.1 was
+tried first and reported zero findings four times, each of which was its
+preprocessor giving up on Qt's platform detection rather than a clean
+result -- unknown `Q_DECLARE_*` macros, then byte order, then the OS, then
+`SIZE_MAX`. **clang and clang-tidy both compile the real translation units
+and so cannot be silent vacuously; cppcheck can, and was.**
