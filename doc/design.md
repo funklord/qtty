@@ -30,7 +30,7 @@ The secondary goal is consolidation: four separate TUI implementations across fo
 products collapse into one library, ~~with the existing terminal code surviving as
 backend adapters rather than being thrown away~~ — **the goal stands; the adapter
 mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
-`AnsiBackend`.**
+`AnsiBackend`. The products are named, and the goal's progress measured, under G3.**
 
 ---
 
@@ -43,6 +43,20 @@ mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
   price of terminal support; Qtty must be inert when not active.
 - **G3.** The four existing terminal implementations are consolidated behind one
   backend interface, retiring three of them over time.
+
+  > **Measured 2026-10-27, and the four were never named here — which is why
+  > nobody who did not already know could check this goal.** Three are
+  > confirmed by the holder and by first-party use: **netcfgd** and
+  > **raidcfgd** each reach qtty from a production entry point
+  > (`netcfgd/gui/src/main.cpp` and `raidcfgd/src/main.cpp`), gated on the qtty submodule
+  > being checked out, with a `--tui` route that reports its absence rather
+  > than failing. **fuzzypickles** has a spike — `qtty-spike/`, "a second
+  > binary over the same sources" in `fuzzypickles/qtty-spike/` — and it still
+  > ships `fzptui`, its ncurses
+  > client in C, from `make deb`. The **fourth is unconfirmed**: `ossacli`
+  > names qtty in its notes but uses none of its API. So the goal is part
+  > met: two production consumers, one spike, one old implementation still
+  > shipping, one product unidentified. project.md 8.614 has the method.
 - **G4.** Deterministic, snapshot-testable rendering in CI with no tty attached.
 - **G5.** No dependency on Qt private headers or a patched Qt. (One documented exception:
   `WA_DontShowOnScreen`'s lifecycle behaviour is public API but undocumented behaviour —
@@ -1166,7 +1180,9 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
   upgrading first? Affects Phase 3 sequencing.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets cannot be linked
   (embedded, serial console)? If yes, that product goes to 13.2 permanently and the
-  answer changes Phase 4's scope.
+  answer changes Phase 4's scope. **Still open, but addressable since 2026-10-27**:
+  three of the four are named under G3, so the question can now be put to them
+  instead of being unanswerable for want of knowing who they are.
 - **OQ-5.** Accessibility: is a `QAccessible` bridge worth it, given the terminal already
   exposes text to screen readers when the cursor is placed correctly (§5.5)?
 

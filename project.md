@@ -2798,7 +2798,10 @@ Four public seams carry the whole design (design.md §1):
 
 The secondary purpose is consolidation: four products each carry an
 independently written TUI, and the terminal-level work in them is done
-four times over. What is missing in all four is the layer above it --
+four times over. **Three are named and their use measured in 8.614 --
+netcfgd, raidcfgd and fuzzypickles; the fourth is unconfirmed.** This
+paragraph restated design.md's premise without a source for five weeks,
+which 8.614 is also about. What is missing in all four is the layer above it --
 widget hierarchy, layout, focus, event propagation -- which is exactly
 what Qt already implements. design.md §3 records the alternative that was
 weighed and rejected as the primary path (adopting Tui Widgets or
@@ -51020,3 +51023,67 @@ the third needed an owner, and it still has one.
 survive" -- is marked the same way, because it states the retired premise
 rather than describing the interface, and it is the first sentence a
 reader meets after the amendment note.
+
+### 8.614 Who the four products are, measured (2026-10-27)
+
+design.md asserts four products with their own TUI implementations nine
+times -- G3, §1, the architecture diagram's `app1Backend`, §10's build
+strategy, Phases 1, 4 and 5, OQ-4, D8 -- and **never names one**. The
+placeholders are `app1` and `app2`. The holder named three when asked:
+netcfgd, raidcfgd and fuzzypickles.
+
+**MEASURED, and the first measurement was worthless.** Counting source
+files that mention `Qtty::` or include `qtty/qtty.h` gave 65 for netcfgd,
+36 for fuzzypickles and 34 for raidcfgd -- and nearly all of them are a
+**vendored copy of qtty itself**, reached through `fuzznet`, plus moc
+output. Counting a library's own source as its consumer's use of it
+inflates by about twentyfold. Excluding paths under `qtty/`, `.fmake/`,
+`moc/` and `build*/`:
+
+| project | first-party files | what they are |
+|---|---|---|
+| netcfgd | 2 | `netcfgd/gui/src/main.cpp` -- production, `Qtty::prepare_environment()`, compiled in when the qtty submodule is checked out |
+| raidcfgd | 2 | `raidcfgd/src/main.cpp` -- production, a `--tui` option that reports qtty's absence rather than failing |
+| fuzzypickles | 3 | `fuzzypickles/qtty-spike/` -- "a second binary over the same sources", a spike; and it still ships `fzptui`, its ncurses client in C, from `make deb` |
+| ossacli | 0 | names qtty in its notes, uses none of its API |
+
+One of those files is the same vendored `fuzznet` render test
+(`gui/test/qtty_render_test.cpp` within it) counted three times, so even the honest column overstates slightly.
+
+**SO THE GOAL IS PART MET**: two production consumers, one spike, one old
+implementation still shipping, one product unidentified. Not "four
+superseded", and not a fiction either.
+
+**AND THE ABSENCE OF NAMES COST A WRONG CONCLUSION, which is the reason
+this entry exists.** Reading nine unnamed references, a premise that
+arrived in the first commit, a `project.md` paragraph restating it without
+a source, and an OQ-4 that could never close, this session inferred that
+the four-products requirement might have been invented to justify a hard
+project -- and proposed retiring G3 as a goal nobody held. **The holder
+corrected it: the four were real, and G3 was being met while it was being
+proposed for retirement.**
+
+The evidence was sound and the inference was not, and the difference is
+worth naming. *Nine references and no name* is a real documentation
+defect: it makes a load-bearing premise uncheckable by anyone who does not
+already know the answer. What it is not is evidence of invention -- the
+author knew which four they were, so the document had no need to say, and
+that is the likelier reading of any unnamed premise in a document written
+by the person who holds the facts. **An unverifiable claim and a false one
+look identical from outside, and only one of them is a problem with the
+claim.**
+
+The remedy is the cheap half, done here: the names are in design.md under
+G3 now, with the measurement and its date, so the next reader checks
+rather than infers. OQ-4 is still open but no longer unanswerable -- three
+of the four can be asked.
+
+**What is left, and where it belongs.** `fuzzypickles` ships two TUIs --
+`fzptui` in C and a qtty spike -- and retiring the first is what G3 means
+by "retiring three of them over time". **Not signalled to that tree**, and
+deliberately: harmonization.md's rule is for a FAULT found in a sibling,
+and this is not one. Its own notes call `fzptui` "near-full-featured" and
+its `make deb` ships it on purpose, so telling fuzzypickles it still has a
+C client would be relaying its own words back to it. It is recorded here
+because G3 lives here, and the remaining scope of a goal belongs with the
+goal.
