@@ -29,6 +29,7 @@
 #   make tools-check  -- each tool's name in its .pro, fmake.toml, .gitignore
 #   make sabotage-check -- every sabotage anchor still matches its source
 #   make fuzz-check   -- the fuzz harnesses still compile (syntax only)
+#   make header-check -- every public header compiles on its own
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
@@ -1489,7 +1490,7 @@ record: tests-build
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              fuzz-check sabotage-check test test-tools test-install probe-style
+              fuzz-check header-check sabotage-check test test-tools test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:
@@ -1594,6 +1595,47 @@ tools-check:
 # THE FILES ARE NAMED, not globbed, and their absence is a failure rather than
 # a skip -- a glob over a renamed harness passes while checking nothing, which
 # is this project's vacuous-pass rule in the one shape a build file invites.
+# EVERY PUBLIC HEADER MUST COMPILE ON ITS OWN, because a consumer includes
+# them one at a time. `raidcfgd/src/main.cpp` includes <qtty/application.h>,
+# <qtty/grid.h> and <qtty/windows.h> directly rather than the umbrella, so a
+# header that quietly comes to depend on something another header included
+# first breaks that build and not this one. 8.615.
+#
+# NOTHING ELSE ASKS THIS. The gate compiles .cpp translation units, and each
+# of those gets its dependencies in whatever order its own includes
+# established -- a header is never seen alone. `tool/consume-check` builds
+# against the INSTALLED library, which is the other half of the adoption
+# path and the valuable half, but it includes <qtty/qtty.h>: the umbrella
+# pulls everything in, so it cannot see an individual header's gaps either.
+#
+# Syntax only and with $(CXX), for 8.611's reason: no dependency the gate
+# did not already have. The list comes from the headers themselves rather
+# than from INSTALLED_HEADERS, deliberately -- a new public header is
+# checked the moment it exists, where a hand-kept list would check it when
+# somebody remembered. An empty list is a failure, not a pass.
+PUBLIC_HEADERS = $(wildcard include/qtty/*.h)
+header-check:
+	@n=0; \
+	for h in $(PUBLIC_HEADERS); do \
+		b=$$(basename "$$h"); \
+		printf '#include <qtty/%s>\nint main(){return 0;}\n' "$$b" \
+			> $(BUILD_DIR)/header-check.cpp; \
+		$(CXX) -fsyntax-only -Wall -Wextra -std=gnu++17 -fPIC \
+			-DQT_NO_DEBUG -DQTTY_VERSION_STRING='"$(VERSION)"' \
+			-I include \
+			$(shell pkg-config --cflags Qt6Widgets Qt6Gui Qt6Core Qt6DBus) \
+			$(BUILD_DIR)/header-check.cpp \
+			|| { echo "header-check: <qtty/$$b> does not compile on its own --" >&2; \
+			     echo "              a consumer including it alone cannot build" >&2; \
+			     exit 1; }; \
+		n=$$((n + 1)); \
+	done; \
+	rm -f $(BUILD_DIR)/header-check.cpp; \
+	[ "$$n" -gt 0 ] || { \
+		echo "header-check: no public headers found -- include/qtty/*.h" >&2; \
+		echo "              matched nothing, which is not a pass" >&2; exit 1; }; \
+	echo "header-check: $$n public header(s) compile standalone"
+
 FUZZ_SOURCES = tool/fuzz/caps_fuzz.cpp tool/fuzz/input_fuzz.cpp
 fuzz-check:
 	@n=0; \
@@ -1865,7 +1907,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         tools-check sabotage-check FORCE

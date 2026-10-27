@@ -51087,3 +51087,57 @@ its `make deb` ships it on purpose, so telling fuzzypickles it still has a
 C client would be relaying its own words back to it. It is recorded here
 because G3 lives here, and the remaining scope of a goal belongs with the
 goal.
+
+### 8.615 Every public header, compiled on its own (2026-10-27)
+
+Looking at qtty from its consumers rather than from inside it, which is a
+view nothing in the gate has. 8.614 named three: netcfgd, raidcfgd and
+fuzzypickles.
+
+**THE LENS FOUND NOTHING BROKEN, and the measurement is the useful half.**
+The production API surface actually in use is **three functions** --
+`Qtty::prepare_environment()`, `Qtty::setup()`, `Qtty::exec()`, called by
+all three -- plus `Qtty::GridMetrics`, `Qtty::next_window()` and
+`Qtty::previous_window()` in raidcfgd, and `Qtty::NullBackend` in
+fuzzypickles' spike. Against 18 public headers. Checked: all six symbols
+are defined in `build/lib/libqtty.a`, which is the archive a consumer
+links and the one place a header-only declaration would fail at link
+rather than at compile; `tool/consume-check` calls a superset of them; and
+all 18 headers compile standalone.
+
+**WHAT HAD NOTHING KEEPING IT TRUE is the include style.**
+`raidcfgd/src/main.cpp` includes `<qtty/application.h>`, `<qtty/grid.h>`
+and `<qtty/windows.h>` **directly** rather than the umbrella. So a public
+header that quietly comes to depend on something another header included
+first breaks that build and not this one:
+
+- the gate compiles `.cpp` translation units, and each gets its
+  dependencies in whatever order its own includes established -- **a
+  header is never seen alone**;
+- `tool/consume-check` is the adoption-path test and the valuable half of
+  it, building against the INSTALLED library with nothing from the source
+  tree -- and it includes `<qtty/qtty.h>`, so the umbrella pulls
+  everything in and it cannot see an individual header's gaps either.
+
+`header-check` compiles each public header alone, syntax only, with
+`$(CXX)` for 8.611's reason: no dependency the gate did not already have.
+
+**THE LIST IS A WILDCARD, DELIBERATELY, and the empty case is a failure.**
+`$(wildcard include/qtty/*.h)` rather than `INSTALLED_HEADERS` -- a new
+public header is checked the moment it exists, where a hand-kept list
+checks it when somebody remembers. That inverts 8.611's reasoning, where
+the two fuzz harnesses are **named** because a glob over a renamed harness
+passes while checking nothing. The difference is what the list is for: two
+harnesses are a closed set whose members must each be present, while
+public headers are an open one whose members must each be sound. So the
+glob is right here and wrong there, and the vacuous case is covered the
+other way -- an empty match is a failure with its own message, not a pass.
+
+**Both failure modes were seen to fail**, not assumed:
+
+| what was done to it | result |
+|---|---|
+| `<QProxyStyle>` removed from `grid.h` | `<qtty/grid.h> does not compile on its own`, Error 1 |
+| `PUBLIC_HEADERS=` on the command line | `matched nothing, which is not a pass`, Error 1 |
+
+The header was restored byte-exact afterwards, checked with `git diff`.
