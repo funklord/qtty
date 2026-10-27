@@ -126,6 +126,18 @@ L3/L4 know nothing of the tty. Only L6 sees everything.
 
 ### 5.1 L1 — Terminal backend
 
+> **Amended 2026-10-27 on the copyright holder's instruction: `AnsiBackend` is the
+> reference backend, and the termpaint and legacy adapters are retired.** This section
+> specified four native adapters measured against a termpaint reference (D6), with
+> convergence as an optional Phase 5. No adapter was ever written, so the reference had
+> nothing to measure, while the in-tree `AnsiBackend` — introduced here as covering
+> "Phase 0/2 needs until termpaint lands" — became the thing the project actually
+> ships and tests. `src/backend/termpaint/` and `src/backend/legacy/` are gone.
+> project.md 8.612 carries the measurement the decision was made against, including
+> that termpaint is BSL-1.0 and therefore never the licence obstacle, and 8.613 records
+> the retirement. The paragraphs below are left as written where they still describe
+> the interface, and marked where they describe the retired structure.
+
 The seam that lets four existing implementations survive. A backend owns the tty and
 nothing else: no diffing, no layout, no widget knowledge. Diffing deliberately lives in
 L2 so all four backends inherit one optimizer.
@@ -202,9 +214,13 @@ implementations differ most and where their accumulated bug fixes live; forcing 
 common parser on day one would discard that value. Convergence is a later, optional
 step (§12, Phase 5).
 
-**Reference backend.** `TermpaintBackend` wraps termpaint, whose integration layer
+**Reference backend.** ~~`TermpaintBackend` wraps termpaint, whose integration layer
 accepts caller-supplied I/O callbacks. It is the yardstick the four native backends are
-measured against, and the default for new products.
+measured against, and the default for new products.~~ **Retired 2026-10-27 — see the
+note opening this section.** `AnsiBackend` is the reference and the default. The
+yardstick role is better served by real terminals than by another library's abstraction
+of them: `make test-negotiate` asks a second terminal what qtty concludes from its
+replies, and project.md section 7 records what named terminals actually do.
 
 ### 5.2 L2 — Cell model
 
@@ -994,9 +1010,7 @@ qtty/
   src/graphics/           graphics encoders, placements, Overlay     (§17.3)
   src/widget/             replaced widgets (editor, calendar)
   src/backend/
-    ansi/                 built-in backend
-    termpaint/            reference backend
-    legacy/               adapters over existing implementations
+    ansi/                 the backend (reference since 2026-10-27, §5.1)
     null/                 CI backend
   test/                   the suite; text fixtures in test/snapshot/
   tool/inspect/, tool/replay/       qtty-inspect, qtty-replay
@@ -1090,9 +1104,12 @@ Exit criterion: one screen, one source, both targets, in production.
 each lands. Expect Tier 3 variants (§7) for the two or three densest screens; that is a
 success condition, not a failure.
 
-**Phase 5 — Retire.** Once all four products are on Qtty, collapse the four backend
+**Phase 5 — Retire.** ~~Once all four products are on Qtty, collapse the four backend
 adapters onto one (termpaint or the best of ours). Optional; the interface makes it a
-non-urgent cleanup rather than a blocker.
+non-urgent cleanup rather than a blocker.~~ **Moot since 2026-10-27**: no adapter was
+written, so there is nothing to collapse. One backend, `AnsiBackend`, arrived by the
+front door instead. The interface stays, because what it bought — diffing in L2, and a
+`NullBackend` the suite runs against — does not depend on there being four of anything.
 
 ---
 
@@ -1160,7 +1177,7 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
 | D3 | Semantic style channel + paint-engine fallback | Paint engine only | Style knows *what* it draws; box-drawing and controls need that |
 | D4 | Style-driven gridding | Subclass every widget | Reaches Qt-internal children we never construct |
 | D5 | Explicit `render()` on a damage schedule | Backingstore paint events | Public API, controls frame rate, and preserves Channel A — at the cost of double painting (§5.6) |
-| D6 | Backend interface, four adapters | Adopt termpaint immediately | Preserves accumulated bug fixes; consolidation becomes optional |
+| D6 | Backend interface, four adapters | Adopt termpaint immediately | Preserves accumulated bug fixes; consolidation becomes optional. **Superseded 2026-10-27 (§5.1): no adapter was written and `AnsiBackend` is the reference. The reasoning held — the fixes it preserved are in `AnsiBackend`.** |
 | D7 | 1 cell = 8×16 px, bundled fixed-metric font | Sub-pixel metrics with rounding | Rounding once at the style beats rounding everywhere |
 | D8 | No Qt fork | Patched qtbase | LGPLv3 publication duty + rebuild per release across four products |
 

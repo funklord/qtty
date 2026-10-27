@@ -3015,7 +3015,7 @@ record.
 | D3 | Semantic style channel plus paint-engine fallback | Paint engine only | The style knows *what* it draws; box-drawing and controls need that |
 | D4 | Style-driven gridding | Subclass every widget | The style reaches Qt-internal children we never construct |
 | D5 | Explicit `render()` on a damage schedule | Backingstore paint events | Public API, controls the frame rate, preserves Channel A -- at the cost of double painting |
-| D6 | A backend interface with four adapters | Adopt termpaint immediately | Preserves accumulated bug fixes; consolidation becomes optional |
+| D6 | A backend interface with four adapters | Adopt termpaint immediately | Preserves accumulated bug fixes; consolidation becomes optional. **Superseded 2026-10-27, 8.613** |
 | D7 | One cell = `cw x ch` px with a bundled fixed-metric font | Sub-pixel metrics with rounding | Rounding once at the style beats rounding everywhere |
 | D8 | No Qt fork | A patched qtbase | LGPLv3 publication duty plus a rebuild per release across four products |
 
@@ -14781,7 +14781,7 @@ src/grid/             GridMetrics, GridStyle
 src/render/           CellPaintDevice, CellPaintEngine
 src/runtime/          the exec loop, Compositor, InputRouter
 src/graphics/         encoders, placements, Overlay
-src/backend/          ansi/ (built-in), null/ (CI), termpaint/ and legacy/ (READMEs)
+src/backend/          ansi/ (the backend, 8.613), null/ (CI)
 src/widget/           replaced widgets (a README today)
 test/                 the suite; text fixtures in test/snapshot/
 tool/inspect/         qtty-inspect
@@ -50944,16 +50944,68 @@ against real terminals beats measuring against another library's
 abstraction of them, so the stronger half of that job is done and not by
 termpaint.
 
-**THE OPTION, THE COST, AND WHOSE IT IS.** The option is to retire
+**THE OPTION, THE COST, AND WHOSE IT WAS.** The option was to retire
 `src/backend/termpaint/` and `src/backend/legacy/` as lapsed plans and
 amend design.md §5.1 to say `AnsiBackend` became the reference rather than
-the stopgap. The cost is that design.md §5.1 and D6 then describe a
+the stopgap. The cost: design.md §5.1 and D6 would then describe a
 structure the project has decided against, and a future fifth product with
 no TUI layer loses a named default -- though it would get `AnsiBackend`,
-which is what it would get today anyway. **The decision is the copyright
-holder's**: it is a change to design.md's architecture and to what the
-project says it is building, which is not a harmonizing edit and not this
-record's to take. What is recorded here is the measurement, so that the
-decision is made against figures rather than against an impression, and so
-that the next reader of those two READMEs knows they describe an option
-rather than a commitment.
+which is what it would get today anyway. It was put as a decision for the
+copyright holder, being a change to design.md's architecture and to what
+the project says it is building rather than a harmonizing edit.
+
+**TAKEN the same day, on the holder's instruction. 8.613 records what was
+removed and amended**, and this entry is left as the measurement the
+decision was made against.
+
+### 8.613 termpaint and the legacy adapters, retired (2026-10-27)
+
+Taken on the copyright holder's instruction, against the measurement in
+8.612. `AnsiBackend` is the reference backend; the termpaint reference and
+the per-product legacy adapters are gone.
+
+**WHAT WAS REMOVED.** `src/backend/termpaint/README.md` and
+`src/backend/legacy/README.md`, and with them the two directories. Both
+were README-only: termpaint's said "not yet implemented" since `73fdee6`,
+and legacy's described an `app1/` and `app2/` that were never written. The
+tree's backend directory is now `ansi/` and `null/`, which is what it has
+actually held all along.
+
+**WHAT WAS AMENDED, AND WHY NOT ERASED.** design.md is a living document
+-- its own header says Phase 0 has been run and "sections below are
+updated to match measured behaviour" -- so amending it is in keeping. Five
+sites, and at each one the original text is kept struck through rather than
+deleted, because **a decision record whose reasoning vanishes is worse
+than one that is out of date**: the next person needs to see what was
+decided and why before reading that it changed.
+
+| site | what it said | now |
+|---|---|---|
+| §5.1 opening | — | a dated amendment note carrying the reasoning |
+| §5.1 "Reference backend" | `TermpaintBackend` is the yardstick and the default | struck; `AnsiBackend` is both, and real terminals are the better yardstick |
+| §5.1 directory tree | `termpaint/` reference, `legacy/` adapters | `ansi/` (reference since 2026-10-27) and `null/` |
+| §12 Phase 5 | collapse four adapters onto one | struck as moot: nothing was built to collapse |
+| D6 decision row | four adapters over adopting termpaint | superseded, with the note that **its reasoning held** -- the fixes it preserved are in `AnsiBackend` |
+
+`README.md` and this document's own directory listings follow, and D6's
+copy here carries the same supersession.
+
+**THE INTERFACE STAYS, which is the part worth being explicit about.**
+Retiring the adapters is not retiring `ITerminalBackend`. What that seam
+bought does not depend on there being four of anything: diffing lives in
+L2 rather than in a backend, `NullBackend` is what the suite runs against,
+and an application can inject its own backend through `exec()`. Removing
+the interface would cost all three and save nothing.
+
+**WHAT IS LEFT OPEN, DELIBERATELY.** design.md §1 still states the
+secondary goal as "four separate TUI implementations across four products
+collapse into one library, with the existing terminal code surviving as
+backend adapters rather than being thrown away", and §1's extension-point
+table still says `ITerminalBackend` is "satisfied by our four existing
+implementations". **That is not amended here.** Whether consolidating four
+products is still a goal is a product question about four codebases this
+record cannot see, and the instruction was to retire the placeholders, not
+to rewrite the project's purpose. It is named here so the gap is a known
+one: a reader who reaches §1 will find a premise the rest of §5.1 no
+longer rests on, and 8.610 is this file's own account of what happens when
+a document is left saying two things at once.

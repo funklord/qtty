@@ -277,7 +277,7 @@ status note at the top.
 
     include/qtty/     public headers (§10)
     src/core|grid|render|runtime|graphics/
-    src/backend/      ansi (built-in), null (CI), termpaint + legacy (planned)
+    src/backend/      ansi (the backend), null (CI)
     src/widget/       replaced widgets (planned)
     example/chat/     canonical dual-frontend example (§16.4)
     test/             the suite; text fixtures in test/snapshot/
