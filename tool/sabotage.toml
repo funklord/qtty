@@ -8720,3 +8720,25 @@ into = "\t\tif (false) return false;"
 count = 1
 check = "two wide clusters are four cells in two code units"
 
+[[sabotage]]
+# The half-block cache stops validating the one thing it reads. A translucent
+# cell blends over cell.bg, so a stored Tint is good only while that
+# background still holds the colour it was blended over; without the check the
+# replay tints whatever the first frame held rather than what is under it now.
+# 8.599.
+#
+# The check named is the indexed-background one, which composites the SAME
+# image over the same rect and ground into three frames differing only in
+# what the cells already held. That is a cache hit by this key, so the
+# second and third answers become the first's and its third term --
+# over_index != over_none -- goes false. Named by reading that condition:
+# the check whose WORDING fits ("an overlay that stayed put is still
+# repainted") tests FrameScheduler::pixel_damage and never calls this
+# function at all.
+name = "the overlay cache replays a tint over a background it never read"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (w.wrote == Tint && frame.at(w.at.x(), w.at.y()).bg != w.under) {"
+into = "\t\t\tif (false) {"
+count = 1
+check = "a translucent overlay over an indexed cell background is composited over the colour that index stands for, not over the terminal's own ground"
+

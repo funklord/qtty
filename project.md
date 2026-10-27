@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2452 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2454 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49843,13 +49843,173 @@ invalidation gone from both places at once. What it cannot do is prove
 either guard individually, and the record says so rather than implying a
 proof the spec cannot give.
 
-**WHAT IS LEFT IS THE SAMPLING ITSELF, about 4.15 ms a frame, and it is
-not taken here.** `compose_halfblocks()` area-samples the image for every
-cell -- roughly 190 pixel reads across a 10x19 cell's two halves, some 2.3
-million reads for a 200x60 terminal -- every frame, from an image and a
-geometry that typically have not moved. A cache would have to key on the
-image, the cell rect, the cell size **and the terminal ground**, which
-8.517 re-asks at every handover, so it is a change to the compositing path
-rather than a local one. **The number is recorded so the decision does not
-need re-taking**: it is the largest single cost this session has measured
-anywhere, and the frame that pays it is already at 8.5 ms of 16.
+**WHAT WAS LEFT WAS THE SAMPLING ITSELF, about 4.15 ms a frame, and 8.599
+took it.** `compose_halfblocks()` area-samples the image for every cell --
+roughly 190 pixel reads across a 10x19 cell's two halves, some 2.3 million
+reads for a 200x60 terminal -- every frame, from an image and a geometry
+that typically have not moved. It was recorded here as the largest single
+cost this session had measured anywhere, against a frame already at 8.5 ms
+of 16, so that the decision would not need re-taking; it did not, and the
+cache went in the same day. **What that record got wrong is worth keeping:
+it said a cache "would have to key on the image, the cell rect, the cell
+size and the terminal ground", and the cell size is not an input at all --
+the sampling divides the image by the cell RECT. The frame's extent is,
+which this sentence did not name.** An estimate of a key made without
+reading the function listed a field it does not read and omitted one it
+does.
+
+### 8.599 The overlay's sampling, remembered (2026-10-27)
+
+8.598 measured what a full-screen overlay costs a frame -- over half of
+section 11's 16 ms budget -- fixed the translucent half of it, and left the
+sampling itself with the number written down "so the decision does not need
+re-taking". Taken here.
+
+`compose_halfblocks()` area-samples the image for every cell, about 190
+pixel reads across a 10x19 cell's two halves and some 2.3 million for a
+200x60 terminal, and it does it every frame from an image and a geometry
+that have not moved. It now remembers what it wrote, keyed on the image's
+identity, the cell rect, all three ground fields, the clip, and the frame's
+extent -- the extent because cells outside it are skipped, so the SET of
+writes depends on it. Two entries, cleared with the application, like
+`cell_paint.cpp`'s tiling cache.
+
+**IT HAS TWO CALLERS AND THE SECOND ONE WAS NEARLY MISSED.** The first
+version of this record said "the library's one caller is the overlay
+fallback tier", counted from a grep whose output was read as the answer:
+one match in `src/runtime/compositor.cpp` and two in `src/graphics/` --
+which were comments -- and the pattern had not reached
+`src/backend/ansi/`. `AnsiBackend::present()` composes every `CellImage`
+placement the same way when the terminal has no graphics protocol, which
+is section 17.3's tier for a toolbar's icons on a plain xterm.
+
+**And it hands over `ci.pixmap.toImage()`, built fresh on every frame,
+which looked like a cache that could never hit.** Measured rather than
+assumed, because the consequence either way is a paragraph in this record:
+`QPixmap::toImage()` returns the PIXMAP's `cacheKey()`, the same value on
+every call, on Qt 5 and Qt 6 alike. So the placement tier hits as readily
+as the overlay tier, and an icon is sampled once rather than once a frame.
+(`convertToFormat()` does mint a new key, but the composer calls it after
+the lookup, so it is not in the question.)
+
+**THE FIRST VERSION WAS WRONG, AND THE MEASUREMENT COULD NOT SEE IT.** It
+stored whole cells and refused to store at all when any cell had taken the
+translucent tier, on the reasoning that two of the three tiers "assign the
+cell outright". Both halves of that sentence were false, and the traces
+that confirmed the cache working -- one miss then hits, the overlay's cost
+down from +4.15 ms to +0.832, the translucent case correctly refused --
+were all true of the broken version. **What found it was reading the four
+branches to write this record.**
+
+There are four tiers, not three, and three of them deliberately LEAVE a
+field:
+
+| tier | assigns | keeps |
+|---|---|---|
+| ink in both halves, differing | ch, fg, bg, attrs, width | -- |
+| ink in both, one leaning | ch, fg, attrs, width | the background |
+| ink in one half | ch, fg, attrs, width | the background |
+| translucent | bg | the glyph |
+
+So a whole-cell replay carries the first frame's background under every
+later frame's icon, and the first frame's text under every later scrim.
+**That is not a cache, it is a freeze** -- and it would have shipped as one,
+because the only tier the refusal excluded was the one tier whose
+frame-dependence was obvious.
+
+**WHAT IS REPLAYED IS THE WRITE, AND THE ONE READ IS VALIDATED.** Each
+written cell records which half of itself the composer assigned, and the
+replay assigns exactly that much. Only the translucent tier reads the frame
+-- `rgb_for(cell.bg, under_default)`, the colour it blends over -- so a
+tinted cell also records the background it read, and a candidate entry is
+refused unless every one of them still holds that colour, in a pass of its
+own before anything is written.
+
+**That is what makes a scrim cacheable rather than excluded, which is the
+case the feature exists for.** An Overlay at opacity below 1 over changing
+text moves `ch` and `fg`, which a tint neither reads nor writes, so the
+entry stays good; a pane changing colour under it invalidates the entry it
+would have falsified. The first version's answer to the same case was to
+refuse the whole frame.
+
+**WHAT IT BUYS**, same probe and same fixture as 8.598, interleaved within
+each run so the machine's drift cancels:
+
+    full-screen overlay, opaque        +4.15 ms  ->  +0.816, +0.925
+    full-screen overlay, translucent   +4.32 ms  ->  +1.046, +1.052
+
+The comparison spans runs, so the no-overlay arm of each is the yardstick:
+8.598 measured it at 4.374 to 4.596 ms and today's runs at 4.229 to 4.540,
+which is the same machine behaving the same way -- taken under a load
+average of 158, which the minimum over twelve passes absorbs. **So the
+overlay tier costs about a fifth of what it did**, and the residue is not
+all sampling: the delta still carries the replay, a larger frame diff and a
+larger `present()`.
+
+**And the translucent case is now cached rather than refused**, which is
+the whole return on reading the branches. The first version measured it at
++4.830 -- a miss on every frame, correctly, because it could only offer the
+frame all or nothing.
+
+**TWO CHECKS FOR THE FAULT, AND THEY ARE THE DESIGN STATED AS A TEST.**
+Both compose the same image over two frames that differ only in the field
+the composer keeps, which is a cache hit by construction:
+
+- a scrim composited a second time over different text must tint the same
+  ground and show the SECOND frame's letters;
+- an icon composited a second time over a different pane colour must draw
+  the same half-block and keep the SECOND frame's pane.
+
+Against a composer with no cache at all both are simply true, which is the
+point -- they assert the contract rather than the mechanism. Against the
+first version of the cache, both go red.
+
+**AND THE SABOTAGE ENTRY NAMED A CHECK THAT CANNOT SEE THE CODE IT BREAKS.**
+It named `"an overlay that stayed put is still repainted, being composited
+over cells that changed under it"`, whose wording is this cache's behaviour
+almost word for word -- and which tests `FrameScheduler::pixel_damage()`, a
+pure region function that never calls `compose_halfblocks()` at all.
+`--validate` passed it: the anchor matched and the name existed in `test/`,
+which is all it can check.
+
+This is the fourth time in one session a check has been named by its
+wording rather than its condition, and the rule recorded for the other
+three was right and insufficient. **The wording of a check is written to
+describe a behaviour, so the better the behaviour matches, the better the
+wording matches -- and a cache for overlay compositing will find its best
+wording match among the checks about overlay compositing it does not
+touch.** The entry now names the indexed-background check, which composites
+one image over the same rect and ground into three frames differing only in
+what the cells already held, and goes red when the validation is removed
+because its third term -- `over_index != over_none` -- becomes an identity.
+
+**WHAT IT COSTS.** Two entries, each holding one record per cell it wrote
+-- so a full-screen overlay is charged about two frames' worth of cells.
+The image itself is not copied. And it is keyed by `cacheKey()`, which is
+a property of a QImage's data and does not change when an unshared image
+is painted into in place. For the library's own caller that is closed
+upstream -- 8.598's faded copy is rebuilt, and so newly identified,
+whenever either input moves -- and it is the same exposure that
+`cell_paint.cpp`'s tiling cache carries for a QPixmap. The comment says an
+application compositing its own image should hand over a new QImage rather
+than repaint one.
+
+**THE QT 5 ARM CAUGHT THE ONE THING QT 6 DID NOT.** `qAddPostRoutine` is
+declared in `<QCoreApplication>`, which Qt 6 pulls in transitively through
+headers this file already had and Qt 5 does not. The Qt 6 build was clean
+and the Qt 5 build would not compile. That is the second arm earning its
+place on an include, not on an API.
+
+**AND A LOG FILE NAME REUSED BETWEEN RUNS IS A STALE MEASUREMENT WITH A
+CURRENT NAME.** Twice while verifying this, a build was read out of a file
+that a previous session had written -- `t3.log` from four days earlier and
+`g1.log` from thirteen -- because the `make` that was supposed to overwrite
+them was still queued behind an abandoned `BUILD_DIR=build-chk` run and had
+not reached its redirect. Both files contained a complete, plausible,
+successful build of this project. Neither was this one.
+
+A fact recorded without its date has a shelf life; this is the same fault
+with the date available and unread. **A log is an artifact with an mtime,
+so check it** -- `ls -la` on the file answered it instantly both times, and
+the only reason to look was that the content was too good for how little
+time had passed.

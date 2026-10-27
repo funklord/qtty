@@ -2,6 +2,7 @@
 #include "qtty/graphics.h"
 #include "kitty_diacritics.h"
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QHash>
 #include <QSet>
 #include <QUrl>
@@ -813,8 +814,129 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 	// may call it, or append a CellImage of its own to CellBuffer::images.
 	if (src.isNull()) return;
 	if (cell_rect.width() <= 0 || cell_rect.height() <= 0) return;
+
+	// THE SAMPLING, REMEMBERED. Every cell area-samples the image -- about
+	// 190 pixel reads across a 10x19 cell's two halves, some 2.3 million for
+	// a 200x60 terminal -- and 8.598 measured a frame carrying a full-screen
+	// overlay at over half of section 11's 16 ms budget, all of it
+	// re-deriving the same picture from an image and a geometry that had not
+	// moved. 8.599.
+	//
+	// TWO CALLERS, and both hand over a stable identity, which is what makes
+	// a cache keyed on one possible. The overlay fallback tier in
+	// Compositor::render_once() passes Overlay::image(), a QImage whose
+	// identity 8.598's own cache already holds still while the source and
+	// the opacity do not change. The placement fallback tier in
+	// AnsiBackend::present() passes `ci.pixmap.toImage()`, built fresh on
+	// every frame -- and that was expected to defeat the cache outright
+	// until it was measured: QPixmap::toImage() hands back the PIXMAP's
+	// cacheKey, the same value on every call, on Qt 5 and Qt 6 alike. So a
+	// toolbar's icons are sampled once rather than once a frame too.
+	//
+	// WHAT IS REPLAYED IS THE COMPOSER'S WRITE, NOT THE CELL. The four tiers
+	// below do not all assign a whole cell, and the first version of this
+	// cached one as though they did. Three of them deliberately LEAVE a
+	// field: the leaning and half-covered tiers set the glyph and keep
+	// whatever background was behind the uncovered half, and the translucent
+	// tier tints the background and keeps the glyph. A whole-cell replay
+	// therefore carries the FIRST frame's background under every later
+	// frame's icon, and the first frame's text under every later scrim --
+	// which is not a cache at all, it is a freeze.
+	//
+	// So each written cell records which of the two halves the composer
+	// assigned, and the replay assigns exactly that much:
+	//
+	//   Whole  both -- ink in both halves of differing colour
+	//   Glyph  ch, fg, attrs, width -- a lean or a half-covered cell
+	//   Tint   bg alone -- the translucent tier
+	//
+	// AND THE ONE READ IS VALIDATED. Only the translucent tier reads the
+	// frame: `rgb_for(cell.bg, under_default)`, the colour it blends over.
+	// A Tint entry therefore carries the background it read, and a candidate
+	// hit is refused unless every one of them still holds that colour. That
+	// is what makes a scrim cacheable rather than excluded: text changing
+	// under it moves ch and fg, which a Tint does not read and does not
+	// write, so the entry stays good -- while a pane changing colour under
+	// it invalidates the entry it would have falsified.
+	//
+	// Validated in a pass of its own before anything is written, because a
+	// partial replay would be worse than a miss.
+	//
+	// THE KEY IS EVERY OTHER INPUT THE ANSWER HAS. The image's identity, the
+	// cell rect, all three ground fields, the clip, and the frame's extent --
+	// which matters because cells outside it are skipped, so the SET of
+	// writes depends on it. Bounded at two entries like cell_paint.cpp's
+	// tiling cache, and cleared with the application for the same reason.
+	//
+	// The image is keyed by cacheKey(), which is a property of a QImage's
+	// data and does NOT change when an unshared image is painted into in
+	// place. For the library's own caller that is closed upstream -- the
+	// faded copy is rebuilt, and so newly identified, whenever either input
+	// moves --
+	// and it is the same exposure cell_paint.cpp's tiling cache carries for
+	// a QPixmap. An application compositing its own image into a frame
+	// should hand over a new QImage rather than repaint one.
+	enum Wrote : quint8 { Whole, Glyph, Tint };
+	struct Written {
+		QPoint at;
+		Cell cell;
+		Color under;              // the bg a Tint blended over
+		Wrote wrote = Whole;
+	};
+	struct Composited {
+		qint64 key = 0;
+		QRect rect, clip;
+		QRgb under = 0, dfg = 0, dbg = 0;
+		bool has_clip = false;
+		int cols = 0, rows = 0;
+		QVector<Written> cells;
+	};
+	static thread_local QVector<Composited> cache;
+	static thread_local bool registered = false;
+	if (!registered) {
+		registered = true;
+		qAddPostRoutine([] { cache.clear(); });
+	}
+	const auto same_key = [&](const Composited &c) {
+		return c.key == src.cacheKey() && c.rect == cell_rect
+		    && c.under == ground.composite_under && c.dfg == ground.default_fg
+		    && c.dbg == ground.default_bg && c.has_clip == has_clip
+		    && c.clip == clip && c.cols == frame.cols()
+		    && c.rows == frame.rows();
+	};
+	for (const Composited &c : cache) {
+		if (!same_key(c)) continue;
+		bool still = true;
+		for (const Written &w : c.cells)
+			if (w.wrote == Tint && frame.at(w.at.x(), w.at.y()).bg != w.under) {
+				still = false;
+				break;
+			}
+		// On to the next entry rather than out of the loop: two entries can
+		// share a key and differ only in the background a Tint read, which
+		// is exactly what a scrim alternating over two panes produces.
+		if (!still) continue;
+		for (const Written &w : c.cells) {
+			Cell &cell = frame.at(w.at.x(), w.at.y());
+			if (w.wrote != Tint) {
+				cell.ch = w.cell.ch;
+				cell.fg = w.cell.fg;
+				cell.attrs = w.cell.attrs;
+				cell.width = w.cell.width;
+			}
+			if (w.wrote != Glyph) cell.bg = w.cell.bg;
+		}
+		return;
+	}
+
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
 	const QRgb under_default = ground.composite_under;
+	QVector<Written> written;
+	// The smaller of the two bounds on how many cells can be written: a
+	// placement larger than the frame is clipped to the frame, and one
+	// smaller than it reserves only what it can fill.
+	const qint64 span = qint64(cell_rect.width()) * cell_rect.height();
+	written.reserve(int(qMin(span, qint64(frame.cols()) * frame.rows())));
 	// The MEAN of the half cell, and not one pixel out of it. This sampled
 	// the single pixel at the centre of each half, which is right for a
 	// photograph -- where a cell covers a few pixels of a smooth image and
@@ -904,6 +1026,9 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 			const Half bot = mean(x0, x1, mid, qMax(mid + 1, y1));
 			if (top.peak < 40 && bot.peak < 40) continue;      // transparent
 			Cell &cell = frame.at(X, Y);
+			Written note;
+			note.at = QPoint(X, Y);
+			note.under = cell.bg;              // only a Tint will read it
 			if (top.peak > 200 && bot.peak > 200) {            // ink in both
 				// Two halves of one colour differ only in how much of each
 				// is inked, and for a single-hued icon that is the only
@@ -925,10 +1050,12 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 					cell.ch = lean_top ? QStringLiteral("▀")
 					                   : QStringLiteral("▄");
 					cell.fg = Color::rgb(lean_top ? top.col : bot.col);
+					note.wrote = Glyph;             // the bg is kept
 				} else {                                       // 2 pixels
 					cell.ch = QStringLiteral("▀");
 					cell.fg = Color::rgb(top.col);
 					cell.bg = Color::rgb(bot.col);
+					note.wrote = Whole;
 				}
 				cell.attrs = {}; cell.width = 1;
 			} else if (top.peak > 200 || bot.peak > 200) {     // half-covered
@@ -937,13 +1064,36 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 				cell.fg = Color::rgb(top_half ? top.col : bot.col);
 				// keep whatever bg is behind the uncovered half
 				cell.attrs = {}; cell.width = 1;
+				note.wrote = Glyph;
 			} else {                                           // translucent:
 				const int a = qMax(top.peak, bot.peak);        // tint bg,
 				const QRgb over = top.peak >= bot.peak ? top.col : bot.col;
 				const QRgb under = rgb_for(cell.bg, under_default);
 				cell.bg = Color::rgb(blend(over, a, under));   // glyph stays
+				note.wrote = Tint;   // reads note.under: validated on replay
 			}
+			note.cell = cell;
+			written.append(note);
 		}
+
+	// Nothing written is nothing to remember -- a placement entirely outside
+	// the frame, or an image transparent in every cell. Storing it would be
+	// harmless and would also mean a later hit replaying no writes, which is
+	// indistinguishable from a correct miss and so unprovable either way.
+	if (written.isEmpty()) return;
+	Composited made;
+	made.key = src.cacheKey();
+	made.rect = cell_rect;
+	made.under = ground.composite_under;
+	made.dfg = ground.default_fg;
+	made.dbg = ground.default_bg;
+	made.has_clip = has_clip;
+	made.clip = clip;
+	made.cols = frame.cols();
+	made.rows = frame.rows();
+	made.cells = written;
+	if (cache.size() >= 2) cache.removeFirst();
+	cache.append(made);
 }
 
 } // namespace Qtty

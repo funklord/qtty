@@ -1213,6 +1213,77 @@ int suite_graphics() {
 		      "half-block carries the overlay colour");
 	}
 
+	// ---- composited TWICE from one image, which is the cache's whole job ----
+	//
+	// 8.599 remembers the per-cell sampling, which is the largest single
+	// cost this library measures: a full-screen overlay re-derived about 2.3
+	// million pixel reads a frame from an image and a geometry that had not
+	// moved. What makes that sound and nearly got it wrong is that THE
+	// COMPOSER DOES NOT ASSIGN A WHOLE CELL. Three of its four tiers
+	// deliberately leave a field, so a cache that replayed cells would
+	// freeze what the tier meant to keep.
+	//
+	// Both halves are asserted by composing the SAME image over two frames
+	// that differ only in the field the composer keeps -- which is a cache
+	// hit by construction, the key being the image, the rect, the ground and
+	// the extent. Against a composer with no cache at all they are simply
+	// true; against the first version of one they are what went red.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const TerminalGround ground = TerminalGround::unanswered();
+
+		// A SCRIM KEEPS EACH FRAME'S OWN TEXT. The translucent tier tints
+		// the background and leaves ch, fg, attrs and width alone, so the
+		// text under a scrim is the frame's and never the cache's. This is
+		// the common case and the expensive one: an Overlay at opacity < 1
+		// over a window whose text is changing.
+		QImage scrim(4 * cw, 2 * ch, QImage::Format_ARGB32);
+		scrim.fill(QColor(0, 60, 200, 100));          // translucent tier
+		auto under_scrim = [&](const QString &text) {
+			CellBuffer frame(4, 2);
+			frame.text(0, 0, text);
+			compose_halfblocks(frame, scrim, QRect(0, 0, 4, 2), ground);
+			return frame.at(1, 0);
+		};
+		const Cell first  = under_scrim(QStringLiteral("aaaa"));
+		const Cell second = under_scrim(QStringLiteral("bbbb"));
+		// The relationship, not either cell: the glyph must be each
+		// frame's own and the tint must be the same, because the scrim
+		// and what it blends over have not changed. One without the
+		// other would also be true of a composer that ignored the
+		// image, or of one that ignored the frame.
+		CHECK(first.ch == QStringLiteral("a") && second.ch == QStringLiteral("b")
+		      && first.bg == second.bg && first.bg.kind() == Color::Rgb,
+		      "a scrim composited a second time tints the same ground and"
+		      " keeps the text the second frame actually holds");
+
+		// AN ICON KEEPS EACH FRAME'S OWN BACKGROUND. The half-covered
+		// tier sets the glyph and leaves bg, so what shows through the
+		// uncovered half is the frame's background -- and a cell replayed
+		// whole would show the first frame's.
+		QImage icon(4 * cw, 2 * ch, QImage::Format_ARGB32);
+		icon.fill(Qt::transparent);
+		{
+			QPainter q(&icon);
+			q.fillRect(0, 0, 4 * cw, ch / 2, QColor(255, 255, 0, 255));
+			q.end();
+		}
+		auto under_icon = [&](QRgb pane) {
+			CellBuffer frame(4, 2);
+			for (int y = 0; y < 2; ++y)
+				for (int x = 0; x < 4; ++x) frame.at(x, y).bg = Color::rgb(pane);
+			compose_halfblocks(frame, icon, QRect(0, 0, 4, 2), ground);
+			return frame.at(1, 0);
+		};
+		const Cell on_red  = under_icon(qRgb(180, 0, 0));
+		const Cell on_blue = under_icon(qRgb(0, 0, 180));
+		CHECK(on_red.ch == on_blue.ch && on_red.ch == QStringLiteral("▀")
+		      && on_red.bg == Color::rgb(qRgb(180, 0, 0))
+		      && on_blue.bg == Color::rgb(qRgb(0, 0, 180)),
+		      "an icon composited a second time draws the same half-block and"
+		      " keeps the pane colour the second frame actually holds");
+	}
+
 	// ---- an indexed cell background, under a translucent overlay ----
 	//
 	// The third site that collapsed Color::Indexed into a default, and it
