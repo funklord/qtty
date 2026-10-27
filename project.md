@@ -49272,6 +49272,19 @@ warnings at all. The gate 8.378 left for whoever decides it would start
 green again -- and that is the sentence that went stale once already, so
 it carries its date.
 
+**AND IT HAD GONE STALE AGAIN BY THE END OF THE SAME DAY, in the one way
+it could not detect: the census had one witness.** 8.603 compiled this
+tree with clang for the first time, and it is not at zero there. Eight
+warnings: a genuine Qt 6 deprecation at `grid_style.cpp:805` that g++
+does not diagnose although the header states it outright, and six
+`-Wunused-lambda-capture` in the suite, which is a warning g++ does not
+have at all. So **"it would start green" is true of g++ and false of
+clang**, and a `-Werror` gate and the choice of front end are one
+decision rather than two. The deprecation cannot be fixed without a
+`QT_VERSION` conditional, which 8.603 explains and declines; the six are
+cosmetic and are left. Whoever decides the gate decides the compiler with
+it.
+
 ### 8.589 A tool that printed one coordinate space as another (2026-10-26)
 
 **`qtty-inspect` dumps a widget tree with cell geometry and then renders
@@ -50286,3 +50299,116 @@ a loaded machine and a fixture that did not match its own description.
 resolution the prose says -- and prefer one binary over two runs whenever
 the code offers a way to switch the behaviour at runtime, as a cache keyed
 on identity always does.
+
+### 8.603 A second front end, and what the first one could not see (2026-10-27)
+
+This tree had never been compiled by anything but g++. `CXX ?= g++` in the
+Makefile already threads through to `QMAKE_CXX`, so `make CXX=clang++
+BUILD_DIR=build-clang` needed no change to try -- and clang 19.1.7 found
+something in its first run that the gate has been reporting clean for as
+long as the line has existed.
+
+**THE SITE.** `grid_style.cpp` builds a diagnostic naming the font
+substitution, and ends it with the family count:
+
+    .arg(font.family()).arg(QFontDatabase().families().size());
+
+The comment above it says, and said before this: *"Qt 6 made
+QFontDatabase static-only and keeps the constructor without deprecating
+it, so this spelling compiles clean on both -- 0 warnings under -Wall
+-Wextra -Wdeprecated-declarations on 6.8 and on 5.15 alike, measured."*
+
+**The first clause is false and the measurement is real.** Qt 6.8's
+`qfontdatabase.h` deprecates the constructor explicitly, with a message:
+
+    QT_DEPRECATED_VERSION_X_6_0("Call the static functions instead")
+        explicit QFontDatabase() = default;
+
+**Measured on that header with identical flags**, the one spelling in a
+file of its own:
+
+    g++ 14    -Wall -Wextra -Wdeprecated-declarations   0 warnings
+    clang 19  -Wall -Wextra -Wdeprecated-declarations   2 warnings
+
+So g++ does not diagnose a deprecation the header states outright, and the
+project's zero-warning status for this line **was a property of the
+compiler rather than of the source**. The earlier measurement was
+honestly taken and correctly reported; what it could not say is that it
+had one witness.
+
+**AND THE CLEAN FIX IS NOT AVAILABLE.** The spellings are:
+
+| spelling | Qt 5.15 | Qt 6.8 |
+|---|---|---|
+| `QFontDatabase().families()` | correct: a member | deprecated ctor |
+| `QFontDatabase::families()` | **error**: not static | correct |
+
+Measured, not read off the documentation: the static spelling is a
+compile error against Qt 5's headers. There is no third spelling -- the
+count comes from `families()` and nothing else offers it -- so making
+this clean on both front ends requires a `QT_VERSION` conditional.
+
+**That is the decision the comment deliberately declines to take**, and it
+is not a harmonizing edit. The comment says in as many words that the
+instance spelling "is NOT a version conditional, which is why it does not
+settle the question section 8.1 reserves: it takes no position on which Qt
+versions are supported". Taking the conditional here would settle that
+question as a side effect of quieting a warning in a diagnostic message.
+**The decision is the copyright holder's.** The comment is corrected to
+say what is true -- the constructor is deprecated, g++ does not say so,
+and the alternative is a conditional -- rather than to keep a claim one
+compiler supports.
+
+**IT BEARS DIRECTLY ON 8.588, the parked `-Werror` question.** That entry
+rests on the tree being at zero warnings, offered as the reason such a
+gate would start green. It would -- under g++. Under clang it starts red,
+at this one site, for a real deprecation. A `-Werror` gate and a second
+front end are therefore one decision rather than two, and 8.588 should be
+read with this beside it.
+
+**THE REST OF THE BUILD IS CLEAN**, which is the other half of the result
+and the less interesting half only because it is the expected one: one
+site, two warnings, and they are the same site compiled twice.
+
+**THE SIX OTHERS ARE COSMETIC AND WERE READ BEFORE BEING CALLED THAT.**
+`-Wunused-lambda-capture` has no g++ equivalent at all, and it fires six
+times in `test/suite_widgets.cpp`. Three capture a `cols` that need not be
+captured for the use made of it. The other two say "is not used" outright
+-- a `ch` at 1253 and a `host` at 9291 -- which is the shape worth
+checking, because a test lambda capturing a name it never touches can be a
+check reaching for something it does not assert on. Both were read: `ch`
+is used in the arithmetic *outside* the lambda and `host` in the
+`own_cells()` calls outside it, so each capture is dead and no check
+asserts less than it means to.
+
+They are not fixed. Six edits across a ten-thousand-line test file, for
+warnings that cannot fire under the compiler the gate runs, is the style
+churn the bar excludes.
+
+**THE SUITE PASSES UNDER A CLANG-BUILT LIBRARY**, which is the other
+result and not a given: 2454 PASS, 0 FAIL, `OK (0 failures)`, library,
+tools and suite all built by clang 19.1.7 with no change to the Makefile
+or any mkspec.
+
+### 8.604 ASan, UBSan and the question of whether they ran (2026-10-27)
+
+`make test-sanitize` is outside `make check` -- it is minutes long -- so
+none of 8.599 through 8.602 had been through it. Run over all four: **0
+failures and not one `AddressSanitizer`, `UndefinedBehaviorSanitizer`,
+`LeakSanitizer` or `SUMMARY` line**, with `detect_leaks=1`. That covers
+the half-block cache's index arithmetic over a `thread_local` vector and
+8.600's hash through a raw `constBits()` pointer, which are the two
+changes of the four where a sanitizer had something to say.
+
+**A clean log was not taken as the result**, because a sanitizer that was
+never linked produces exactly the same log as one that found nothing --
+`evidence.md`'s vacuous pass, in the form where the instrument is missing
+rather than the input. The artifact answers it:
+
+    nm -D build-san-test/qtty-tests | grep -cE '__asan|__ubsan'   64
+    ... | grep -cE '__asan_report|__asan_init'                    13
+    ... | grep -cE '__ubsan_handle'                               12
+
+and the binary is 48 MB against the ordinary build's few. **Ask the
+artifact whether it carries the instrument**, rather than reading the
+silence as evidence of what the instrument would have said.

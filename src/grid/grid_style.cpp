@@ -793,15 +793,30 @@ bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w) {
 static QString no_font_at_all(const QFont &font) {
 	return QStringLiteral("'%1' resolved to no font at all; the font database"
 	                      " offers %2 families")
-	       // Through an instance rather than statically. Qt 6 made
-	       // QFontDatabase static-only and keeps the constructor without
-	       // deprecating it, so this spelling compiles clean on both -- 0
-	       // warnings under -Wall -Wextra -Wdeprecated-declarations on 6.8
-	       // and on 5.15 alike, measured. It is NOT a version conditional,
-	       // which is why it does not settle the question section 8.1
-	       // reserves: it takes no position on which Qt versions are
-	       // supported, it just stops being one of the things that would
-	       // have to change if the answer were ever "both".
+	       // Through an instance rather than statically, because the
+	       // static spelling does not exist on Qt 5: `families()` is a
+	       // const MEMBER there and a static function on Qt 6, so
+	       // QFontDatabase::families() is a compile error against 5.15
+	       // and the instance is the only spelling both accept.
+	       //
+	       // AND QT 6 DEPRECATES THE CONSTRUCTOR, which this comment
+	       // denied until clang was pointed at the tree for the first
+	       // time. It claimed Qt 6 "keeps the constructor without
+	       // deprecating it", citing 0 warnings under -Wall -Wextra
+	       // -Wdeprecated-declarations on 6.8 and 5.15 alike. The
+	       // measurement was real and had one witness: qfontdatabase.h
+	       // carries QT_DEPRECATED_VERSION_X_6_0("Call the static
+	       // functions instead") on it, and on that header with those
+	       // flags g++ 14 reports 0 while clang 19 reports 2. A verdict
+	       // that is a property of the compiler rather than of the
+	       // source. 8.603.
+	       //
+	       // So this is a deprecated call, knowingly, and the only way
+	       // to be clean on both front ends is a QT_VERSION conditional
+	       // -- which would settle the question section 8.1 reserves,
+	       // about which Qt versions are supported, as a side effect of
+	       // quieting a warning in a diagnostic string. That decision is
+	       // not this function's to take.
 	       .arg(font.family()).arg(QFontDatabase().families().size());
 }
 
