@@ -670,6 +670,15 @@ test-sanitize:
 # condition: libFuzzer stops itself, and -rss_limit_mb stops it sooner if
 # it grows. Nothing here loops or spawns.
 #
+# -fno-sanitize-recover=undefined, WITHOUT WHICH THIS TARGET REPORTS
+# SUCCESS OVER A FINDING. UBSan recovers by default: it prints the
+# diagnostic and the program carries on, so libFuzzer never sees a crash,
+# never minimises the input, never writes an artifact, and exits 0. The
+# finding becomes a line of text in the middle of a log nobody reads.
+# Measured on a deliberately broken decoder: the recovering build exits 0
+# on an input that overflows an int, and the aborting build exits 1 and
+# saves the input. ASan already aborts; this is the UBSan half. 8.607.
+#
 # The corpus is COPIED into the build directory first, because libFuzzer
 # writes every input it discovers back into the directory it is given and a
 # run adds hundreds. The tree's copy stays the 19 named seeds.
@@ -683,6 +692,7 @@ fuzz:
 	@mkdir -p $(FUZZ_BUILD_DIR)/corpus $(FUZZ_BUILD_DIR)/artifacts
 	@cp tool/fuzz/corpus/* $(FUZZ_BUILD_DIR)/corpus/
 	@$(FUZZ_CXX) -g -O1 -fsanitize=fuzzer,address,undefined \
+		-fno-sanitize-recover=undefined \
 		-fno-omit-frame-pointer -std=gnu++17 -fPIC \
 		-I src/backend/ansi -I include \
 		$(shell pkg-config --cflags Qt6Core Qt6Gui) \

@@ -50524,3 +50524,39 @@ the instrument and the seeds rather than a finding: the next change to this
 parser can be fuzzed in one command instead of this being rebuilt from
 scratch. Whether that earns its keep is answered by the next change, not
 by this one.
+
+### 8.607 `make fuzz` reported success over a finding (2026-10-27)
+
+**The target added in 8.605 would have printed a real UndefinedBehavior
+Sanitizer finding into its log and exited 0.** Found an hour later, while
+building the harness for the input decoder, by running a deliberately
+broken decoder under the same flags and reading the exit code rather than
+the output.
+
+**UBSan recovers by default.** It prints the diagnostic and the program
+carries on. So libFuzzer never sees a crash: it does not stop, does not
+minimise the input, does not write an artifact, and exits 0. The finding
+becomes one line of text in the middle of a log of several thousand, and
+every automatic reading of that run -- the exit status, the artifact
+count, a grep for `ERROR:` or `SUMMARY:` -- says clean. ASan aborts and so
+was never in question; this is the other half of the same build flag.
+
+Measured, the decoder with its `kCsiParamCap` saturation removed, fed the
+input that overflows it:
+
+    recovering build (as committed)   exit 0, finding printed
+    -fno-sanitize-recover=undefined   exit 1
+    ... and in fuzzing mode           exit 1, input saved as an artifact
+
+**Neither of the two runs already taken was affected**, checked rather
+than assumed: `grep -c "runtime error"` is 0 over both the capability
+parser's 595,452 executions and the input decoder's 843,811. The results
+stand; what was wrong was the instrument's ability to report the next one.
+
+**The shape is this project's own vacuous-pass rule met from an angle it
+had not been met from.** A check that inspects nothing reports success; so
+does a check that inspects something, finds a fault, and has no way to
+fail. The second is worse, because the first leaves no evidence while the
+second leaves evidence nobody will read. **Read the exit code of a tool
+you have just installed, against an input you know is bad** -- which is
+the positive control, applied to the harness rather than to the code.
