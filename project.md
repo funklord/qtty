@@ -49657,3 +49657,67 @@ question, and it answers it confidently. The three builds disagreed, the
 shipped configuration is the one that counts, and the only reason the
 false lead was caught is that the claim was written as a prediction and
 then tested.
+
+### 8.596 An ASCII fast path for the width machinery (2026-10-27)
+
+**`render_once` on the section 11 fixture is about a quarter faster.**
+Measured by alternating two builds back to back rather than across runs:
+baseline 5.020 and 4.796 ms, fast path 3.599 and 3.595 -- **roughly 27 per
+cent off**, consistent over two cycles.
+
+**Profiled rather than guessed.** Callgrind with collection restricted to
+`*render_once*`, because the first profile was 22 per cent fontconfig and
+dynamic linking -- startup, once per process, excluded by instrument
+instead of by argument. What remained: allocation about 15 per cent,
+QString churn 8, **grapheme analysis 7.4** (`cluster_width` 3.9,
+`QUnicodeTools::initCharAttributes` 2.2, `to_clusters` 1.4), cell access
+6.7, `CellBuffer::fill` 3.3.
+
+**`to_clusters()` built a `QTextBoundaryFinder` over every string and a
+vector of per-cluster QStrings; `text_cells()` called it merely to COUNT.**
+For text in 0x20..0x7e there is nothing to analyse: no combining mark, no
+zero-width character, no East Asian Wide code point, no surrogate half, no
+regional indicator, no variation selector -- **one character is one cluster
+is one column**, exactly. So `text_cells()` returns the size, `to_clusters()`
+skips the analysis and sizes its vector once, and `cluster_width()` answers
+a single narrow character before walking it twice.
+
+**THE FIRST READING SAID IT WAS SLOWER AND THAT WAS THE MACHINE.** Against
+the earlier 2.886-3.003 ms baseline the new build measured 3.606-3.738 and
+looked like a 25 per cent regression. The baseline re-measured at 4.8-5.0
+on the same tree minutes later: this machine had drifted under a session's
+continuous builds. **A cross-run comparison was worthless and the
+alternation settled it** -- which is the rule 8.582 and 8.583 wrote down
+about within-run deltas, met again in the one direction that would have
+thrown the change away.
+
+**The predicate is deliberately not `control_chars.h`'s**, and the comment
+says so where somebody would merge them. They accept overlapping ranges and
+answer different questions -- "may this reach the wire" against "is every
+column here one narrow cell" -- and one rule with two spellings is a fault
+this session has already paid for twice.
+
+**Guarded, and heavily**: an entry makes the predicate accept every string,
+so `text_cells()` returns the code unit count for anything -- two wide
+clusters measure 2 where they are 4, a lone combining mark 1 where it is 0,
+a flag 4 where it is 2. It reddens **20 checks of 2451**, including a base
+and a mark, both flag checks, a format character, a mixed string adding
+widths rather than characters, the caret past wide text and the
+thirty-mark cap. That family is also what tests the correctness argument.
+
+**AND THE FIRST ENTRY NAMED A CHECK BY ITS WORDING, for the third time
+today.** It named *"and a wide cluster is two cells by default, read
+before any fixture or backend has had the chance to say otherwise"* --
+whose text reads like a measurement and whose condition is
+`Qtty::wide_clusters()`, a default FLAG this fault does not touch. It
+passed against broken code and the run said so.
+
+The same error twice before: an entry attached to *"a foreground reply
+alone republishes the ground"*, which exercises the right input and asks
+about the foreground where the gap was the background, and a regex that
+re-pointed the first `check =` line matching a string rather than the one
+belonging to its entry -- both in 8.594. **So: name a check by reading its
+CONDITION, not its message.** The message is written for somebody reading
+a pass line; the condition is what goes red. Three instances in one
+session is a habit, and `--validate` cannot see any of them: it checks
+that a name exists, not that it tests the fault.

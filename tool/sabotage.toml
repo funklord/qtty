@@ -8701,3 +8701,20 @@ into = "\t\treturn rgb_luminance(s_ground_fg.rgb()) < 128 ? dark_ink : light_ink
 count = 1
 check = "and dark ink with no ground stated implies a light ground, the same inference read the other way"
 
+[[sabotage]]
+# The ASCII fast path claims every string, so text_cells() returns the code
+# unit count for anything: two wide clusters measure 2 where they are 4, a
+# combining mark measures 1 where it is 0, and a flag 4 where it is 2.
+#
+# NAMED BY WHAT A CHECK ASSERTS, not by how it reads. The first version
+# named "and a wide cluster is two cells by default", whose text sounds
+# like a measurement and whose condition is Qtty::wide_clusters() -- a
+# default FLAG, which this fault does not touch. It passed against broken
+# code and the run said so. 8.596.
+name = "the narrow-ascii fast path accepts everything"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tif (u < 0x20 || u > 0x7e) return false;"
+into = "\t\tif (false) return false;"
+count = 1
+check = "two wide clusters are four cells in two code units"
+
