@@ -51442,14 +51442,47 @@ features; the drag paths include the ownership rules for a `QDrag` whose
 source is destroyed mid-loop, which is where a use-after-free would live.
 A Qt 5 regression there would be caught by nothing.
 
-Recovering them is not a macro change. It needs the suite to stop latching
-a thread quit before those blocks run -- which means either moving every
-check that quits to the end of the run, or running them in a child process,
-and the first is a reordering of a 17000-line file whose current order other
-checks depend on. **Whose decision that is: the copyright holder's**, since
-it is their instruction that the fixtures step over, and the cost is a
-restructuring rather than a fix. Recorded with the number so it can be
-decided once rather than re-measured.
+**AND THE LATCH IS MEASURED NOW, NOT ASSERTED, WHICH CHANGES WHAT IT WOULD
+TAKE.** `qt_compat.h` said nested loops "work in a process that has not
+issued a stray quit", which was the load-bearing claim in the whole entry
+and was carried by nobody. A twenty-line probe that sets up qtty and runs
+one nested loop:
+
+| | fresh process | after a stray quit |
+|---|---|---|
+| Qt 5.15.15 | `exec()` ran, 10 ms | **0 ms, latched** |
+| Qt 6.8.2 | ran, 10 ms | ran, 10 ms |
+
+So the claim holds exactly, and Qt 6 does not latch at all. **The gap is
+therefore recoverable by isolation rather than by restructuring**, which is
+not what this entry first said. A fresh Qt 5 process runs these fixtures;
+what makes them fail is only that this binary has quit by the time they are
+reached.
+
+Three options, cheapest first, with what each costs:
+
+- **Run the one binary twice on Qt 5 with complementary runtime skips.**
+  First pass as today, the quit-key checks running and the nested-loop
+  blocks stepping over; second pass with the quit-key checks skipped so no
+  quit is issued and the nested-loop blocks run. The union is full
+  coverage, the blocks are already guarded so the guards become run-time,
+  and nothing is reordered. It costs a second suite run on one arm and a
+  `make test` that knows to do it -- and it is self-checking, because a
+  quit site missed anywhere leaves those blocks failing loudly in the
+  second pass rather than passing quietly.
+- **Fork a child process for the quit-issuing checks.** No reordering
+  either, but process plumbing in the suite and a second place where a
+  check's output has to be collected.
+- **Move every check that quits to the end of the run.** A reordering of a
+  17000-line file whose current order other checks depend on, and the most
+  expensive of the three.
+
+**Whose decision that is: the copyright holder's**, since it is their
+instruction of 2026-10-20 that the fixtures step over, and the first option
+changes how `make test` behaves on one arm. Recorded with the measurement
+and the costs so it can be decided once rather than re-derived -- and noting
+that the instruction was a choice between stepping over and failing, which
+is not the same question as whether the coverage can be had another way.
 
 **AND THE DISPROOF IS THE POINT OF THE ENTRY.** Nothing changed in the
 library here and nothing needed to. What the twenty minutes bought is a

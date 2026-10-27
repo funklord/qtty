@@ -105,8 +105,10 @@ inline uint qHash(const QRect &r, uint seed = 0) {
 // fixtures step over on Qt 5 rather than failing.
 //
 // This is not a statement that nested loops are broken on Qt 5 -- they work
-// in a process that has not issued a stray quit. It is a statement about
-// this suite, which has.
+// in a process that has not issued a stray quit, measured: a fresh process
+// that sets up qtty runs a nested loop in 10 ms on both versions, and one
+// that has quit first returns in 0 ms on Qt 5 and still runs on Qt 6. It is
+// a statement about this suite, which has quit.
 //
 // MEASURED, so the step-over is not taken on trust. Forcing this to 1 and
 // running the Qt 5 arm un-skips 23 blocks, of which **19 fail**: the context
