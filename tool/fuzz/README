@@ -1,0 +1,10 @@
+Seed corpus for caps_fuzz.cpp: one real capability reply per file, named for
+the reply it is rather than numbered, so the covered shapes can be read off
+`ls` without decoding escapes.
+
+These are inputs, not fixtures -- nothing asserts on them. They exist so the
+fuzzer starts from valid structure instead of discovering `ESC [` from
+nothing, which is the difference between minutes and hours to first
+coverage. libFuzzer writes its own discoveries back into this directory
+when run against it; `make fuzz` points it at a copy under $(BUILD_DIR)
+instead, so a run does not add hundreds of files to the tree.

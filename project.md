@@ -50456,3 +50456,71 @@ rather than the input. The artifact answers it:
 and the binary is 48 MB against the ordinary build's few. **Ask the
 artifact whether it carries the instrument**, rather than reading the
 silence as evidence of what the instrument would have said.
+
+### 8.605 Fuzzing the one parser of bytes somebody else chose (2026-10-27)
+
+Everything else this library parses is its own: a widget tree, a QPainter
+call, a config value. **`scan_caps()` reads whatever the terminal answered**,
+and a terminal may answer anything -- a buggy one, an old one, a
+multiplexer rewriting replies, the far end of an ssh session that is not
+what it claims to be. That is the input class section 5 of a bug hunt puts
+last and highest, and it had no fuzzer.
+
+`term_caps.h` keeps the parser deliberately separate from the I/O so a test
+can stage a terminal, and **that same split is what made this possible in
+an afternoon**: a pure function from a `QByteArray` to a `TermCaps`, no
+descriptors and no timeouts. A design choice made for testability paid out
+for fuzzing without being asked to.
+
+**THE RESULT IS NOTHING, AND THE CONTROL IS WHY THAT MEANS SOMETHING.**
+
+    595,452 runs in 241 seconds, 2,470/s, peak RSS 566 MB
+    coverage 442 -> 522 edges, 2,207 new corpus units
+    0 crashes, 0 ASan/UBSan reports, 0 artifacts written
+
+A fuzzer that never reaches the parser reports exactly that, so the harness
+was made to fail on purpose. In a **scratch copy** of `term_caps.cpp` --
+never the tree -- the bound came off `read_int`'s loop:
+
+    while (i < b.size() && b[i] >= '0' && b[i] <= '9') {
+    while (b[i] >= '0' && b[i] <= '9') {        // the control
+
+The fuzzer found it from the seed corpus almost immediately, and the input
+it reduced to is three bytes: `ESC [ 3`, a digit at the end of the buffer.
+**And the shipped parser runs that same input clean**, which is the other
+half -- the control fails the way a real bounds fault would, and the code
+under test does not. The scratch copy and its artifacts were removed by
+name afterwards.
+
+**A NEW ARRANGEMENT, NOT JUST A NEW INPUT GENERATOR.** `scan_caps()` is
+documented as additive -- fields are only ever set, never cleared, so it
+may be called again as more bytes arrive -- and the header says replies
+over ssh routinely do not arrive together. So the target also feeds each
+buffer in **two pieces, at a cut the input itself chooses**, which fuzzes
+the split point rather than fixing it. A parser correct on a whole buffer
+and wrong on a split one is a fault no whole-buffer fixture can reach, and
+every fixture in the suite hands over whole buffers.
+
+**WHAT IS COMMITTED, AND WHY IT IS NOT IN `make check`.** The harness is
+`tool/fuzz/caps_fuzz.cpp` and the corpus is 19 real replies under
+`tool/fuzz/corpus/`, **named for the reply each one is** -- `da1-sixel`,
+`kitty-ok`, `osc4-palette-15`, `tmux-wrapped` -- so `ls` shows the covered
+shapes without decoding escapes. `make fuzz` builds and runs it.
+
+Two reasons keep it out of the gate, either disqualifying alone: it needs
+**clang**, libFuzzer being a clang runtime where the gate builds with g++;
+and it is **time-bounded rather than finite**, so it has no pass to report.
+`FUZZ_SECONDS` is the bound and is the whole termination condition.
+
+Two details that are easy to get wrong and are handled: libFuzzer **writes
+every input it discovers back into the directory it is given**, so the
+target copies the corpus into `$(BUILD_DIR)` first -- a 20-second run added
+413 files to the copy and none to the tree. And the missing-clang branch
+was **seen to fire** rather than assumed, with `FUZZ_CXX` pointed at a
+compiler that does not exist: one line of explanation and a non-zero exit.
+
+**The honest summary is that the yield so far is zero**, and the value is
+the instrument and the seeds rather than a finding: the next change to this
+parser can be fuzzed in one command instead of this being rebuilt from
+scratch. Whether that earns its keep is answered by the next change, not
+by this one.

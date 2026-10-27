@@ -29,6 +29,7 @@
 #   make tools-check  -- each tool's name in its .pro, fmake.toml, .gitignore
 #   make sabotage-check -- every sabotage anchor still matches its source
 #   make sabotage     -- break the code on purpose; every check must go red
+#   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make test-tray    -- publish a real tray icon on a private D-Bus session
 #   make test-pty     -- the suite on a real pseudo-terminal
 #   make coverage F=x -- line coverage for src/**/x.cpp
@@ -657,6 +658,41 @@ soak: tests-build
 test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
+
+# THE ONE PARSER OF BYTES SOMEBODY ELSE CHOSE, fuzzed. scan_caps() reads
+# whatever the terminal answered, and a terminal may answer anything;
+# everything else this library parses is its own widget tree. section 8.605.
+#
+# OUT OF `check`, for two reasons that are both disqualifying on their own.
+# It needs CLANG -- libFuzzer is a clang runtime and the gate builds with
+# g++ -- and it is time-bounded rather than finite, so it has no pass to
+# report. FUZZ_SECONDS is the bound and it is the whole termination
+# condition: libFuzzer stops itself, and -rss_limit_mb stops it sooner if
+# it grows. Nothing here loops or spawns.
+#
+# The corpus is COPIED into the build directory first, because libFuzzer
+# writes every input it discovers back into the directory it is given and a
+# run adds hundreds. The tree's copy stays the 19 named seeds.
+FUZZ_CXX      ?= clang++
+FUZZ_SECONDS  ?= 60
+FUZZ_BUILD_DIR ?= build-fuzz
+FUZZ_BIN       = $(FUZZ_BUILD_DIR)/caps_fuzz
+fuzz:
+	@command -v $(FUZZ_CXX) >/dev/null 2>&1 || \
+		{ echo "fuzz: $(FUZZ_CXX) is not installed; this target needs clang" >&2; exit 1; }
+	@mkdir -p $(FUZZ_BUILD_DIR)/corpus $(FUZZ_BUILD_DIR)/artifacts
+	@cp tool/fuzz/corpus/* $(FUZZ_BUILD_DIR)/corpus/
+	@$(FUZZ_CXX) -g -O1 -fsanitize=fuzzer,address,undefined \
+		-fno-omit-frame-pointer -std=gnu++17 -fPIC \
+		-I src/backend/ansi -I include \
+		$(shell pkg-config --cflags Qt6Core Qt6Gui) \
+		-o $(FUZZ_BIN) tool/fuzz/caps_fuzz.cpp src/backend/ansi/term_caps.cpp \
+		$(shell pkg-config --libs Qt6Core Qt6Gui)
+	@echo "fuzz: $(FUZZ_SECONDS)s over $$(ls tool/fuzz/corpus | wc -l) seed(s)"
+	@ASAN_OPTIONS=detect_leaks=1 QT_QPA_PLATFORM=offscreen $(FUZZ_BIN) \
+		$(FUZZ_BUILD_DIR)/corpus -max_total_time=$(FUZZ_SECONDS) \
+		-rss_limit_mb=2048 -max_len=4096 -print_final_stats=1 \
+		-artifact_prefix=$(FUZZ_BUILD_DIR)/artifacts/
 
 # What `make install` actually lays down, and what `make uninstall` takes back.
 # Neither had ever been run by anything: a packaging target is exactly the kind
@@ -1743,7 +1779,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         tools-check sabotage-check FORCE
