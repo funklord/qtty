@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2454 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2455 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -50130,3 +50130,82 @@ in `qtty/cell.h` that an application may fill in to append its own
 placement, so changing it is an API break and **the holder's decision**,
 not a harmonizing edit. Recorded with the measurement so it can be decided
 once.
+
+### 8.601 fill() sanitised the glyph and not the geometry (2026-10-27)
+
+**The lens came from 8.599's bug rather than from a list.** That fault was
+a field carried where it should have been derived -- a cache replaying a
+whole `Cell` where the composer had assigned half of one. Asking where
+else this tree carries a `Cell` field that the destination ought to decide
+found `CellBuffer::fill()` in one grep.
+
+`fill()` copies the template's `width` into every cell of the rectangle.
+Two reproducers, both from the natural way to say "fill this region with
+that style", which is to read a cell back out of the buffer:
+
+    Cell tmpl = b.at(2, 0);   // a wide LEAD: width 2
+    f.fill(QRect(0, 0, 6, 1), tmpl);
+    -> widths [2 2 2 2 2 2], sum 12, on a buffer of 6 columns,
+       with no continuation cell anywhere
+
+    Cell tmpl = b.at(3, 0);   // its CONTINUATION: width 0, no glyph
+    f.fill(QRect(0, 0, 6, 1), tmpl);
+    -> widths [0 0 0 0 0 0], sum 0; to_text() emits nothing at all
+
+The first is the corruption `put_cluster()` is hardened against at the
+buffer's own edge, and which this function's own comment describes -- "a
+cell claiming two columns beside one claiming its own, so the row renders
+one column wider than the buffer" -- at one column rather than six. The
+second is worse than wrong: the filled region is invisible, because
+`to_text()` and the wire both skip a width-0 cell.
+
+**8.578 closed the glyph route through this function and left the geometry
+route open.** That record is directly above this one in the same function:
+`fill()` wrote the `Cell` verbatim, so a control reached the wire, and the
+fix sanitises `ch` once per fill rather than once per cell. The same
+sentence was true of `width` and nobody asked.
+
+**The fix is that a fill writes one cell per cell, so the glyph decides
+the width and not the template**; and a glyph that cannot occupy exactly
+one cell is substituted with a space, by the same argument that
+substitutes a control -- a fill has one cell to put it in.
+
+**WHY THE SUITE COULD NOT SEE IT, which is the part worth keeping.** This
+buffer already has a written invariant for exactly this corruption: a
+`whole()` predicate asserting that no lead lacks its continuation, no
+continuation lacks its lead, and a width-2 cell holds a two-column
+cluster. It is swept over six write paths -- three `fill()`s, two
+`set_glyph()`s, a `put_cluster()` and a `text()` -- and every one of them
+passes `Cell{}`.
+
+So the invariant was right, the sweep was right, and **the one arrangement
+in which the question exists was the one the fixture never built.** A
+template's width can only differ from 1 if the template came from
+somewhere, and every case constructed its own. Two cases were added that
+hand `fill()` a cell read back out of a buffer, and the existing predicate
+catches both without changing a line of it.
+
+**And the pair invariant is not sufficient on its own**, which the fix
+made visible rather than the test. Its rules are about pairs, so a cell of
+width 1 carrying no glyph breaks none of them: structurally legal, renders
+nothing, row comes out short. That is exactly what correcting the width
+alone would have left -- the continuation template's empty `ch` surviving
+into a width-1 cell. A second check sweeps the three templates that reach
+`fill()` illegally plus the legal one and asserts the rule instead of the
+three repaired cases: whatever is handed over, every cell of the rectangle
+holds one glyph one column wide.
+
+**Reachable only through the public entry, and that is not a reason to
+leave it.** Every one of the seven `fill()` call sites in this library
+builds a fresh `Cell`, whose width is 1, so nothing here was broken.
+`CellBuffer::fill()` is in `qtty/cell.h` and an application may hand it
+anything, and the idiom that breaks it -- a style read back out of the
+buffer -- is the obvious one rather than a contrived one.
+
+Two sabotage entries, because the fix has two halves in two statements and
+either alone leaves a real fault. Restoring `safe.width = v.width` reddens
+the pair invariant **and the one-column check with it**; disabling the
+glyph substitution reddens **only** the one-column check. That asymmetry
+is the proof the second check is not redundant: the width fault is visible
+to both, and the glyph fault is visible to one -- so a tree carrying only
+the pair invariant would have accepted the half-fix.

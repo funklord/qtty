@@ -316,9 +316,36 @@ QString elide_to_cells(const QString &s, int cells, Qt::TextElideMode mode) {
 // verbatim, which made it a public route for a control into the buffer and
 // from there to the wire -- measured, a Cell holding BEL filled four cells
 // and sent four 0x07. 8.578.
+// AND THE GEOMETRY IS SANITISED WITH THE GLYPH, which it was not. A fill
+// writes ONE cell per cell, so the width belongs to the glyph being written
+// and not to the template -- and the template is routinely a cell read back
+// out of a buffer, which is the natural way to say "fill this region with
+// that style": `Cell v = buf.at(x, y)`. A wide LEAD hands over width 2 and a
+// CONTINUATION hands over width 0, and both were copied verbatim into every
+// cell of the rectangle.
+//
+// Measured on a six-column row. From a wide lead: six cells each claiming
+// two columns with no continuation anywhere, a row that says 12 columns for
+// a buffer of 6, which is the corruption put_cluster() is hardened against
+// at the buffer's own edge and the comment above describes at one column
+// rather than six. From a continuation: six cells of width 0 with no glyph,
+// which to_text() and the wire both skip entirely, so the filled region was
+// not merely wrong but invisible.
+//
+// Every caller in this library passes a freshly built `Cell`, whose width is
+// 1 by default, so this was reachable only through the public entry -- and
+// the suite's own pair invariant could not see it, because all six of the
+// write paths it sweeps pass `Cell{}` and none of them asks what a
+// template's own width does. 8.601.
+//
+// A glyph that cannot occupy exactly one cell is substituted the way a
+// control is, by the same argument: a fill has one cell to put it in.
 void CellBuffer::fill(const QRect &r, const Cell &v) {
 	Cell safe = v;
 	safe.ch = safe_glyph(v.ch);
+	if (safe.ch.isEmpty() || cluster_width(safe.ch) != 1)
+		safe.ch = QStringLiteral(" ");
+	safe.width = 1;
 	for (int y = r.top(); y <= r.bottom(); ++y) {
 		clear_wide_partner(r.left(), y);
 		clear_wide_partner(r.right(), y);

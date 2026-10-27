@@ -8742,3 +8742,29 @@ into = "\t\t\tif (false) {"
 count = 1
 check = "a translucent overlay over an indexed cell background is composited over the colour that index stands for, not over the terminal's own ground"
 
+[[sabotage]]
+# fill() goes back to copying the template's width verbatim, so a caller
+# filling a region with a style read out of the buffer -- Cell v = at(x, y)
+# -- writes a run of cells each claiming two columns with no continuation
+# anywhere, or a run of width-0 cells the wire skips. 8.601.
+#
+# The pair invariant is the check that sees it, and it sees it only because
+# two cases were added that hand fill() a template with a width of its own;
+# the six that were there pass Cell{} and cannot ask.
+name = "fill carries the template's width into every cell"
+file = "src/core/cell_buffer.cpp"
+find = "\tsafe.width = 1;"
+into = "\tsafe.width = v.width;"
+count = 1
+check = "every write path across a two-column cluster leaves the pair whole -- no lead without its continuation and no continuation without its lead"
+
+[[sabotage]]
+# fill() stops substituting a glyph it has no room for, so the continuation
+# template's empty ch survives into a width-1 cell: structurally legal,
+# renders nothing, and the row emits fewer columns than it has. 8.601.
+name = "fill keeps a glyph that cannot occupy one cell"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (safe.ch.isEmpty() || cluster_width(safe.ch) != 1)\n\t\tsafe.ch = QStringLiteral(\" \");"
+into = "\tif (false)\n\t\tsafe.ch = QStringLiteral(\" \");"
+count = 1
+check = "a filled cell holds one glyph one column wide, whatever the template's own width and glyph were"

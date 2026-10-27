@@ -139,12 +139,71 @@ int suite_cells() {
 		after("text over the lead", [](CellBuffer &b) {
 			b.text(2, 0, QStringLiteral("xy"), Color(), Color(), Attrs());
 		});
+		// AND THE TEMPLATE'S OWN WIDTH, which none of the six above can ask
+		// about: every one of them passes `Cell{}`, whose width is 1, so the
+		// one arrangement where the question exists is the one the fixture
+		// never built. A caller saying "fill this region with that style"
+		// reads a cell back out of the buffer, and a wide lead hands over
+		// width 2 while a continuation hands over 0. 8.601.
+		//
+		// Filling cells 0 and 1 rather than the pair itself, so what is
+		// under test is the template travelling and not the pair being
+		// overwritten -- the pair at 2 and 3 must still be whole afterwards
+		// as well, which `whole()` checks over the entire row.
+		after("fill from a wide lead's style", [](CellBuffer &b) {
+			const Cell tmpl = b.at(2, 0);            // width 2
+			b.fill(QRect(0, 0, 2, 1), tmpl);
+		});
+		after("fill from a continuation's style", [](CellBuffer &b) {
+			const Cell tmpl = b.at(3, 0);            // width 0, no glyph
+			b.fill(QRect(0, 0, 2, 1), tmpl);
+		});
 		printf("info: %d of %d writes across a two-column pair left the"
 		       " buffer legal\n", kept, cases);
-		CHECK(cases == 7 && kept == cases,
+		CHECK(cases == 9 && kept == cases,
 		      "every write path across a two-column cluster leaves the pair"
 		      " whole -- no lead without its continuation and no"
 		      " continuation without its lead");
+		// AND A FILLED CELL OCCUPIES EXACTLY ONE COLUMN, which `whole()`
+		// above does not say and cannot. Its rules are about PAIRS: a lead
+		// needs its continuation and a continuation needs its lead. A cell
+		// of width 1 carrying no glyph at all breaks neither, passes every
+		// structural test, and renders nothing -- so the row comes out
+		// short and every column after it is off by one. That is exactly
+		// what fixing the width alone would have left behind, the
+		// continuation template's empty `ch` surviving into a width-1
+		// cell.
+		//
+		// Swept over the three templates that reach fill() illegally and
+		// the one that does not, so what is asserted is the rule rather
+		// than three repaired cases: whatever a caller hands over, every
+		// cell of the rectangle holds one glyph one column wide. 8.601.
+		{
+			CellBuffer src(6, 1);
+			src.put_cluster(2, 0, wide, Color(), Color(), Attrs());
+			Cell bel;
+			bel.ch = QString(QChar(0x07));
+			const Cell templates[] = {
+				src.at(2, 0),                   // a wide lead: width 2
+				src.at(3, 0),                   // a continuation: width 0
+				bel,                            // a control: 8.578's case
+				Cell{},                         // the legal one, as control
+			};
+			int bad = 0;
+			for (const Cell &tmpl : templates) {
+				CellBuffer f(4, 1);
+				f.fill(QRect(0, 0, 4, 1), tmpl);
+				for (int x = 0; x < 4; ++x) {
+					const Cell &c = f.at(x, 0);
+					if (c.width != 1 || c.ch.isEmpty()
+					    || cluster_width(c.ch) != 1) ++bad;
+				}
+			}
+			CHECK(bad == 0,
+			      "a filled cell holds one glyph one column wide, whatever"
+			      " the template's own width and glyph were");
+		}
+
 		// AND THE GLYPH ARRIVES, which the invariant alone does not say: a
 		// write that cleared both halves and put nothing down would pass
 		// the check above. set_glyph() is the new path and the one with no
