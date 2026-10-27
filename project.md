@@ -51457,3 +51457,55 @@ closed branch: the next session to notice that a position-blind macro guards
 position-dependent behaviour does not have to run this, because the answer
 is written down with its numbers. A refusal to accept the comfortable story
 would have left the question open; running it removed it.
+
+### 8.619 A skip that blamed the machine for a property of the Qt (2026-10-27)
+
+8.618 listed the 36 checks the Qt 5 arm steps over and treated the two
+font ones as environmental. They were not, and the lens that found it is
+8.616's unchanged: **a figure attributed to the wrong thing.**
+
+The leading detector, `grid_font_leading()`, catches a font whose
+`lineSpacing()` exceeds its `height()` -- which puts every line of a text
+editor on two rows, the fault fuzznet reported. Its check asserted the
+partition first (this machine's grid font has no leading, so a detector that
+only ever sees zero cannot be told from a broken one) and then fired it at
+`gallant12x22`, stepping over when that font had no leading, under the
+message **"no font with leading is installed"**.
+
+**THAT MESSAGE IS FALSE ON QT 5**, and measuring the whole font database
+rather than the one font says how far:
+
+| at 16 px, 2334 families | Qt 5.15.15 | Qt 6.8.2 |
+|---|---|---|
+| families reporting leading | **1897** | 95 |
+| `gallant12x22` | height 17.00, spacing 17.00, **0.00** | height 16.00, spacing 17.44, **+1.44** |
+
+So the arm with twenty times as many leaded families was the arm that said
+none was installed. `gallant12x22` is simply one of the fonts where Qt 5's
+`height()` rounds to meet its `lineSpacing()`, and the check had hard-coded
+it. **The skip blamed the font set for a property of the Qt version**, which
+is the shape worth keeping: an environmental explanation is always
+available, and this one sent a reader to install a font they could not have
+found, since no font would have helped while one font was named.
+
+**FIXED BY TRYING SEVERAL, fixed pitch first** -- the fault being detected
+is an editor in a monospace grid -- and the Qt 5 arm now runs the two checks
+it had never run, on `Classic Console` at height 14.00 against spacing
+13.00. PASS went 2423 to 2425 and SKIP 36 to 34; Qt 6 is unchanged at 2461
+and still picks `gallant12x22`.
+
+**AND EACH CANDIDATE MUST RESOLVE TO ITSELF, which is not ceremony.** An
+absent family resolves to a substitute and the substitute's metrics are not
+evidence about the family named. Measured on this machine, `Atari800`,
+`D050000L` and `C059` all report leading and none of them resolves -- Qt 5
+lists the first with its quotation marks inside the name -- so a fixture
+chosen on the metric alone would have tested whatever the substitution
+happened to produce and reported the substitute's name in the message. The
+loop requires `QFontInfo(f).family()` to equal what was asked for before it
+will measure anything.
+
+**THE SKIP IS HONEST NOW RATHER THAN REMOVED.** It still exists, because a
+machine with none of the four installed is a real machine, and it now says
+that no candidate resolves with leading *under this Qt* rather than making
+a claim about what is installed. A check that cannot run should say what it
+could not find.

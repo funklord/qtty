@@ -730,20 +730,55 @@ int suite_runtime() {
 		//
 		// The partition is asserted first, because this machine's grid
 		// font has no leading and a check that only ever sees zero cannot
-		// tell a working detector from a broken one. gallant12x22 carries
-		// 1.44 px at this size -- 2 of 103 fixed-pitch families here do --
-		// and if it is ever absent this says so rather than passing.
+		// tell a working detector from a broken one.
 		CHECK(grid_font_leading(mono).isEmpty(),
 		      "the grid font lays its lines out one to a row");
-		QFont leaded(QStringLiteral("gallant12x22"));
-		leaded.setPixelSize(16);
-		const QFontMetricsF lfm(leaded);
-		if (qAbs(lfm.lineSpacing() - lfm.height()) < 0.01) {
-			printf("SKIP: no font with leading is installed, so "
-			       "the detector cannot be shown to fire\n");
-			printf("SKIP: no font with leading is installed, so "
-			       "what it says the leading costs is untested\n");
+
+		// SEVERAL CANDIDATES, NOT ONE, and the reason is measured. This
+		// named gallant12x22 alone, which carries 1.44 px of leading on
+		// Qt 6 -- and 0.00 on Qt 5, where height() answers 17 rather than
+		// 16 so the two metrics coincide. The whole block therefore stepped
+		// over on Qt 5 under the message "no font with leading is
+		// installed", which was not true of this machine: of 2334 families
+		// here, 1897 report leading on Qt 5 against 95 on Qt 6. The skip
+		// blamed the font set for a property of the Qt, and the detector
+		// went unexercised on that arm for as long as it existed.
+		//
+		// Fixed pitch first, because the fault being detected is an editor
+		// in a monospace grid, then two that carry leading on both arms.
+		// EACH MUST RESOLVE TO ITSELF: an absent family resolves to a
+		// substitute, and the substitute's leading is not evidence about
+		// the family named -- measured, Atari800 and C059 do not resolve
+		// here while reporting leading, so taking the metric alone would
+		// have tested an accident.
+		static const char *const leaded_candidates[] = {
+			"gallant12x22", "Classic Console",
+			"DejaVu Math TeX Gyre", "Bitstream Charter",
+		};
+		QFont leaded;
+		QString leaded_name;
+		for (const char *cand : leaded_candidates) {
+			const QString want = QString::fromLatin1(cand);
+			QFont f(want);
+			f.setPixelSize(16);
+			if (QFontInfo(f).family() != want) continue;
+			const QFontMetricsF m(f);
+			if (qAbs(m.lineSpacing() - m.height()) < 0.01) continue;
+			leaded = f;
+			leaded_name = want;
+			break;
+		}
+		if (leaded_name.isEmpty()) {
+			printf("SKIP: no candidate family resolves with leading under "
+			       "this Qt, so the detector cannot be shown to fire\n");
+			printf("SKIP: no candidate family resolves with leading under "
+			       "this Qt, so what it says the leading costs is "
+			       "untested\n");
 		} else {
+			const QFontMetricsF lfm(leaded);
+			printf("info: leading fixture is '%s', height %.2f px and line "
+			       "spacing %.2f px\n", qPrintable(leaded_name),
+			       lfm.height(), lfm.lineSpacing());
 			const QString lead = grid_font_leading(leaded);
 			CHECK(!lead.isEmpty(),
 			      "and a font whose leading is not zero is reported");
