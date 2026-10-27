@@ -49,6 +49,21 @@ public:
 private:
 	void sync_gui_twin();
 	QImage img_;
+	// THE OPACITY APPLIED, REMEMBERED. image() converted the format and
+	// painted the whole image on every call, and compose asks once a frame:
+	// measured on a 200x60 terminal, a translucent full-screen overlay cost
+	// 4.94 and 4.87 ms a frame against 4.08 and 4.21 for an opaque one, so
+	// about 0.75 ms of every frame was spent re-deriving a picture from
+	// inputs that had not changed.
+	//
+	// KEYED ON WHAT THE RESULT DEPENDS ON, which is the whole of it: the
+	// source image's identity and the opacity. Both are invalidated where
+	// they are set rather than compared on the way out, so a cache cannot
+	// outlive either -- a key that omits one of its inputs is the fault the
+	// 2026-10-26 cache sweep went looking for and did not find here. 8.598.
+	mutable QImage faded_;
+	mutable qint64 faded_key_ = 0;
+	mutable qreal faded_opacity_ = -1.0;
 	QRectF rect_;                              // see covers_terminal()
 	bool whole_ = true;                        // until set_rect() says otherwise
 	qreal opacity_ = 1.0;

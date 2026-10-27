@@ -30,7 +30,16 @@ Overlay::~Overlay() {
 	delete gui_twin_;
 }
 
-void Overlay::set_image(const QImage &rgba) { img_ = rgba; sync_gui_twin(); }
+// BOTH SETTERS DROP THE CACHE, which is belt and braces beside the key and
+// deliberately so: cacheKey() is a property of a QImage's data, and an image
+// mutated in place through a shared handle is the case a key alone would
+// miss. Dropping it here costs one assignment on a call an application makes
+// rarely. 8.598.
+void Overlay::set_image(const QImage &rgba) {
+	img_ = rgba;
+	faded_ = QImage();
+	sync_gui_twin();
+}
 // The sentinel for "the whole terminal" is a DEFAULT-CONSTRUCTED rect, not
 // any empty one. It used to be QRectF::isNull(), which ignores position, so
 // an application whose arithmetic produced 0x0 at (5,5) got a sheet over the
@@ -51,19 +60,32 @@ void Overlay::set_rect(const QRectF &cell_rect) {
 		         cell_rect.x(), cell_rect.y());
 	sync_gui_twin();
 }
-void Overlay::set_opacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); sync_gui_twin(); }
+void Overlay::set_opacity(qreal o) {
+	opacity_ = qBound(0.0, o, 1.0);
+	faded_ = QImage();
+	sync_gui_twin();
+}
 void Overlay::set_z(int z) { z_ = z; }
 void Overlay::show() { visible_ = true; sync_gui_twin(); }
 void Overlay::hide() { visible_ = false; sync_gui_twin(); }
 
 QImage Overlay::image() const {
 	if (opacity_ >= 1.0) return img_;
+	// Remembered rather than re-derived: see the members in overlay.h for
+	// what this cost per frame and why the key is the image's identity and
+	// the opacity and nothing else. 8.598.
+	if (!faded_.isNull() && faded_key_ == img_.cacheKey()
+	    && faded_opacity_ == opacity_)
+		return faded_;
 	QImage out = img_.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 	QPainter p(&out);
 	p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
 	p.fillRect(out.rect(), QColor(0, 0, 0, int(opacity_ * 255)));
 	p.end();
-	return out;
+	faded_ = out;
+	faded_key_ = img_.cacheKey();
+	faded_opacity_ = opacity_;
+	return faded_;
 }
 
 QVector<Overlay *> Overlay::visible_overlays() {

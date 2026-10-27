@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2451 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2452 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -49780,3 +49780,76 @@ first and `render_once()` second, so the render runs with caches the
 compose has just warmed. That can only make the render look cheaper, so
 compose's true overhead is **at most** the 0.03 ms observed -- the
 conclusion survives the bias rather than depending on its absence.
+
+### 8.598 A full-screen overlay doubles the frame (2026-10-27)
+
+**8.597's figure was conditional and said so; following that caveat is
+what found this.** That record measured compose's overhead above a render
+at 0.03 ms on a fixture with no popup, no overlay and no placement, and
+wrote that compose's extra work "is exactly what those add" and that the
+figure "says nothing about it". Measured now, with the conditions
+interleaved within one run:
+
+    render_now(), no overlay             4.374, 4.446, 4.427, 4.596 ms
+    with an opaque full-screen overlay   8.453, 8.651  (+4.08, +4.21)
+    with a translucent one               9.371, 9.466  (+4.94, +4.87)
+
+**So a frame carrying a full-screen overlay spends over half of section
+11's 16 ms budget**, and all of it re-derives the same picture from inputs
+that have not changed.
+
+**TWO MEASUREMENTS WERE WRONG BEFORE ONE WAS RIGHT, and both failures are
+the instructive part.** The first timed `Compositor::compose()` with an
+overlay shown and reported a **negative** delta -- because compose does
+not composite overlays at all: `compose_halfblocks()` is called from
+`FrameScheduler::render_now()`. **A negative delta is what measuring a
+function that does not do the work looks like.** The second measured
+plain, then popup, then overlay, then plain again -- and the closing plain
+came in 0.1 ms BELOW the opening one, which is the size of the effect
+being hunted. Interleaving the two conditions makes that drift cancel
+rather than accumulate, and only then were the deltas stable and
+same-signed.
+
+**The translucent penalty is fixed here; the larger half is not.**
+`Overlay::image()` converted the format and repainted the whole image on
+every call -- a 2000x1140 ARGB32 surface for this fixture -- and compose
+asks once a frame. It remembers the faded copy now, keyed on the source
+image's identity and the opacity, and both setters drop it as well:
+`cacheKey()` is a property of a QImage's data, and an image mutated in
+place through a shared handle is the case a key alone would miss. The
+penalty is gone -- a translucent overlay now costs **+4.32 ms** where an
+opaque one costs +4.15, the same within noise, against +4.9 before.
+
+**A NEW FAULT NEEDED A NEW CHECK, in the same commit as the cache.** The
+existing assertion reads `image()` **once**, after the first
+`set_opacity()`, and a cache keyed without the opacity answers that call
+correctly -- a pass condition that admits the failure. The check beside it
+now reads `image()` at two opacities and compares: alpha 180 at 0.9
+against 20 at 0.1, on both arms.
+
+**AND NO ENTRY CAN DEFEND IT, which is defence in depth rather than a
+gap.** The obvious one drops the opacity from the cache's key -- and it
+was written, run, and reported *the named check PASSED against broken
+code*, because `set_opacity()` clears the cache outright as well. Either
+guard alone is sufficient: remove the key's test and the setter saves it,
+remove the setter's and the key saves it, and the two live in different
+functions so **no single anchor can reach both**. The entry is removed
+rather than kept green over nothing, which is 8.595's resolution for the
+`QByteArray` bounds clauses arrived at from the opposite direction -- there
+a clause nothing could observe, here two clauses that cover each other.
+
+The check still earns its place: it catches a cache keyed on nothing, and
+invalidation gone from both places at once. What it cannot do is prove
+either guard individually, and the record says so rather than implying a
+proof the spec cannot give.
+
+**WHAT IS LEFT IS THE SAMPLING ITSELF, about 4.15 ms a frame, and it is
+not taken here.** `compose_halfblocks()` area-samples the image for every
+cell -- roughly 190 pixel reads across a 10x19 cell's two halves, some 2.3
+million reads for a 200x60 terminal -- every frame, from an image and a
+geometry that typically have not moved. A cache would have to key on the
+image, the cell rect, the cell size **and the terminal ground**, which
+8.517 re-asks at every handover, so it is a change to the compositing path
+rather than a local one. **The number is recorded so the decision does not
+need re-taking**: it is the largest single cost this session has measured
+anywhere, and the frame that pays it is already at 8.5 ms of 16.

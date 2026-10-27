@@ -1443,6 +1443,25 @@ int suite_graphics() {
 		CHECK(high == 1.0 && o.opacity() == 0.0,
 		      "and an opacity outside the range is clamped rather than "
 		      "wrapped around the alpha byte");
+		// AND A SECOND OPACITY IS APPLIED, not the first one remembered.
+		// image() caches the faded copy since 8.598 -- it was converting the
+		// format and repainting the whole image on every call, about 0.75 ms
+		// of every frame carrying a translucent full-screen overlay -- and a
+		// cache keyed without the opacity would answer the first call
+		// correctly and every later one with a stale picture. The check above
+		// reads image() once and cannot see that; this reads it twice at two
+		// opacities and compares, which is the one question a cache can get
+		// wrong here.
+		o.set_opacity(0.9);
+		const int faint = qAlpha(o.image().pixel(1, 1));
+		o.set_opacity(0.1);
+		const int strong = qAlpha(o.image().pixel(1, 1));
+		printf("info: alpha at opacity 0.9 is %d and at 0.1 is %d\n",
+		       faint, strong);
+		CHECK(faint > strong,
+		      "and a second opacity is applied rather than the first one"
+		      " remembered, which is what a cache keyed without it would do");
+
 		o.set_opacity(0.5);                   // as the cases below expect
 		Overlay o2;
 		o2.set_image(img); o2.set_z(-1); o2.show();
