@@ -50875,3 +50875,85 @@ typecheck and fail only at link. Catching that needs the real build, which
 needs clang, which is the trade this declines. Whether `make check` should
 be allowed to require clang is the holder's, and is the same decision as
 the `-Werror` gate in 8.588 wearing different clothes.
+
+### 8.612 termpaint: the premise lapsed, and the decision is open (2026-10-27)
+
+`doc/design.md` §5.1 gives termpaint two jobs and neither is "be the
+implementation":
+
+> It is the yardstick the four native backends are measured against, and
+> the default for new products.
+
+Decision **D6** chose "backend interface, four adapters" over "adopt
+termpaint immediately", to preserve the accumulated escape-decoding bug
+fixes of four existing products, with convergence deferred to Phase 5 and
+marked **optional**. `src/backend/termpaint/README.md` has said since
+`73fdee6` that it is "not yet implemented" and that the in-tree
+`AnsiBackend` "covers Phase 0/2 needs until this lands".
+
+**UPSTREAM, MEASURED 2026-10-27** -- these figures age, so they carry the
+date and the method, which was `gh api repos/termpaint/termpaint`, its
+commit list, and `apt-cache`:
+
+| | |
+|---|---|
+| licence | **BSL-1.0** (Boost), permissive, no publication duty |
+| latest release | **0.3.1**, version bumped 2025-04-01; two tags ever |
+| last commit | **2026-01-27**, nine months before this was written |
+| commits since that release | **four**, all portability: a `dup()` check, a Fedora 44 compiler error, riscv64/musl defaults, a meson test toggle |
+| open issues / stars / commits | 0 / 22 / 563, created 2020-11-26, not archived |
+| packaged | `libtermpaint-dev 0.3.1-1` in the Devuan repository |
+| upstream on its own stability | "designed for ABI stability **(but breaking changes are still happening)**" |
+
+**THE LICENCE IS THE PLEASANT SURPRISE AND IT IS NOT THE OBSTACLE.**
+BSL-1.0 carries no publication duty, which matters because **D8** rejected
+a Qt fork specifically over "LGPLv3 publication duty + rebuild per release
+across four products". Nothing about termpaint's terms argues against it.
+
+**WHAT ARGUES AGAINST IT IS THE OTHER TWO ROWS.** Four commits in eighteen
+months, every one a build or portability fix rather than feature work, and
+one release in that span. That is maintenance, not abandonment -- but for
+a BACKEND it is the awkward combination, because a terminal-compatibility
+fault found here would wait on that cadence or be carried as a patch, and
+this workspace has priced carrying patches on a vendored dependency
+elsewhere. And the instability does not have to be inferred: **upstream
+states it.**
+
+**THE PREMISE HAS LAPSED RATHER THAN THE PLAN HAVING FAILED.** termpaint
+was the yardstick for four native adapters, and `src/backend/legacy/` is
+still a README describing `app1/` and `app2/` that were never written. The
+thing it was to measure does not exist, so the role is vacant rather than
+unfilled.
+
+**AND `AnsiBackend` STOPPED BEING THE STOPGAP WITHOUT ANYTHING SAYING SO.**
+It now carries capability negotiation through DECRQM and XTGETTCAP, four
+graphics protocols, SGR mouse, bracketed paste, the kitty keyboard
+protocol, a saturating bound on CSI parameters, and control-character
+containment at every wire exit -- behind 2455 checks, a fuzz harness with
+a positive control (8.606), and clean ASan, UBSan and valgrind runs
+(8.604, 8.609). **Adopting termpaint now would invert D6's own reasoning**:
+D6 said do not discard accumulated bug fixes, and the accumulated fixes
+are in `AnsiBackend`.
+
+**THERE IS ALSO A BETTER YARDSTICK ALREADY HERE.** termpaint's first job
+was to be the thing the backends are measured against. This tree measures
+against **real terminals** instead -- `make test-negotiate` asks a second
+terminal what qtty concludes from its replies, and section 7's beerssh
+interoperability table records what named terminals actually do. Measuring
+against real terminals beats measuring against another library's
+abstraction of them, so the stronger half of that job is done and not by
+termpaint.
+
+**THE OPTION, THE COST, AND WHOSE IT IS.** The option is to retire
+`src/backend/termpaint/` and `src/backend/legacy/` as lapsed plans and
+amend design.md §5.1 to say `AnsiBackend` became the reference rather than
+the stopgap. The cost is that design.md §5.1 and D6 then describe a
+structure the project has decided against, and a future fifth product with
+no TUI layer loses a named default -- though it would get `AnsiBackend`,
+which is what it would get today anyway. **The decision is the copyright
+holder's**: it is a change to design.md's architecture and to what the
+project says it is building, which is not a harmonizing edit and not this
+record's to take. What is recorded here is the measurement, so that the
+decision is made against figures rather than against an impression, and so
+that the next reader of those two READMEs knows they describe an option
+rather than a commitment.
