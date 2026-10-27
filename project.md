@@ -3291,10 +3291,15 @@ gates both -- has four holes that block everything downstream.**
 and `src/core/color.cpp`. Grapheme clusters via `QTextBoundaryFinder`,
 wide-cell lead and continuation with partner clearing in **both**
 directions (the corruption case design.md §5.2 names), and a run-based
-`diff()`. Three gaps, one of them since closed:
+`diff()`. Three gaps, two of them since closed:
 
-- Quantisation is **RGB nearest, not CIELAB**, which design.md §6
-  requires.
+- ~~Quantisation is **RGB nearest, not CIELAB**, which design.md §6
+  requires.~~ **Done**, and this entry outlived it by long enough that the
+  same document said both things at once -- see the CIELAB entry further
+  down this section, which records the change and measures it
+  (rgb(40,120,50) went to grey 238 and now goes to green 22). `to_lab()`
+  and `candidate_lab()` in `src/core/color.cpp` are what `to_xterm256()`
+  actually calls. 8.610.
 - ~~`Attr` has no `Blink`, though design.md §5.2 lists it.~~ **Done**,
   and the enum value was the small half -- see 8.238. `Blink` is 0x40,
   appended rather than placed where §5.2 lists it, because inserting a
@@ -50706,3 +50711,121 @@ preprocessor giving up on Qt's platform detection rather than a clean
 result -- unknown `Q_DECLARE_*` macros, then byte order, then the OS, then
 `SIZE_MAX`. **clang and clang-tidy both compile the real translation units
 and so cannot be silent vacuously; cppcheck can, and was.**
+
+### 8.609 gcc -fanalyzer: unusable here, and it says so loudly (2026-10-27)
+
+The last of the static-analysis instruments to try, and the only one that
+answers in a way needing no triage at all.
+
+**Three files analysed, 123 findings, none of them about this project.**
+
+| file | `-Wanalyzer-*` warnings | in this project's code |
+|---|---|---|
+| `core/cell_buffer.cpp` | 22 | 0 |
+| `backend/ansi/ansi_backend.cpp` | 51 | 0 |
+| `graphics/graphics.cpp` | 50 | 0 |
+
+Every one points into Qt's inlined headers -- `qarraydatapointer.h`,
+`qhash.h`, `qatomic_cxx11.h` -- as `use-of-uninitialized-value`,
+`malloc-leak` or `null-argument`. There is no header filter to turn that
+off, and there could not usefully be one: the analysis is interprocedural
+through code that has been inlined, so the findings are *reported at* Qt's
+lines because that is where the analysed statements are.
+
+**And on the fourth file it crashes the compiler.**
+
+    g++: internal compiler error: Segmentation fault
+         signal terminated program cc1plus
+
+`runtime/input_router.cpp`, reproduced twice. The same file compiles clean
+under `-Wall -Wextra` with no analyzer, and the machine had 85 GB free, so
+it is the analyzer rather than the source or memory pressure. GCC's own
+documentation describes the analyzer as aimed at C and not recommended for
+C++, which this is simply that statement arriving in person.
+
+**THE STATIC-ANALYSIS STRATEGY IS NOW EXHAUSTED, with four verdicts in
+one place** so the next session starts from them instead of the beginning:
+
+| tool | verdict |
+|---|---|
+| `g++ -Wall -Wextra` | **in use**, tree at zero, enforced by the gate |
+| clang 19 `-Wall -Wextra` | **paid out** -- one real deprecation g++ cannot see (8.603) |
+| clang-tidy 19 | **declined** -- 45 findings, 0 defects, plus a moc blind spot (8.608) |
+| cppcheck 2.17 | **declined** -- four zero-finding runs, each a preprocessor failure (8.608) |
+| `gcc -fanalyzer` | **declined** -- 123 findings, 0 about this code, crashes on one file |
+
+**AND THE DETECTOR THAT COVERS WHAT NONE OF THEM DO was run in the same
+pass.** `make test-valgrind` is out of `make check`, and memcheck is the
+only instrument here that sees **uninitialised-memory reads** -- ASan does
+not implement that class at all, so neither fuzz run (8.605, 8.606) nor
+`make test-sanitize` (8.604) covered it. The day's changes were exactly
+where it hides: a cache struct holding a `QVector<Written>` with
+field-by-field init (8.599), `fill()`'s geometry handling (8.601), and a
+hash moved to a raw `constBits()` pointer (8.600).
+
+    ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+**`suppressed: 0 from 0` is what makes that mean something**, and is the
+line to read rather than the word "clean": a suppression file is the
+obvious place for a real finding to be hiding, and this one suppressed no
+errors at all. The target already refuses an empty log as "not a clean
+result", which is the vacuous-pass guard built in where it belongs.
+
+**The log was eight days old when first read, and that nearly stood as the
+result.** `build-dbg-test/valgrind.log` from a run on 2026-10-19 was still
+on disk while the debug build for this run was compiling, and a first look
+at it reported 0 errors. 8.599 recorded the reused-log fault earlier the
+same day; checking the mtime is what caught it, which is the habit that
+record asked for working.
+
+What distinguishes the two that are worth anything is the same property
+both times: **they compile the real translation units and report at the
+source's own lines.** cppcheck could not compile them, and `-fanalyzer`
+compiles them and then reports somewhere else.
+
+### 8.610 The document said both things at once (2026-10-27)
+
+Section 7 is titled *What is built, and what is not*, and it listed
+**"Quantisation is RGB nearest, not CIELAB, which design.md §6
+requires"** as an open gap. Four hundred lines further down, the same
+section says **"Quantisation is CIELAB, as §6 requires"** and measures it:
+rgb(40,120,50) went to grey 238 under the old metric and goes to green 22
+under the new one.
+
+`to_xterm256()` calls `to_lab()` and `candidate_lab()`. The code has been
+right for a long time; what was wrong was the list a reader consults to
+find out what is left to do.
+
+**NO GATE CAN CATCH THIS, which is the part worth keeping.** The style
+gate's `docs` mode holds `project.md` to the tree and checks, among other
+things, that nothing is **stated twice**. These two sentences are not a
+duplicate -- they are **opposites**, and a check for repetition cannot see
+a contradiction. Nor is it a code/document disagreement of the kind
+`working-practice.md` says to flag rather than resolve: there was no
+design question left, the gap had been closed and measured, and every
+sibling entry in the same list marks closure with a strikethrough and
+**Done**. The convention for this exact situation was visible two lines
+below the stale entry.
+
+**AND THE COUNT ABOVE THE LIST WAS WRONG IN THE SAME WAY.** The lead-in
+read "Three gaps, one of them since closed", which was true when one was
+struck and stayed on the page while a second was. Marking the entry
+without the count would have left the paragraph self-contradicting again,
+one level up. Three gaps, two closed, and the one still open --
+`qtty/cell.h` includes `QPixmap`, so L2 is not GUI-free -- was checked
+rather than assumed: the include is still there.
+
+**How it was found, since it was not by looking for it.** Five
+instruments in a row had come back with nothing (8.605 through 8.609), so
+the remaining avenue was section 5's last clause -- features the goals
+imply but the code lacks -- and the places a project records those are a
+TODO sweep and section 7. The sweep found **zero** real markers: all
+eight matches for `TODO|FIXME|XXX|HACK` across `src/`, `include/`,
+`test/` and `tool/` are `mkstemp` templates and fixture strings. Section 7
+had three claims, and one of them was a closed task still advertised as
+work.
+
+**The lens generalises and is cheap: a document's own "what is not built"
+list is a set of present-tense claims about the tree, and those are the
+ones that rot.** The code moves and the list does not, because closing a
+gap and striking its entry are two acts and only the first is forced.
