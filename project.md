@@ -50997,15 +50997,26 @@ L2 rather than in a backend, `NullBackend` is what the suite runs against,
 and an application can inject its own backend through `exec()`. Removing
 the interface would cost all three and save nothing.
 
-**WHAT IS LEFT OPEN, DELIBERATELY.** design.md §1 still states the
-secondary goal as "four separate TUI implementations across four products
-collapse into one library, with the existing terminal code surviving as
-backend adapters rather than being thrown away", and §1's extension-point
-table still says `ITerminalBackend` is "satisfied by our four existing
-implementations". **That is not amended here.** Whether consolidating four
-products is still a goal is a product question about four codebases this
-record cannot see, and the instruction was to retire the placeholders, not
-to rewrite the project's purpose. It is named here so the gap is a known
-one: a reader who reaches §1 will find a premise the rest of §5.1 no
-longer rests on, and 8.610 is this file's own account of what happens when
-a document is left saying two things at once.
+**§1 WAS LEFT OPEN AND THEN CLOSED, and how it was closed is the part
+worth keeping.** It was first left alone on the ground that whether
+consolidating four products is still a goal is a product question about
+four codebases this record cannot see. Asked to use judgement, the way
+through was that **§1 makes three different kinds of claim and only one of
+them was ever mine to touch**:
+
+| kind | the text | what was done |
+|---|---|---|
+| a statement of present FACT | the extension-point table: `ITerminalBackend` "satisfied by our four existing implementations" | **corrected outright** -- it is satisfied by `AnsiBackend`, and by `NullBackend` under test. This was simply false. |
+| a retired MECHANISM | "the existing terminal code surviving as backend adapters", and Phase 1's "adapt all four existing implementations behind it" | **struck and marked**, pointing at §5.1 |
+| a GOAL | "four separate TUI implementations across four products collapse into one library" | **left standing**, and said so in the text: the goal stands, the mechanism went |
+
+So the contradiction is gone without anybody having decided whether
+consolidation is still wanted. **A false fact, a dead mechanism and a live
+goal had been sitting in one sentence**, and the reason §1 looked like an
+unanswerable product question is that the three were not separated. Only
+the third needed an owner, and it still has one.
+
+§5.1's own opening -- "the seam that lets four existing implementations
+survive" -- is marked the same way, because it states the retired premise
+rather than describing the interface, and it is the first sentence a
+reader meets after the amendment note.

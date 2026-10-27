@@ -24,11 +24,13 @@ it uses four public extension points:
 | Geometry on a cell grid | `QStyle` subclass returning cell-multiple metrics | Public |
 | Widget lifecycle without a window | `Qt::WA_DontShowOnScreen` + in-box `offscreen` platform plugin | Public API, *undocumented behaviour* — see §5.6 |
 | Rendering to cells | Custom `QPaintDevice` / `QPaintEngine` | Public |
-| Terminal I/O | `ITerminalBackend`, satisfied by our four existing implementations | Ours |
+| Terminal I/O | `ITerminalBackend`, satisfied by `AnsiBackend` (and `NullBackend` under test) | Ours |
 
 The secondary goal is consolidation: four separate TUI implementations across four
-products collapse into one library, with the existing terminal code surviving as
-backend adapters rather than being thrown away.
+products collapse into one library, ~~with the existing terminal code surviving as
+backend adapters rather than being thrown away~~ — **the goal stands; the adapter
+mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
+`AnsiBackend`.**
 
 ---
 
@@ -138,7 +140,8 @@ L3/L4 know nothing of the tty. Only L6 sees everything.
 > the retirement. The paragraphs below are left as written where they still describe
 > the interface, and marked where they describe the retired structure.
 
-The seam that lets four existing implementations survive. A backend owns the tty and
+~~The seam that lets four existing implementations survive.~~ **The seam, which earned
+its place for other reasons — see the note above.** A backend owns the tty and
 nothing else: no diffing, no layout, no widget knowledge. Diffing deliberately lives in
 L2 so all four backends inherit one optimizer.
 
@@ -1087,8 +1090,9 @@ this document. Original plan retained below for the record:
 Gate 2 is the real decision point (§8.1). Also resolve OQ-1 (shortcuts) here.
 
 **Phase 1 — Backend consolidation (independent of everything else).** Define
-`ITerminalBackend`; adapt all four existing implementations behind it; each product keeps
-its current TUI but now calls through the interface. Ships value even if Phases 2+ are
+`ITerminalBackend`; ~~adapt all four existing implementations behind it;~~ **retired
+2026-10-27 (§5.1): no adapter was written, and a product calls through the interface to
+`AnsiBackend`.** Each product keeps its current TUI but now calls through the interface. Ships value even if Phases 2+ are
 abandoned: one interface, four implementations, a shared diff/damage layer, and a
 regression harness.
 
