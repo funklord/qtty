@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <QVarLengthArray>
+#include <QHashFunctions>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QSet>
@@ -604,8 +605,18 @@ private:
 		// while a fresh key every frame would re-upload an unchanged plot on
 		// every repaint. Hashing the pixels is what makes upload-once mean
 		// what it says here.
-		const QByteArray bits(reinterpret_cast<const char *>(img.constBits()),
-		                      int(img.sizeInBytes()));
+		// HASHED IN PLACE. This built a QByteArray from constBits() first,
+		// which deep-copies the whole image to hand the same bytes to the
+		// same hash: 4.1 ms of a 14.7 ms harvest on Qt 6 and 4.4 ms of 26.1
+		// on Qt 5, for a full-screen surface, on every frame. qHashBits()
+		// takes the pointer, and the value is identical by construction --
+		// qHash(QByteArray) is defined as qHashBits over its bytes -- which
+		// was also checked against both of the other spellings over ten
+		// frames at two sizes on both arms. 8.600.
+		//
+		// What is left is not small and is not this call's to fix: the hash
+		// itself is 2.9 ms on Qt 6 and 11.0 ms on Qt 5, because it reads
+		// every pixel and must, for the reason the next comment gives.
 		// FIELD BY FIELD, not a partial aggregate. CellImage gives every
 		// member a default and these sites want the defaults for the rest,
 		// but -Wmissing-field-initializers warns about exactly that shape
@@ -615,7 +626,8 @@ private:
 		// enumerating keeps it at zero without putting every call site on a
 		// treadmill the next field would restart. 8.588.
 		CellImage placement;
-		placement.key = quint64(qHash(bits));
+		placement.key = quint64(qHashBits(img.constBits(),
+		                                  size_t(img.sizeInBytes())));
 		placement.cell_rect = cells;
 		placement.pixmap = QPixmap::fromImage(img);
 		placement.has_clip = has_clip;

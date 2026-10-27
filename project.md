@@ -50013,3 +50013,120 @@ with the date available and unread. **A log is an artifact with an mtime,
 so check it** -- `ls -la` on the file answered it instantly both times, and
 the only reason to look was that the content was too good for how little
 time had passed.
+
+### 8.600 What a picture in the frame actually costs (2026-10-27)
+
+8.598 costed an overlay and 8.599 cached it. A **placement** -- a
+`PixelSurface` showing a plot, a meter, a video still -- had never been
+timed at all, which 8.598 noted as "the same question unasked". Asked
+here, and the answer is worse than the overlay's was.
+
+**A full-screen PixelSurface costs +17.7 ms in `compose()` alone**, on a
+fixture whose own `paintEvent` is one gradient fill. Section 11's whole
+frame budget is 16 ms, and `present()` has not run yet.
+
+    compose(), no picture                0.331, 0.336, 0.335, 0.310 ms
+    with a 200x59-cell PixelSurface      18.022, 17.252  (+17.69, +16.92)
+    ... and with a deliberately slow     19.588, 19.414  (+19.25, +19.10)
+        paintEvent instead of a gradient
+
+**The fixture nearly got the credit.** The first version of the probe
+painted the plot with 400 `setPen` calls and 800 `drawPoint`s, measured
+21.8 ms, and would have reported it as the cost of a placement. The
+expensive paint is worth only 1.5 to 2.2 ms of that, which the gradient
+arm shows by removing it. **A probe that supplies its own workload cannot
+tell you whose time it measured** -- so the cheap paint became the default
+and the expensive one an option, kept so the two can be compared rather
+than conflated.
+
+**WHERE IT GOES, measured stage by stage** rather than read off the shape
+of the code, on the same 2000x1121 geometry the fixture produces:
+
+| stage | Qt 6 | Qt 5 |
+|---|---|---|
+| `QImage` construction | 0.003 | 0.003 |
+| `fill(Qt::transparent)` | 0.83 | 0.95 |
+| `w->render(&img)` | 1.92 | 4.52 |
+| `QByteArray` deep copy of the bits | 4.15 | 4.40 |
+| `qHash` of that copy | 2.98 | 10.96 |
+| `QPixmap::fromImage` | 4.85 | 5.22 |
+| total | 14.7 | 26.1 |
+
+Three things in that table are not what reading `harvest()` suggests.
+**The widget's own render is the cheapest substantial line**, at 13 per
+cent of the Qt 6 total. **The deep copy is pure waste** and is removed
+here. **And `QPixmap::fromImage` is the largest single line on Qt 6**,
+larger than the render it is converting.
+
+**THE COPY IS GONE, AND THE HASH IS PROVABLY THE SAME NUMBER.** The site
+built a `QByteArray` from `img.constBits()` -- deep-copying 8.6 MB -- only
+to hand the same bytes to the same hash. `qHashBits()` takes the pointer.
+`qHash(QByteArray)` is *defined* as `qHashBits` over its bytes, so the
+equality holds by construction rather than by luck, and it was checked
+anyway against both other spellings over ten frames at two sizes on both
+arms. That is 28 per cent of the Qt 6 harvest and 17 per cent of the
+Qt 5 one, for a change with no behaviour in it.
+
+**Confirmed end to end rather than only in the stage table**, same probe,
+the no-picture arm as the yardstick:
+
+    compose() with the surface, before   +17.69, +16.92 ms
+    after                                +13.32, +14.10, +13.28 ms
+    no-picture arm, before and after     0.310-0.336 and 0.322-0.327 ms
+
+So a full-screen placement is inside section 11's 16 ms budget on Qt 6
+where it was outside, and still well outside on Qt 5.
+
+**The first reading after the change said +19.0, which is worse than
+before it.** The probe links `libqtty.a`, so the measurement was of the
+old code inside a binary built before it: the static archive had been
+rebuilt and the probe had not. **An artifact built from a stale input
+looks exactly like a current measurement**, which is this session's other
+stale-input fault -- the reused log file names in 8.599 -- arriving by a
+second route. The yardstick is what gives it away in both cases: a delta
+that moves the wrong way while the control arm does not move at all is a
+fact about the instrument.
+
+Its two guards already existed and are the right pair: *an unchanged
+surface keeps its key, so it uploads once* and *and changed content
+changes it, so the frame is not stale*. The second is the discriminating
+half, and the comment above it says why -- a key taken from the widget
+passes the first on its own.
+
+**WHAT IS LEFT, AND WHOSE IT IS.** Two costs remain, both larger than the
+one removed, and neither is this call site's to settle.
+
+**The content hash is 2.9 ms on Qt 6 and 11.0 ms on Qt 5**, per
+full-screen surface per frame, and it reads every pixel because that is
+what makes `CellImage::key` mean "this picture", which is what upload-once
+needs. A cheaper key is available in principle -- sample the pixels rather
+than hash them all -- and it trades change detection for time: a plot that
+alters only where the sampler did not look keeps its key, and the kitty
+tier then shows the previous frame for ever. That is the exact failure the
+discriminating check above exists to catch, so it is a correctness
+decision rather than a tuning one. **The decision is the copyright
+holder's.** Recorded with its price rather than taken: on Qt 5 this single
+line is two thirds of a 16 ms budget.
+
+**And `QPixmap::fromImage` is 4.85 ms on Qt 6 for a round trip that ends
+where it began.** `harvest()` renders into a `QImage`, wraps it in a
+`QPixmap`, and every tier that consumes the placement converts it back --
+`compose_halfblocks()` calls `ci.pixmap.toImage()`, and the encoders do
+the same. The conversion is not free in either direction: measured,
+`fromImage` scans the whole image for alpha pixels and then converts
+`ARGB32_Premultiplied` to `RGB32` when it finds none, which is two passes
+over 8.6 MB.
+
+`Qt::NoFormatConversion` makes that line 0.004 ms and **is the wrong
+fix**, which is worth recording because it looks like the right one: the
+pixels then differ, the pixmap keeping `ARGB32_Premultiplied` where today
+it holds `RGB32`. The shortcut was tried and caught by comparing the two
+images rather than by trusting that a flag named for skipping a conversion
+skips a conversion that was not needed.
+
+**The real question is whether `CellImage::pixmap` should be a `QImage`**,
+which would delete both directions of the round trip. It is a public field
+in `qtty/cell.h` that an application may fill in to append its own
+placement, so changing it is an API break and **the holder's decision**,
+not a harmonizing edit. Recorded with the measurement so it can be decided
+once.
