@@ -49697,6 +49697,31 @@ answer different questions -- "may this reach the wire" against "is every
 column here one narrow cell" -- and one rule with two spellings is a fault
 this session has already paid for twice.
 
+**RE-PROFILED AFTER THE CHANGE, and two instruments agree.** Instructions
+inside `render_once` fell from 192.3M to **133.3M, a 31 per cent
+reduction**, against the 27 per cent measured by clock -- an independent
+corroboration rather than the same measurement twice. The grapheme
+analysis is gone from the listing, and the allocation it drove went with
+it: `free` down 35 per cent, the QString constructor down 29.
+
+**What remains was measured and left alone, which is the other half of
+this work.** The top of the new listing is `CellBuffer::at` at 6.59 per
+cent, `fill` at 4.78, `QString::operator=` at 3.40 and `writable` at
+3.12 -- and their absolute instruction counts are unchanged, their shares
+having risen only because the total fell.
+
+`at()` is already recorded as costing a hundredth of a millisecond a
+frame. **`fill()` bounds-checks every cell twice** -- once in `writable()`
+and again in `at()` -- and clip-tests it with a `QPoint` built per cell,
+all of which could be hoisted into one intersection per call. Timed: a
+full 200x60 fill costs **0.185 to 0.221 ms**, of which at most half is the
+checking, so the hoist is worth **3 to 5 per cent of a frame**. Against
+that, `fill()` is the primitive every write path funnels through and its
+semantics are subtle -- a wide partner is cleared at the fill's own edges
+**regardless of the clip**, which a hoisted version would have to
+reproduce exactly. **Declined, at a measured price rather than a guessed
+one**, the same way `at()` was.
+
 **Guarded, and heavily**: an entry makes the predicate accept every string,
 so `text_cells()` returns the code unit count for anything -- two wide
 clusters measure 2 where they are 4, a lone combining mark 1 where it is 0,
