@@ -28,6 +28,7 @@
 #   make count-check  -- project.md's stated check count against the real one
 #   make tools-check  -- each tool's name in its .pro, fmake.toml, .gitignore
 #   make sabotage-check -- every sabotage anchor still matches its source
+#   make fuzz-check   -- the fuzz harnesses still compile (syntax only)
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
@@ -1488,7 +1489,7 @@ record: tests-build
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              sabotage-check test test-tools test-install probe-style
+              fuzz-check sabotage-check test test-tools test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:
@@ -1577,6 +1578,38 @@ style-docs:
 # comment above its program list exists to record from the previous time.
 tools-check:
 	@./tool/tools-check
+
+# THE ONLY C++ IN THIS TREE THAT NOTHING BUILT. The two fuzz harnesses are
+# compiled by `fuzz` and `fuzz-input`, both out of the gate because they need
+# clang -- so a change to any signature they reach would leave them broken and
+# nothing would say so until somebody ran a target that might not be run for
+# weeks. `layout` reads them for indentation, which is not the same as asking
+# whether they still compile. 8.611.
+#
+# SYNTAX ONLY, AND WITH $(CXX) RATHER THAN CLANG, which is what lets this sit
+# in `check` at all: LLVMFuzzerTestOneInput is an ordinary function and the
+# fuzzer runtime is needed to LINK, not to typecheck. So the gate gains no
+# dependency it did not already have.
+#
+# THE FILES ARE NAMED, not globbed, and their absence is a failure rather than
+# a skip -- a glob over a renamed harness passes while checking nothing, which
+# is this project's vacuous-pass rule in the one shape a build file invites.
+FUZZ_SOURCES = tool/fuzz/caps_fuzz.cpp tool/fuzz/input_fuzz.cpp
+fuzz-check:
+	@n=0; \
+	for f in $(FUZZ_SOURCES); do \
+		[ -f "$$f" ] || { \
+			echo "fuzz-check: $$f is missing -- a harness that has been" >&2; \
+			echo "            renamed or removed is not a harness that" >&2; \
+			echo "            still compiles" >&2; exit 1; }; \
+		$(CXX) -fsyntax-only -Wall -Wextra -std=gnu++17 -fPIC \
+			-DQT_NO_DEBUG -DQTTY_VERSION_STRING='"$(VERSION)"' \
+			-I src/backend/ansi -I src -I include \
+			$(shell pkg-config --cflags Qt6Widgets Qt6Gui Qt6Core Qt6DBus) \
+			"$$f" || exit 1; \
+		n=$$((n + 1)); \
+	done; \
+	echo "fuzz-check: $$n fuzz harness(es) still compile against the library"
 
 # Every sabotage entry anchors on a literal line of source, and an entry whose
 # anchor has drifted cannot be applied -- so the check it names is undefended
@@ -1832,7 +1865,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         tools-check sabotage-check FORCE

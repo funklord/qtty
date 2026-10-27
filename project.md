@@ -50829,3 +50829,49 @@ work.
 list is a set of present-tense claims about the tree, and those are the
 ones that rot.** The code moves and the list does not, because closing a
 gap and striking its entry are two acts and only the first is forced.
+
+### 8.611 The only C++ in the tree that nothing built (2026-10-27)
+
+8.605 and 8.606 added two fuzz harnesses and put both targets outside
+`make check`, for reasons that still hold: they need clang, and they are
+time-bounded rather than finite. **What that left is two compiled sources
+that no gate compiles.**
+
+A change to any signature they reach -- `scan_caps()`, `TermCaps`,
+`ITerminalEventSink`, `AnsiBackend` -- would leave them broken, and
+nothing would say so until somebody ran a target that might not be run for
+weeks. That is this project's own rule about a check which only runs
+somewhere else, pointed at an out-of-gate target rather than at CI.
+
+**`layout` already reads them, which is the near miss worth naming.** The
+layout gate lists both harnesses among the files it checks, so a search
+for "does anything look at these" answers yes. It reads them for
+indentation. **Whether a file is indented correctly and whether it still
+compiles are different questions, and only one of them was being asked.**
+
+**SYNTAX ONLY, AND WITH `$(CXX)`, which is what lets this sit in the gate
+at all.** `LLVMFuzzerTestOneInput` is an ordinary function: the fuzzer
+runtime is needed to LINK, not to typecheck. So `fuzz-check` runs
+`g++ -fsyntax-only` and the gate gains no dependency it did not already
+have -- which matters, because the alternative is a gate that requires
+clang or, worse, one that skips when clang is absent. A gate that skips is
+weakest exactly where the violation gets written.
+
+**Both failure modes were seen to fail rather than assumed:**
+
+| what was done to it | result |
+|---|---|
+| `scan_caps()` given an extra parameter | 3 errors, gate fails |
+| a harness renamed out of the way | Error 1, with the reason printed |
+
+The second is the one a build file invites getting wrong. **A glob over a
+renamed harness passes while checking nothing**, so the two files are
+named in `FUZZ_SOURCES` and a missing one is a failure rather than a
+skip -- the vacuous-pass rule in the shape `make` makes easy.
+
+**What it does not cover**, stated because the guard's limit is part of
+it: a function declared in a header and removed from the library would
+typecheck and fail only at link. Catching that needs the real build, which
+needs clang, which is the trade this declines. Whether `make check` should
+be allowed to require clang is the holder's, and is the same decision as
+the `-Werror` gate in 8.588 wearing different clothes.
