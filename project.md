@@ -49746,3 +49746,37 @@ CONDITION, not its message.** The message is written for somebody reading
 a pass line; the condition is what goes red. Three instances in one
 session is a habit, and `--validate` cannot see any of them: it checks
 that a name exists, not that it tests the fault.
+
+### 8.597 The frame's cost, stage by stage (2026-10-27)
+
+**Nobody had timed `compose()`, and the reason it looked like a gap is the
+reason it is not one.** Measured in one process, same fixture, same load:
+
+    compose()      2.091, 2.101, 2.122 ms
+    render_once()  2.062, 2.082, 2.098 ms
+    present()      about 0.9 ms after 8.586 and 8.587
+
+**`compose()` IS the render.** It builds a `CellPaintDevice` and calls
+`QWidget::render` into it exactly as `render_once` does, then walks the
+other top-levels, stacks the popups, composites the overlays and places
+the cursor. So the near-equality is not a coincidence to explain -- it is
+the same work twice, and compose's own overhead above a render is **about
+0.03 ms, under two per cent**, on this fixture.
+
+**So the frame has two stages that cost anything, not three**: compose at
+about 2.1 ms including the render, and present at about 0.9. Reading the
+three figures as a sum would double-count the render and put the frame at
+5 ms when it is 3.
+
+**The 0.03 ms is conditional and the condition matters.** This fixture is
+ONE window with no popup, no overlay and no placement. Compose's extra
+work is exactly what those add -- the half-block compositing of an
+overlay, the popup stack, a second top-level's walk -- so a frame with
+them pays more there and this figure says nothing about it.
+
+**And the measurement order flatters the render**, which is worth stating
+because it bounds the answer the right way: each pass times `compose()`
+first and `render_once()` second, so the render runs with caches the
+compose has just warmed. That can only make the render look cheaper, so
+compose's true overhead is **at most** the 0.03 ms observed -- the
+conclusion survives the bias rather than depending on its absence.
