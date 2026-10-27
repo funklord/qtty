@@ -13,6 +13,7 @@
 #include "src/backend/ansi/ansi_backend.h"
 #include "src/backend/ansi/term_caps.h"
 #include "src/backend/ansi/scroll_settle.h"
+#include "src/render/content_hash.h"
 #include <QtWidgets>
 #include <QClipboard>
 #include <cstdio>
@@ -8933,21 +8934,26 @@ int suite_exec() {
 
 				// -- the other producer, which was never affected -----------
 				//
-				// cell_paint.cpp builds a PixelSurface placement's key from
-				// qHash over the harvested pixels rather than from
-				// cacheKey(), and that hash is well distributed in its low
-				// bits -- so the masked id did not collide there. The
-				// control says the defect belonged to one producer rather
-				// than to placements in general, which is what stops the fix
-				// being credited to the wrong thing.
-				const QByteArray bits_a(
-				    reinterpret_cast<const char *>(img_a.constBits()),
-				    int(img_a.sizeInBytes()));
-				const QByteArray bits_b(
-				    reinterpret_cast<const char *>(img_b.constBits()),
-				    int(img_b.sizeInBytes()));
-				const quint64 hkey_a = quint64(qHash(bits_a));
-				const quint64 hkey_b = quint64(qHash(bits_b));
+				// cell_paint.cpp builds a PixelSurface placement's key by
+				// hashing the harvested pixels rather than from cacheKey(),
+				// and that hash is well distributed in its low bits -- so
+				// the masked id did not collide there. The control says the
+				// defect belonged to one producer rather than to placements
+				// in general, which is what stops the fix being credited to
+				// the wrong thing.
+				//
+				// CALLS THE PRODUCTION FUNCTION. This reproduced the hash
+				// here as qHash over a QByteArray of the bits, which was the
+				// right value while harvest() spelled it that way and became
+				// a stand-in for a function it no longer matched when the
+				// hash was replaced in 8.616. A control that reimplements
+				// what it controls for stops being one silently: this would
+				// have gone on passing, about the old hash, while saying the
+				// new one was well distributed.
+				const quint64 hkey_a = Qtty::content_hash(
+				    img_a.constBits(), size_t(img_a.sizeInBytes()));
+				const quint64 hkey_b = Qtty::content_hash(
+				    img_b.constBits(), size_t(img_b.sizeInBytes()));
 				QVector<int> surface_ids;
 				CellBuffer f_surface(20, 6);
 				{

@@ -31,6 +31,7 @@ HEADERS += \
     backend/ansi/term_caps.h \
     backend/ansi/scroll_settle.h \
     graphics/kitty_diacritics.h \
+    render/content_hash.h \
 
 SOURCES += \
     core/cell_buffer.cpp \

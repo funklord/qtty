@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2455 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2459 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -50142,20 +50142,21 @@ changes it, so the frame is not stale*. The second is the discriminating
 half, and the comment above it says why -- a key taken from the widget
 passes the first on its own.
 
-**WHAT IS LEFT, AND WHOSE IT IS.** Two costs remain, both larger than the
-one removed, and neither is this call site's to settle.
+**WHAT IS LEFT, AND WHOSE IT IS.** One cost remains, larger than the one
+removed, and it is not this call site's to settle.
 
-**The content hash is 2.9 ms on Qt 6 and 11.0 ms on Qt 5**, per
-full-screen surface per frame, and it reads every pixel because that is
-what makes `CellImage::key` mean "this picture", which is what upload-once
-needs. A cheaper key is available in principle -- sample the pixels rather
-than hash them all -- and it trades change detection for time: a plot that
-alters only where the sampler did not look keeps its key, and the kitty
-tier then shows the previous frame for ever. That is the exact failure the
-discriminating check above exists to catch, so it is a correctness
-decision rather than a tuning one. **The decision is the copyright
-holder's.** Recorded with its price rather than taken: on Qt 5 this single
-line is two thirds of a 16 ms budget.
+**~~The content hash is 2.9 ms on Qt 6 and 11.0 ms on Qt 5.~~ SETTLED IN
+8.616, and not by either option this entry offered.** What stood here was
+a choice between paying the hash and sampling the pixels, the second
+priced at the change detection it would cost. Both branches took the two
+figures as a property of the pixel count, and the asymmetry in the table
+above says they are not: the same function over the same bytes cannot
+honestly cost 2.98 ms on one arm and 10.96 on the other. It was two
+implementations behind one name, and Qt 5's returns 32 bits and has
+constructible collisions. Reading every pixel with a hash of our own is
+faster on both arms and detects MORE, so the decision this entry handed
+over was the wrong question rather than a hard call. 8.616 has the
+measurements and the reproduction.
 
 **And `QPixmap::fromImage` is 4.85 ms on Qt 6 for a round trip that ends
 where it began.** `harvest()` renders into a `QImage`, wraps it in a
@@ -51141,3 +51142,189 @@ other way -- an empty match is a failure with its own message, not a pass.
 | `PUBLIC_HEADERS=` on the command line | `matched nothing, which is not a pass`, Error 1 |
 
 The header was restored byte-exact afterwards, checked with `git diff`.
+
+### 8.616 The content hash, and the third answer (2026-10-27)
+
+8.600 costed a `PixelSurface` placement stage by stage, removed a deep copy
+worth 4.1 ms, and parked what was left: **the hash itself at 2.9 ms on Qt 6
+and 11.0 ms on Qt 5**, per full-screen surface per frame. It recorded one
+alternative -- sample the pixels rather than hash them all -- priced the
+correctness it would cost, and left the decision to the copyright holder,
+who took it up here.
+
+**BOTH BRANCHES WERE WRONG, AND THE TABLE SAID SO.** 8.600's own stage
+table has the same function, over the same bytes, costing 2.98 ms on one arm
+and 10.96 on the other. A 3.7x spread for identical work is not a fact about
+the pixel count, and nothing can make it one. It is a fact about the two
+implementations behind one name:
+
+| | Qt 5.15.15 | Qt 6.8.2 |
+|---|---|---|
+| `qHashBits` returns | `uint` -- **32 bits** | `size_t` -- 64 bits |
+| over the 8.6 MB harvest | 17.41 ms | 4.45 ms |
+
+So `CellImage::key` is declared `quint64` and carried **32 bits of entropy
+on Qt 5**, which no amount of sampling or not sampling would have changed.
+The question was never "pay 11 ms or give up change detection". It was
+"whose hash is this", and nobody had asked.
+
+**WHAT QT 5'S IS.** `h = 31 * h + byte`, the small-multiplier polynomial.
+Reproduced bit-for-bit against Qt 5.15.15 on five inputs -- empty, `"a"`,
+`"abc"`, a sentence and four raw bytes -- rather than recalled from the
+source. Qt 6 matched none of them, being a real hash.
+
+That form has **constructible** collisions, because `31 * 31^k` is
+`31^(k+1)` exactly: raise one byte by 1, lower the next by 31, and the hash
+does not move. Measured on a 64-byte buffer, and then on the suite's own
+fixture, where one ARGB32 pixel stepping green up one and red down 31 gave
+`00000000ed98b400` before and after. Note the leading zeros; that is the
+32 bits, visible.
+
+**AND A COLLISION IS THE STALE FRAME.** Not a quality metric --
+`AnsiBackend::wire_id_for()` is a registry. A key it already holds returns
+the stored wire id with `minted = false` and **nothing is re-uploaded**, so
+the terminal goes on drawing the picture that claimed the key first. That is
+precisely the failure the content hash exists to prevent, reached through
+the hash instead of around it, and it is the failure the sampling proposal
+was rejected for.
+
+**HOW REACHABLE, measured rather than reasoned about.** 200000 frames of a
+plot, three difference models, all frames distinct by construction:
+
+| what changes between frames | qHashBits unique | ours |
+|---|---|---|
+| one pixel, arbitrary colour | 27875 -- **172125 collisions** | 200000 |
+| eight pixels, a glyph redrawn | 199996 -- 4 collisions | 200000 |
+| a column, a line moving | 199997 -- 3 collisions | 200000 |
+
+Chance predicts 4.66 collisions at 32 bits, so the eight-pixel and column
+rows are a hash behaving normally. The single-pixel row is four orders of
+magnitude past chance, because the collisions are a lattice rather than
+accidents: any change with `dG = -31 * dB` lands on one. **The weakness sits
+exactly where an animated readout lives** -- in the small change -- and a
+multi-pixel repaint, which looks like the harder case, is the safe one.
+
+**THE THIRD ANSWER.** `src/render/content_hash.h`: four independent lanes of
+multiply-xor-rotate over 8-byte words, folded, finished with murmur3's
+fmix64. Every byte is still read, so change detection is **untouched**; the
+lanes are for throughput, since one chain is bound by multiply latency and
+four are bound by memory.
+
+| idle machine, interleaved in one process | Qt 5 | Qt 6 |
+|---|---|---|
+| `qHashBits` | 11.76 ms | 3.08 ms |
+| `content_hash` | **1.25 ms** | **1.25 ms** |
+| ratio | 9.4x | 2.5x |
+
+**That row corroborates 8.600 rather than resting on it.** Its figures for
+`qHashBits` were 10.96 and 2.98, taken separately and weeks of machine state
+apart; 11.76 and 3.08 is the same measurement again, which is what makes the
+other row worth reading. And the two figures for ours agree to three digits,
+which is what the same code on both arms looks like: 7.2 GB/s, bound by
+memory rather than by either Qt. The asymmetry is not reduced, it is gone.
+Avalanche is 32.1 of 64 bits per input bit flipped, against an ideal of 32.
+
+**TAKEN UNDER LOAD THE TABLE INFLATES, AND UNEVENLY, WHICH IS WHY THE FIRST
+VERSION OF THIS ENTRY COULD NOT CLOSE.** At load ~155 the same probe read
+17.41 and 4.45 against 2.20 and 2.41, and at ~197 it read 14.18 and 4.05
+against 2.15 and 2.47. A memory-bound loop hardly moves while a
+byte-at-a-time one swings with the CPU it is contending for, so load does
+not scale a table -- it tilts it, and the ratio it tilts is the one being
+reported. **A benchmark taken on a machine 20 other builds are using is not
+a slower measurement of the same thing, it is a measurement of something
+else.** The figures above were taken at load under 8 and the earlier ones
+are kept here only to show the size of the distortion.
+
+**AND THE END TO END AGREES, once the machine was quiet.** 8.600's own probe,
+re-run against two archives built minutes apart and alternated so that drift
+cancels rather than accumulates:
+
+| Qt 6, `compose()` delta for one full-screen placement | rounds | min |
+|---|---|---|
+| `qHashBits` | +13.38, +12.90, +12.42 ms | 12.42 |
+| `content_hash` | +11.84, +11.31, +10.75 ms | **10.75** |
+
+1.67 ms between the minima, against 1.83 predicted by subtracting the
+isolated figures -- and every pair separates in the same direction with no
+overlap. The old arm also reproduces 8.600's +13.32, +14.10 and +13.28,
+which is the second independent agreement with that entry. A full-screen
+placement now costs about 10.7 ms of section 11's 16 ms frame budget where
+it cost 13.3.
+
+**THE SAME PROBE COULD NOT SEE ANY OF THAT AN HOUR EARLIER.** At load ~150
+it gave +22.44, +21.26, +21.83, +24.19 against +19.71, +22.30, +20.14,
++18.07: the right direction in min and mean, and noise the size of the
+effect, so the honest report was that it did not resolve. It would have been
+easy to quote the favourable pair from that set and call it 4 ms. **The
+measurement that cannot resolve an effect is not weak evidence for it, it is
+no evidence**, and the remedy was not a better statistic but waiting for the
+machine.
+
+**THE CHECKS, AND ONE OF THEM FOUND MY OWN FIXTURE WRONG.** Four added to
+`suite_placements`, where the key's identity already lives. The valuable one
+is the lattice case, which **fails against the hash it replaces** on Qt 5
+and passes against this one -- verified by running both hashes over the two
+images the check builds, not by assuming the arithmetic.
+
+It was wrong the first time. The pixel chosen had red 27, so `red - 31`
+clamped and no step of 31 ever happened; the check passed against *both*
+hashes while appearing to test the collision. What caught it was asserting
+the premise -- `qRed(was) >= 31` -- inside the check rather than trusting
+it, so the control reported the premise false instead of reporting a pass.
+**A regression check whose fixture cannot reach the defect is a vacuous
+pass wearing a reproduction's clothes**, and the guard that catches it costs
+one conjunct.
+
+**AND THE EXISTING CONTROL HAD GONE STALE BY CONSTRUCTION.**
+`suite_backend` carries a control saying the low-24-bit collision belonged
+to the `cacheKey` producer and not to the content-addressed one -- and it
+computed the content hash *itself*, as `qHash` over a `QByteArray` of the
+bits. That was the right value while `harvest()` spelled it that way. After
+this change it would have gone on passing, about the old hash, while
+claiming the new one is well distributed. It calls `content_hash()` now.
+**A control that reimplements what it controls for stops being one
+silently**, which is the stand-in rule met from the direction where nothing
+fails.
+
+**AND THE SAMPLING OPTION IS KEPT AS A SABOTAGE, so the checks cannot
+quietly stop discriminating.** Entry 799 caps the hash at the first 1024
+bytes, which is the rejected option in its crudest form, and names
+*one pixel changed by one level gives a different key*. Performed by hand
+first, as the spec requires, and the prediction was exact:
+
+| check | with the cap applied |
+|---|---|
+| the same pixels give the same key | PASS -- unaffected, correctly |
+| one pixel changed by one level | **FAIL** -- the named check |
+| green up one, red down 31 | PASS -- its pixel is at byte 592, inside the cap |
+| a run of identical bytes | **FAIL** -- both lengths cap to the same prefix |
+
+The lattice check staying green is the reason the other one is named.
+`sabotage.py` requires only the named check to redden, and naming one that
+cannot see the breakage is the fault this session made four times in other
+entries; the fixture offsets were worked out first and then confirmed,
+rather than the entry being named for the check whose wording fitted.
+The header was restored from a copy and `cmp` says byte-exact, since an
+untracked file has no `git checkout` to fall back on.
+
+**AND A HAZARD MET WHILE VERIFYING IT, worth the two lines it takes.** The
+gate was running when a comment in the new header was reworded, and it
+failed at `test-install` with `No rule to make target build/lib/libqtty.a`.
+Nothing was wrong with the change. `Makefile:177` makes
+`$(BUILD_DIR)/Makefile` depend on `$(HEADERS)`, and its recipe opens
+`rm -f $(SUBDIR_MAKEFILES)` before re-running qmake -- which is correct, and
+is what stops a newly added header being in nobody's static dependency list.
+Fired under a build already in flight, it deletes the generated Makefiles
+that build is recursing into.
+
+So **editing any header in this tree while a build runs will break that
+build**, and the breakage names a missing archive rather than the edit. The
+two-concurrent-makes rule this session already learned is the same hazard
+with one writer instead of two: the second writer can be an editor. Freeze
+the tree for the length of a gate -- which is also what the stamp requires,
+since a receipt is for the content that was checked.
+
+**WHAT THIS LEAVES.** `QPixmap::fromImage` at 4.85 ms on Qt 6 is now the
+largest line in the harvest and is unchanged -- it is the round trip that
+ends where it began, and whether `CellImage::pixmap` should be a `QImage` is
+an API break and still the holder's. 8.600 has the measurement.

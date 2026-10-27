@@ -8768,3 +8768,23 @@ find = "\tif (safe.ch.isEmpty() || cluster_width(safe.ch) != 1)\n\t\tsafe.ch = Q
 into = "\tif (false)\n\t\tsafe.ch = QStringLiteral(\" \");"
 count = 1
 check = "a filled cell holds one glyph one column wide, whatever the template's own width and glyph were"
+
+[[sabotage]]
+# THE SAMPLING OPTION, KEPT AS A BREAKAGE. 8.600 offered sampling the
+# pixels instead of hashing all of them, and 8.616 declined it: a change
+# confined to the bytes a sampler does not read keeps the key, and because
+# wire_id_for() is a registry that means nothing is re-uploaded and the
+# terminal draws the previous frame for ever. This is that option in its
+# crudest form -- read the first 1024 bytes and stop -- so the check that
+# would catch it is held to catching it.
+#
+# The one-level flip in that check sits at byte 3860 of a 4096-byte fixture,
+# which is why it is the check named: the lattice check's pixel is at 592
+# and survives the cap, so it stays green and says nothing here. A sabotage
+# is named for the check that can see it.
+name = "the content hash reads only the first 1024 bytes"
+file = "src/render/content_hash.h"
+find = "\tconst uchar *s = static_cast<const uchar *>(p);"
+into = "\tconst uchar *s = static_cast<const uchar *>(p);\n\tif (n > 1024) n = 1024;"
+count = 1
+check = "one pixel changed by one level gives a different key"

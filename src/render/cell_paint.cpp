@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <QVarLengthArray>
-#include <QHashFunctions>
+#include "content_hash.h"
 #include <QCoreApplication>
 #include <QEvent>
 #include <QSet>
@@ -608,15 +608,18 @@ private:
 		// HASHED IN PLACE. This built a QByteArray from constBits() first,
 		// which deep-copies the whole image to hand the same bytes to the
 		// same hash: 4.1 ms of a 14.7 ms harvest on Qt 6 and 4.4 ms of 26.1
-		// on Qt 5, for a full-screen surface, on every frame. qHashBits()
-		// takes the pointer, and the value is identical by construction --
-		// qHash(QByteArray) is defined as qHashBits over its bytes -- which
-		// was also checked against both of the other spellings over ten
-		// frames at two sizes on both arms. 8.600.
+		// on Qt 5, for a full-screen surface, on every frame. The hash takes
+		// the pointer. 8.600.
 		//
-		// What is left is not small and is not this call's to fix: the hash
-		// itself is 2.9 ms on Qt 6 and 11.0 ms on Qt 5, because it reads
-		// every pixel and must, for the reason the next comment gives.
+		// AND THE HASH IS OURS, not qHashBits, which was the remaining cost
+		// here at 2.9 ms on Qt 6 and 11.0 ms on Qt 5. On Qt 5 that spelling
+		// is `h = 31 * h + byte` and has constructible collisions -- a key
+		// collision means wire_id_for() hands back the id it already holds
+		// and the picture is never re-uploaded, so the terminal shows the
+		// previous frame. content_hash() reads every byte exactly as before,
+		// at 1.25 ms on both arms against 11.76 and 3.08, and 64 bits wide
+		// on both where Qt 5's was 32. The reasoning and the measurements
+		// are in that header. 8.616.
 		// FIELD BY FIELD, not a partial aggregate. CellImage gives every
 		// member a default and these sites want the defaults for the rest,
 		// but -Wmissing-field-initializers warns about exactly that shape
@@ -626,8 +629,8 @@ private:
 		// enumerating keeps it at zero without putting every call site on a
 		// treadmill the next field would restart. 8.588.
 		CellImage placement;
-		placement.key = quint64(qHashBits(img.constBits(),
-		                                  size_t(img.sizeInBytes())));
+		placement.key = content_hash(img.constBits(),
+		                             size_t(img.sizeInBytes()));
 		placement.cell_rect = cells;
 		placement.pixmap = QPixmap::fromImage(img);
 		placement.has_clip = has_clip;
