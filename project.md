@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2459 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2461 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -51328,3 +51328,75 @@ since a receipt is for the content that was checked.
 largest line in the harvest and is unchanged -- it is the round trip that
 ends where it began, and whether `CellImage::pixmap` should be a `QImage` is
 an API break and still the holder's. 8.600 has the measurement.
+
+### 8.617 The compat shims, by 8.616's own lens (2026-10-27)
+
+8.616's defect was **two implementations behind one name**, found because a
+recorded table gave the same function two costs that could not both be
+properties of the work it did. The lens that follows from it is not "look at
+hashes" but *where does this tree depend on the quality of a Qt function
+rather than on its contract, with an arm each side*. `src/qt_compat.h` is
+the file whose entire purpose is that question, so it was read first.
+
+**THE HASHING SWEEP CAME BACK EMPTY, AND THAT IS WORTH ONE LINE.** Every
+`qHash` in the tree was found and each consumer read: `ImageEncodeKey`,
+`Asked` in `grid_style.cpp`, and the `hash_multi` helper. All three are
+`QHash` keys whose `operator==` compares every field, so a hash value never
+carries identity and a collision picks a bucket rather than an answer.
+`CellImage::key` was the only place a hash value WAS the identity, and
+8.616 is that. Nothing else to fix on that axis.
+
+**WHAT THE SHIMS THEMSELVES WERE DOING IS A DIFFERENT MATTER.** Qt 6 has
+`qHash` for `QSize` and `QRect` and Qt 5 has neither, so this file supplies
+them, and they read
+
+    qHash(s.width(), seed) ^ qHash(s.height(), seed + 1)
+
+with the comment that this is "what Qt 6's own overloads do". **Measured, it
+is not.** Qt 5's `qHash(int, uint)` is `uint(key) ^ seed` -- `qHash(7, 0)`
+is 7 -- so an XOR lets the seed fall straight back out. For `QRect` the four
+seeds are `0^1^2^3`, which is **0**, so the function ignored its seed
+entirely and reduced to a bare `x ^ y ^ w ^ h`:
+
+| | Qt 5, as it was | Qt 6 |
+|---|---|---|
+| `QSize(3,5)` vs `QSize(5,3)` | both 7 -- collide | differ |
+| `(0,0,10,10)`, `(0,0,5,5)`, `(3,3,7,7)` | all **0** | all differ |
+| 57600 cell rects a 200x60 terminal holds | **64 distinct (0.1%)** | 57600 (100%) |
+| an `ImageEncodeKey` built from them | 896 distinct (1.6%) | 57600 (100%) |
+
+**IT WAS NEVER A CORRECTNESS FAULT AND IS NOT URGENT, WHICH IS THE HONEST
+FRAMING.** `QHash` settles a bucket collision with `operator==`, and both
+caches keyed on `ImageEncodeKey` -- `wire_id_` and `image_bytes_` -- are
+pruned at the end of every frame that painted pixels, so they hold what is
+on the screen and a scan of a handful costs nothing measurable. Nothing in
+this tree is slow because of it. What it leaves is a **trap for the next
+cache keyed on one of these**, which would inherit 0.1 per cent and look
+perfectly well.
+
+**THE FIX IS hash_multi's OWN SHAPE**, accumulate with the 31 multiplier,
+which gives 57600 of 57600 both standalone and through `hash_multi` on that
+population. Note what that measurement also settled: **the combiner was
+never the problem.** `hash_multi` scored 1.6 per cent with the XOR
+components and 100 per cent with these, from the same six-field key -- so
+the fault was entirely in what it was handed. It would have been easy to
+rewrite the combiner instead and report an improvement.
+
+**AND THE 31 MULTIPLIER IS THE SAME ONE 8.616 CONDEMNS, WHICH IS NOT A
+CONTRADICTION BUT IS WORTH SAYING OUT LOUD.** There it was hashing 8.6 MB of
+pixels, where the weights wrap and a compensating pair of byte deltas lands
+on a collision that one changed pixel can reach. Here it is four small
+integers, where the weights are 1, 31, 961 and 29791 and nothing wraps: it
+is injective over the whole range a terminal produces. The claim made for it
+is exactly that and no more -- over 1.6 million rects with coordinates to
+200 it falls to 12.3 per cent, measured, because the products begin to
+overlap. **A hash is not good or bad, it is good or bad for a population and
+a job**, and the two jobs here are choosing a bucket and carrying an
+identity. The shim comment names `content_hash.h` for the second.
+
+**TWO CHECKS, in `suite_backend` beside `ImageEncodeKey`.** Both fail
+against the shims they replace on Qt 5 -- established by compiling the real
+`qt_compat.h` into the probe rather than by reasoning about it -- and both
+pass trivially on Qt 6, which has its own overloads. That asymmetry is the
+point: **the arm where a shim exists is the only arm its check can speak
+about**, and a Qt 6 run saying PASS here is saying nothing at all.

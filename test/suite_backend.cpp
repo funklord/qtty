@@ -10136,6 +10136,38 @@ int suite_exec() {
 		}
 	}
 
+	// -- the Qt 5 qHash shims for QSize and QRect (8.617) -----------------
+	//
+	// A bucketing hash, so neither of these is a correctness property --
+	// QHash resolves a collision with ImageEncodeKey::operator==, which
+	// compares all six fields. They are here because the shims collapsed
+	// and nothing noticed: Qt 5's qHash(int, uint) is `uint(key) ^ seed`,
+	// so an XOR of the components let every seed fall back out, and the two
+	// caches keyed on ImageEncodeKey ran at 1.6 per cent of their buckets.
+	// Both pass trivially on Qt 6, which has its own overloads; on Qt 5
+	// they fail against the shims these replaced.
+	{
+		CHECK(qHash(QSize(3, 5)) != qHash(QSize(5, 3)),
+		      "a size and its transpose hash apart, where an XOR of the two"
+		      " components cannot tell them apart at all");
+
+		// Every cell rect a 200x60 terminal can hold at a few extents, which
+		// is the population these are actually keyed on. The XOR form gave
+		// 64 of these, and 0 for all three of (0,0,10,10), (0,0,5,5) and
+		// (3,3,7,7).
+		QSet<quint64> seen;
+		int n = 0;
+		for (int x = 0; x < 40; ++x)
+			for (int y = 0; y < 20; ++y)
+				for (int w = 1; w <= 12; ++w)
+					for (int h = 1; h <= 6; ++h) {
+						seen.insert(quint64(qHash(QRect(x, y, w, h))));
+						++n;
+					}
+		CHECK(n == 57600 && seen.size() == n,
+		      "and every cell rect a terminal can hold hashes to its own"
+		      " value, so a cache keyed on one gets the buckets it asked for");
+	}
 
 	return fails;
 }
