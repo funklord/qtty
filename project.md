@@ -51400,3 +51400,60 @@ against the shims they replace on Qt 5 -- established by compiling the real
 pass trivially on Qt 6, which has its own overloads. That asymmetry is the
 point: **the arm where a shim exists is the only arm its check can speak
 about**, and a Qt 6 run saying PASS here is saying nothing at all.
+
+### 8.618 What the Qt 5 arm does not check, measured (2026-10-27)
+
+8.617's sweep of `qt_compat.h` turned up the file's other half: the
+constructs that make the suite BEHAVE differently per arm rather than
+compile differently. `QTTY_NESTED_LOOPS_USABLE` is the one with teeth, and
+it reads 0 on Qt 5 -- so fixtures needing a nested `QEventLoop` step over
+there, on the copyright holder's instruction of 2026-10-20.
+
+**THE QT 5 ARM STEPS OVER 36 CHECKS**, listed from its own output rather
+than counted: 5 for `QPalette::Accent`, which Qt 6.6 added and has no older
+equivalent; 2 because no font with leading is installed; 1 because Qt's own
+colour scheme is Unknown under the pinned platform theme; 2 for a menu past
+the 80 columns the offscreen platform defaults to; and the rest for nested
+loops.
+
+**THE COMFORTABLE OBJECTION, AND THE EXPERIMENT THAT KILLED IT.** A
+compile-time macro cannot see where in a run it sits, and three of the six
+guarded blocks are thousands of lines ABOVE the first `set_quit_keys()`. So
+the obvious reading is that the guard is position-blind and skips work that
+would pass. Forcing the macro to 1 and running the arm says otherwise:
+
+| Qt 5 | PASS | FAIL | SKIP |
+|---|---|---|---|
+| as it stands | 2423 | 0 | 36 |
+| nested loops forced on | 2428 | **19** | 13 |
+
+Nineteen of the twenty-three blocks un-skipped genuinely fail -- the context
+menu through `exec()`, the whole of drag and drop, `ActionsContextMenu`, and
+the file dialog. **And the context-menu block at `suite_router.cpp:5989`
+fails although it precedes every quit in the file**, which places the latch
+earlier than any `set_quit_keys()` call and means reordering those checks
+would recover nothing. The guard is right, by measurement rather than by
+deference.
+
+**WHAT THIS LEAVES IS A REAL GAP, NAMED RATHER THAN FIXED.** On Qt 5 the
+nested-loop surface -- menus opened with `exec()`, every drag and drop path,
+and the file dialog -- **is not verified at all**. Those are not marginal
+features; the drag paths include the ownership rules for a `QDrag` whose
+source is destroyed mid-loop, which is where a use-after-free would live.
+A Qt 5 regression there would be caught by nothing.
+
+Recovering them is not a macro change. It needs the suite to stop latching
+a thread quit before those blocks run -- which means either moving every
+check that quits to the end of the run, or running them in a child process,
+and the first is a reordering of a 17000-line file whose current order other
+checks depend on. **Whose decision that is: the copyright holder's**, since
+it is their instruction that the fixtures step over, and the cost is a
+restructuring rather than a fix. Recorded with the number so it can be
+decided once rather than re-measured.
+
+**AND THE DISPROOF IS THE POINT OF THE ENTRY.** Nothing changed in the
+library here and nothing needed to. What the twenty minutes bought is a
+closed branch: the next session to notice that a position-blind macro guards
+position-dependent behaviour does not have to run this, because the answer
+is written down with its numbers. A refusal to accept the comfortable story
+would have left the question open; running it removed it.

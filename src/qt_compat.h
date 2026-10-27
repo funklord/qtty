@@ -107,6 +107,18 @@ inline uint qHash(const QRect &r, uint seed = 0) {
 // This is not a statement that nested loops are broken on Qt 5 -- they work
 // in a process that has not issued a stray quit. It is a statement about
 // this suite, which has.
+//
+// MEASURED, so the step-over is not taken on trust. Forcing this to 1 and
+// running the Qt 5 arm un-skips 23 blocks, of which **19 fail**: the context
+// menu through exec(), the whole of drag and drop, ActionsContextMenu and
+// the file dialog. So the guard is substantively right and not merely
+// convenient. It also disposes of the obvious objection, that a compile-time
+// macro cannot see WHERE in the run it sits and so skips blocks that precede
+// any quit: the context-menu block at suite_router.cpp:5989 is thousands of
+// lines above the first set_quit_keys() and fails all the same, which places
+// the latch earlier still. Reordering the quit-key checks would therefore
+// recover nothing, and what it would take is a bigger restructuring than
+// this macro. 8.618 carries the numbers and names the open question.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #  define QTTY_NESTED_LOOPS_USABLE 1
 #else
