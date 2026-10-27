@@ -13873,6 +13873,17 @@ here**, because it is a change to working code for a version nobody has
 adopted -- but it is priced now, and unlike the other three it commits
 the project to nothing.
 
+**THAT TABLE IS CORRECTED BY 8.603 AND THE SENTENCE UNDER IT IS WRONG.**
+Qt 6 does NOT keep the constructor undeprecated: `qfontdatabase.h` carries
+`QT_DEPRECATED_VERSION_X_6_0("Call the static functions instead")` on it.
+The `0 warnings` for Qt 6.8 is g++'s answer and the row is right about
+g++; clang 19 reports the deprecation on the same header with the same
+flags. So the claim this paragraph rests on -- that the portable form
+"costs nothing" -- holds only for the compiler that was used, and the one
+of the four that "needs no decision" needs one after all. The row is left
+standing rather than rewritten because the number is correct for what
+measured it; what was missing is which witness, and 8.603 supplies it.
+
 That is the whole of it for the library. **It was open until 2026-10-19
 and is now done** -- the holder settled OQ-3 with the instruction to do the
 port, and 8.462 records it. What stood here until then was that writing the
@@ -50389,6 +50400,39 @@ churn the bar excludes.
 result and not a given: 2454 PASS, 0 FAIL, `OK (0 failures)`, library,
 tools and suite all built by clang 19.1.7 with no change to the Makefile
 or any mkspec.
+
+**AND THE SAME FAULT HAD A SECOND INSTANCE, ON THE OTHER AXIS.** Rebuilding
+`grid_style.cpp` for the comment above turned up a deprecation on the
+**Qt 5** arm that nothing had reported either:
+`qt_compat.h`'s wheel-event shim called `posF()`, which Qt 5.15 deprecates
+in favour of `position()` --
+`QT_DEPRECATED_VERSION_X_5_15("Use position()")` in `qevent.h`.
+
+**It was quiet for the same structural reason, one axis over.** The
+warning fires only when a translation unit including that header is
+recompiled, so an incremental Qt 5 build does not show it: of four Qt 5
+runs in one afternoon, **one reported it and three did not**, the
+difference being whether `grid_style.cpp` had been touched. And 8.588's
+census of the warning-free build was taken on the Qt 6 arm, where the
+line does not exist at all. So the first fault was one compiler and this
+one is one Qt version and one build state -- the same shape as the
+Qt 6/Qt 5 pair that caught 8.599's missing include, pointed the other way.
+
+**This one is free, and that is what distinguishes it from the
+QFontDatabase case.** Qt 5.15 HAS `position()`, design.md section 10
+states Qt 5.15 and Qt 6 as what this project supports, and the
+conditional was therefore conditioning on nothing. Measured, the single
+spelling in a file of its own under
+`-Wall -Wextra -Wdeprecated-declarations`:
+
+    e->position()   Qt 5.15: 0   Qt 6.8: 0
+    e->posF()       Qt 5.15: 1   (the deprecation)
+
+And the behaviour is provably identical rather than argued to be: in
+Qt 5.15's `qevent.h`, `posF()` is `return p;` and `position()` is
+`return p;` -- the same member, one by const reference and one by value,
+and this shim returns `QPointF` by value either way. So the `#if` is
+removed and one spelling serves both arms.
 
 ### 8.604 ASan, UBSan and the question of whether they ran (2026-10-27)
 

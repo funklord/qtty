@@ -136,12 +136,23 @@ inline QPointF event_position(const QMouseEvent *e) {
 }
 
 // And the same rename on a wheel event, whose position() arrived with it.
+//
+// NO CONDITIONAL, because there is nothing left to condition on: Qt 5.15
+// has position() and deprecates posF() in favour of it --
+// QT_DEPRECATED_VERSION_X_5_15("Use position()") in qevent.h -- and
+// design.md section 10 states Qt 5.15 and Qt 6 as what this project
+// supports. So one spelling serves both and the deprecated branch was
+// costing a warning for nothing.
+//
+// It was costing it quietly, which is why it stood. The warning fires only
+// when a translation unit including this header is recompiled, so an
+// incremental Qt 5 build does not show it: of four Qt 5 runs in one
+// afternoon, one reported it and three did not, the difference being
+// whether grid_style.cpp had been touched. And 8.588's census of the
+// warning-free build was taken on the Qt 6 arm, where this line does not
+// exist. 8.603.
 inline QPointF event_position(const QWheelEvent *e) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 	return e->position();
-#else
-	return e->posF();
-#endif
 }
 
 // WHAT QHash WANTS A qHash TO RETURN AND TAKE. Qt 6 looks for
