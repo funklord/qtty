@@ -51493,18 +51493,23 @@ reached.
 
 Three options, cheapest first, with what each costs:
 
-- **Run the one binary twice on Qt 5 with complementary runtime skips.**
-  First pass as today, the quit-key checks running and the nested-loop
-  blocks stepping over; second pass with the quit-key checks skipped so no
-  quit is issued and the nested-loop blocks run. The union is full
-  coverage, the blocks are already guarded so the guards become run-time,
-  and nothing is reordered. It costs a second suite run on one arm and a
-  `make test` that knows to do it -- and it is self-checking, because a
-  quit site missed anywhere leaves those blocks failing loudly in the
-  second pass rather than passing quietly.
+- ~~**Run the one binary twice on Qt 5 with complementary runtime skips.**~~
+  **REFUTED 2026-10-29, see 8.625.** The idea was that the quit could be
+  avoided in a second pass; what was tried instead, and is strictly
+  cheaper, is CLEARING the latch -- which turns out to be possible with one
+  `QCoreApplication::exec()` round trip. It then segfaults, because the only
+  way to clear it is to run the event loop and doing that at a block
+  boundary dispatches posted events from fixtures that have been torn down:
+  a queued mouse lambda reaches `drag_move_to` and maps a point through a
+  destroyed widget. Any in-process variant meets the same wall, this one
+  included -- a second pass still has to run the loop. The latch finding
+  stands on its own and makes the child-process option simpler.
 - **Fork a child process for the quit-issuing checks.** No reordering
   either, but process plumbing in the suite and a second place where a
-  check's output has to be collected.
+  check's output has to be collected. **Now the cheapest of the two that
+  remain, and simpler than it looked**: 8.625 measured that a process which
+  has not quit needs no clearing at all, so the child needs only to avoid
+  the quit rather than undo it.
 - **Move every check that quits to the end of the run.** A reordering of a
   17000-line file whose current order other checks depend on, and the most
   expensive of the three.
@@ -51985,3 +51990,80 @@ consumer exposes -- which ran `grep -rn 'std::sort'` over the tree and
 turned up this comment in the hit list. **Looking for siblings of a bug
 found the bug's own unpaid debt**, which is the cheapest place that sweep
 could have paid out and the one nobody plans for.
+
+### 8.625 The quit latch is clearable, and clearing it in process is not (2026-10-29)
+
+8.618 listed three ways to recover the checks the Qt 5 arm steps over and
+called the first the cheapest. **It is refuted here, with a backtrace, and
+the refutation cost less than building it would have.** The other two stand.
+
+**FIRST, A FACT NOBODY HAD**: the latch is clearable. 8.464 established that
+one `QCoreApplication::quit()` issued with no loop running makes every later
+`QEventLoop::exec()` return at once on Qt 5, and every account of it since --
+`qt_compat.h`'s guard, 8.618's options, 8.622 -- treated that as permanent
+for the process. Measured in one process, in order:
+
+| | Qt 5.15.15 | Qt 6.8.2 |
+|---|---|---|
+| fresh | 10 ms | 10 ms |
+| after a stray quit | **0 ms** | 10 ms |
+| second and third nested attempt | 0 ms, 0 ms | 10 ms |
+| after one `QCoreApplication::exec()` round trip | **10 ms** | 10 ms |
+
+So a full `exec()` round trip, ended by a zero timer, **resets it** -- and a
+latched nested loop does not reset it by being entered, which was the other
+candidate and would have been the safe one, processing nothing.
+
+**SECOND, IT WORKS IN THE SUITE, up to a point.** The six compile-time
+guards were replaced by a `clear_quit_latch()` call before each block -- a
+mechanical change whose proof is that all six block bodies survive
+byte-for-byte -- and the Qt 5 arm then **ran the first nested-loop block and
+passed it**, 619 checks deep with 0 failures, where that block had stepped
+over since 2026-10-20.
+
+**THIRD, IT THEN SEGFAULTED, and the backtrace is the finding:**
+
+    #0  QWidget::mapFromParent
+    #2  Qtty::drag_move_to(QWidget*, QPoint const&, QPoint const&)
+    #3  Qtty::InputRouter::on_mouse(MouseEvent const&)
+    #4  lambda#502 in suite_router()
+    #8  QCoreApplicationPrivate::sendPostedEvents
+    #13 QEventDispatcherGlib::processEvents
+
+**The round trip dispatches posted events left over from an earlier
+fixture.** A queued mouse-delivery lambda runs, reaches `drag_move_to`, and
+maps a point through a widget that has since been destroyed. Nothing noticed
+before because nothing ran the event loop at that boundary: the blocks were
+skipped, and `processEvents()` as the suite calls it is inside a fixture that
+still owns its widgets.
+
+**THAT IS AN OBJECTION TO THE OPTION, NOT A BUG TO PATCH.** The only known
+way to clear the latch is to run the event loop, and running it at a block
+boundary in THIS suite runs somebody else's stale queued work. Making it
+safe would mean either draining those events -- which is dispatching them,
+the same crash -- or discarding them with `removePostedEvents()`, which
+throws away deferred deletes the next fixture may be relying on. Both are
+changes to seventeen thousand lines of fixtures to buy a verification arm,
+which is the wrong way round.
+
+**SO 8.618's OPTION LIST IS NARROWER AND BETTER PRICED**, which is the
+useful result. The two-pass / in-process route is out. A child process is
+the remaining cheap one and the latch finding makes it simpler than it
+looked -- a child that has not quit needs no clearing at all. Reordering
+every check that quits to the end is still the expensive one. **Whose
+decision that remains: the holder's, because it changes how `make test`
+behaves on one arm** -- but it is now a choice between two options rather
+than three, and the one that was called cheapest was the one that does not
+work.
+
+**AND A LATENT FAULT IS RECORDED RATHER THAN FIXED.** The suite leaves
+posted events referencing destroyed widgets, so anything that runs the event
+loop at a block boundary crashes -- not only this. It is pre-existing, it is
+invisible while nobody does that, and it is a sweep across many fixtures
+rather than one edit. Named here so the next attempt at any of the three
+options meets it on paper instead of in a backtrace.
+
+**THE REVERT IS THE WHOLE OF THE CODE CHANGE.** `suite_router.cpp` is back
+at its committed state, checked with `git status`; the six guards and their
+23 skips are untouched. What this entry buys is a measurement, a refuted
+option and a named hazard.
