@@ -39,12 +39,21 @@ namespace Qtty {
 // both times, and no check here could catch it because there is nothing to
 // compare against.
 //
-// Overlay::visible_overlays() uses a plain std::sort over overlays, so
-// equal-z OVERLAYS already have that gap. It is not copied here on purpose.
-// Which one is right is not this function's to decide -- an overlay id is
-// that list's index and the terminal holds it between frames, so changing
-// the sort there is a change to what gets cleared, and it wants its own
-// measurement rather than being swept along with this.
+// ~~Overlay::visible_overlays() uses a plain std::sort over overlays, so
+// equal-z OVERLAYS already have that gap.~~ **It uses std::stable_sort too
+// since 2026-10-28**, so the two agree and the paragraph above now describes
+// both. This asked for the change to be measured rather than swept along,
+// because an overlay id IS that list's index and the terminal holds it
+// between frames -- `present_overlay(id++)` below, retired by
+// `clear_overlay()` -- so a different order is a different thing cleared.
+//
+// MEASURED, and the answer is that nothing moved. libstdc++ insertion-sorts
+// below 16 elements, which is stable, so std::sort already produced creation
+// order for every realistic overlay count and the two spellings are
+// byte-identical there; they diverge only from n = 17 equal-z overlays. What
+// changed is the direction this comment feared: an id was previously
+// arbitrary among equal z and could differ between libstdc++ versions, and
+// is now fixed by creation order. 8.624.
 void paint_placements(QPainter &p, const QVector<CellImage> &images,
                       int cw, int ch) {
 	QVector<int> order(images.size());

@@ -51903,3 +51903,85 @@ entry in this area got the convention wrong.** Its section 5.7 presents
 divergence while the twin ignored z; it is simply true now. The document is
 the holder's either way -- 8.79 and 8.98 -- and this change moves the code
 to the document rather than the document to the code.
+
+### 8.624 The measurement 8.623 was told to take and did not (2026-10-28)
+
+8.623 changed `Overlay::visible_overlays()` from `std::sort` to
+`std::stable_sort`, because the GUI twin restack raises real windows in that
+order and an unspecified order among equal z is a stack that can reshuffle.
+**`compositor.cpp` had a paragraph asking for exactly that change to be
+measured first, and this session walked past it:**
+
+> `Overlay::visible_overlays()` uses a plain `std::sort` over overlays, so
+> equal-z OVERLAYS already have that gap. It is not copied here on purpose.
+> Which one is right is not this function's to decide -- **an overlay id is
+> that list's index and the terminal holds it between frames**, so changing
+> the sort there is a change to what gets cleared, and **it wants its own
+> measurement** rather than being swept along with this.
+
+The claim is exact. `render_now()` presents the KittyAlpha tier with
+`present_overlay(id++, ...)` where the id is the loop index over that sorted
+list, retires the tail with `clear_overlay()`, and keeps the count in
+`live_overlay_ids_` **across frames**. A different order is a different
+picture cleared.
+
+**THE MEASUREMENT, taken now rather than assumed.** libstdc++ insertion-sorts
+below 16 elements and insertion sort is stable, so `std::sort` already
+produced creation order for n <= 16; the two spellings diverge from n = 17.
+Measured directly: `std::sort` preserves order at n = 2, 3, 5, 8, 12 and 16
+and reorders at 17, 20, 32 and 64, while `stable_sort` holds at every size.
+
+So for every realistic overlay count the orders are **identical** and nothing
+the terminal holds moved. And where they do differ, the change runs in the
+direction that paragraph feared rather than against it: an id among equal z
+was previously **arbitrary** -- derivable from nothing the application did,
+and free to differ between libstdc++ versions, which is the same hazard the
+paragraph spells out for placements two sentences earlier -- and is now fixed
+by creation order.
+
+**THAT IS LUCK, NOT JUDGEMENT, AND THE ENTRY EXISTS TO SAY SO.** The change
+was correct and was made for a good reason, and the reason had nothing to do
+with overlay ids, which this session did not know were the index of that
+list until it went looking afterwards. **A comment that says "this wants its
+own measurement" is a cost that has already been paid by somebody**: they
+found the coupling, could not price it, and left the price tag. Reading the
+function I was changing was not enough, because the warning was in its
+consumer -- and `grep` for the function name is what finds that, which is a
+cheap habit this did not have before.
+
+The paragraph is corrected rather than deleted: it still carries the
+reasoning for `paint_placements`'s own `stable_sort`, which was always
+right, and now records that both sides agree.
+
+**THE OTHER SEVEN `std::sort` CALLS WERE ASSESSED, so the next reader need
+not.** The question for each is whether keys can TIE and whether order among
+ties reaches output. Permuting equal keys leaves the KEY sequence identical,
+so only the associated data moves, which is what makes most of these safe by
+construction:
+
+- `cell_paint.cpp` 241 and 242 sort rects by `left()` and the grouping below
+  reads nothing but `left()`, so equal-left rects are interchangeable.
+- `cell_paint.cpp` 2434, the scanline fill, is the one that looks worst and
+  is not: within a tied block every span is zero-width at one x, so every
+  `lo`/`hi` pair is unchanged and each marks the same single cell, and the
+  marking is idempotent. Only the intermediate winding sums permute. Under
+  even-odd the directions are not read at all.
+- `cell_paint.cpp` 2399 merges bands by `lo`, and a union does not care in
+  which order two bands with the same `lo` arrive.
+- `cell_buffer.cpp` 814 and 822 and `scroll_settle.h` 58 sort values and row
+  indices, which carry no companion data to permute.
+
+**One is a named candidate rather than a clean bill**: `cell_paint.cpp` 295
+sorts `{x, ch}` items by `x` and concatenates the characters, so a digit
+group and a separator sharing an `x` would swap in the emitted string. No
+reproducer was found and the vector is local to a static function, so there
+is nothing to assert on from outside; it is recorded as the one place in
+this sweep where a tie would be VISIBLE rather than absorbed.
+
+**AND THE LENS THAT FOUND IT IS WORTH MORE THAN THE FINDING.** It was not
+a review of the last commit. It was a sweep for the OTHER instances of
+8.623's shape -- code leaning on an unspecified property that a second
+consumer exposes -- which ran `grep -rn 'std::sort'` over the tree and
+turned up this comment in the hit list. **Looking for siblings of a bug
+found the bug's own unpaid debt**, which is the cheapest place that sweep
+could have paid out and the one nobody plans for.
