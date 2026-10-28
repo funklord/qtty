@@ -1143,7 +1143,7 @@ Owned by the copyright holder:
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
-| **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
+| **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows. ~~And it cannot be verified headlessly here~~ -- **it can, measured 2026-10-28: `test-platforms` already runs the suite under xcb on Xvfb, where `raise()` works, and there the two targets stack the same two overlays in OPPOSITE orders.** So the cost argument is gone from both sides of the decision and only the scope question is left. 8.622 | 8.47, 8.622 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
@@ -2776,9 +2776,17 @@ In the order I would take them:
    factor of four**, which is the cost of pricing a job from twelve of
    218 when enumerating all 218 took one command.
 
-5. **The GUI twin's `z`**, unchanged and still unassertable: the
-   offscreen platform does not support `raise()`, so the stacking cannot
-   be checked here, and a fix nothing defends is worse than none.
+5. **The GUI twin's `z`.** ~~Unassertable: the offscreen platform does
+   not support `raise()`, so the stacking cannot be checked here, and a
+   fix nothing defends is worse than none.~~ **Assertable, measured
+   2026-10-28.** `test-platforms` already runs the whole suite under xcb
+   on Xvfb and `raise()` works there; offscreen says outright that it does
+   not support it. Measured in that arm, the twin stacks by show order and
+   the TUI path by z, so the same two overlays come out in OPPOSITE orders
+   -- and a fix there CAN be defended by that fixture. **What is left is
+   only the scope question, which is the holder's**: does the twin owe z
+   ordering at all. 8.622 has the measurement and the calibration the
+   reading needed.
 
 ## 0. What this is
 
@@ -51749,3 +51757,59 @@ sabotage entry 801.
 table above is nine independent instances of that invariant holding, which
 is the first time it has been exercised across widget kinds rather than
 asserted.
+
+### 8.622 The GUI twin's z, verified headlessly after all (2026-10-28)
+
+Section 0e's last live technical item says the GUI twin's `z` is "unchanged
+and still unassertable: the offscreen platform does not support `raise()`,
+so the stacking cannot be checked here, and a fix nothing defends is worse
+than none." The 0b row says the same from the other end: "it cannot be
+verified headlessly here."
+
+**Both clauses are false, and the thing that falsifies them is already in
+this Makefile.** `test-platforms` runs the whole suite under **xcb on
+Xvfb** -- 1280x1024x24, no watcher, nobody's screen -- and has since it
+caught a forked child creating widgets on the parent's X connection.
+Measured here: the offscreen plugin prints *"This plugin does not support
+raise()"* outright, and under xcb `raise()` is silent and works. So the
+platform objection was answered by this tree's own second arm, and the
+item kept the objection.
+
+**WHAT IT ACTUALLY DOES, measured rather than read off `sync_gui_twin()`.**
+Two overlays on a 60x20 base, distinguished by geometry because both twins
+carry the same object name: z = 100 shown FIRST at cell x 0, then z = 1
+shown SECOND at cell x 20.
+
+| window | z | position in the X stack |
+|---|---|---|
+| twin at x = 160 px | **1** | **topmost** |
+| twin at x = 0 px | **100** | below it |
+| the 480x320 base | -- | bottom |
+
+So the twin stacks by **show order**, and `visible_overlays()` reported
+`1 100` -- the TUI path sorting ascending so the compositor draws z = 1
+first and z = 100 over it. **In this fixture the two targets stack the same
+two overlays in exactly opposite orders.** That is a sharper statement than
+"the twin ignores z", and it is what makes the scope question real: an
+application that sets z and moves between targets gets the stacking
+inverted, not merely unordered.
+
+**THE INSTRUMENT WAS CALIBRATED BEFORE IT WAS READ, which is the part worth
+keeping.** `xwininfo -root -children` lists a stacking order and does not
+say which end is the top. The first reading of this assumed bottom-to-top
+and would have reported the exact opposite conclusion -- that the twin
+honours z -- from the same bytes. The control is to raise a window you own
+and see which end it moves to: `base.raise()` moves the 480x320 base to the
+**start** of the list, so the list is top-to-bottom. There is no window
+manager under bare Xvfb, so stacking is pure map order and a raise is the
+only thing that reorders it, which is what makes the control clean.
+
+**NOTHING IS FIXED AND NO CHECK IS ADDED, deliberately.** Whether the twin
+owes z ordering is a scope question and the copyright holder's -- design.md
+presents `Overlay` as target-independent and lists `setZ` unqualified. A
+check asserting today's behaviour would pin the thing they may want
+changed, and one asserting the other would fail. What this entry removes is
+the cost argument on both sides of the decision: **a fix here can be
+defended**, by exactly the fixture above in the arm that already runs it, so
+"a fix nothing defends is worse than none" no longer applies. The same shape
+as the 0b row that measurement halved on 2026-10-26 rather than informed.
