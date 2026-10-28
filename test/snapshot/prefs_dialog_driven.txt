@@ -1,0 +1,39 @@
+ [ ] Enable telemetry
+ (o) Daily              ( ) Weekly
+
+
+
+
+
+
+
+
+
+                             <OK>     <Cancel>
+
+
+--- attrs ---
+
+.ggg
+
+
+
+
+
+
+
+
+
+.............................1111
+
+
+--- blink ---
+(none)
+--- colours ---
+(none)
+--- images ---
+(none)
+--- legend ---
+. fg=default bg=default
+attrs: . none, 1 bold, g reverse
+blink: . none

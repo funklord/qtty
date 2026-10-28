@@ -8855,3 +8855,26 @@ find = "\tstd::stable_sort(out.begin(), out.end(),\n\t                 [](Overla
 into = "\tstd::sort(out.begin(), out.end(),\n\t          [](Overlay *a, Overlay *b) { return a->z() < b->z(); });"
 count = 1
 check = "twenty overlays at one z come back in the order they were created, so the order the twins are raised in is settled rather than whatever the sort happened to do"
+
+[[sabotage]]
+# THE DRIVEN SNAPSHOT WITH NO KEY DELIVERED. design.md's Phase 2 wants the
+# Phase 0 dialog "fully interactive under snapshot test" and Phase 3 asks
+# every product to characterise a screen the same way; 8.626 is that worked
+# example, and its value is entirely in the keys reaching InputRouter. A
+# characterisation that captures a dialog nobody touched is a second copy of
+# the render-only fixture beside it.
+#
+# THE CHECK NAMED IS THE ONE THAT WAS WRONG ONCE. It first compared the
+# driven capture against the UNDRIVEN one and called the difference proof
+# that the interaction reached the frame -- and a control withholding the
+# key showed the cells still differed, because focusing is itself visible as
+# reverse video. It compares against a capture with the focus already moved
+# now, so the difference is the key's. This entry keeps it that way: with the
+# delivery removed, both it and the state check redden, and the fixture
+# mismatch reddens too.
+name = "the driven dialog is captured without the keys being delivered"
+file = "test/suite_render.cpp"
+find = "\t\t\tdr.on_key({k, text, false, false, false});"
+into = "\t\t\tif (false) dr.on_key({k, text, false, false, false});"
+count = 1
+check = "and the cells differ from a capture with the focus already moved, so it is the key that reached the frame and not the focus"

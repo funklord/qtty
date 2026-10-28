@@ -145,6 +145,97 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// -- THE SAME DIALOG, DRIVEN (8.626) ---------------------------------
+	//
+	// design.md section 12 gives Phase 2 the exit criterion that the Phase 0
+	// dialog "renders and is fully interactive under snapshot test", and
+	// Phase 3 asks every product to characterise a screen the same way
+	// before deleting its own TUI: "characterisation snapshots first, then
+	// delete the old screen's TUI code when the shared one matches". Both
+	// fixtures in this tree were render-only -- built, shown, captured --
+	// so the interactive half of that criterion was unmet, and a product
+	// following Phase 3 had no worked example of the method to copy.
+	//
+	// THROUGH THE ROUTER rather than by calling setChecked(), because the
+	// input path is the point: a key reaches InputRouter, which is where a
+	// terminal's bytes arrive. Driving the widgets directly would redraw
+	// the same cells and prove nothing about input.
+	{
+		Qtty::InputRouter dr(&dlg);
+		Qtty::set_current_window(&dlg);
+		const auto focus_on = [&](QWidget *w) {
+			w->setFocus();
+			Qtty::set_focus_widget(dlg.focusWidget());
+			QCoreApplication::processEvents();
+		};
+		const auto tap = [&](Qt::Key k, const QString &text) {
+			dr.on_key({k, text, false, false, false});
+			QCoreApplication::processEvents();
+		};
+		const QString space = QStringLiteral(" ");
+
+		// A CAPTURE WITH THE FOCUS MOVED AND NO KEY PRESSED, which is the
+		// yardstick the comparison below needs. Focusing is itself visible
+		// -- qtty draws focus as reverse video, so the attribute plane
+		// changes -- and the first version of this check compared the driven
+		// capture against the UNDRIVEN one and called the difference proof
+		// that "the interaction reached the frame". A control that withheld
+		// the key showed that claim was false: the cells still differed,
+		// because the focus had moved. The sentence was testing focus and
+		// saying input.
+		//
+		// Both captures end with the focus on the same widget, so the only
+		// thing between them is the two spaces.
+		focus_on(chk);
+		focus_on(r1);
+		const QString focused = Qtty::test::snapshot_of(dlg, 52, 14);
+
+		focus_on(chk);
+		tap(Qt::Key_Space, space);            // [x] -> [ ]
+		focus_on(r1);
+		tap(Qt::Key_Space, space);            // Weekly -> Daily
+		const QString driven = Qtty::test::snapshot_of(dlg, 52, 14);
+
+		// THE STATE FIRST, so the snapshot says WHY it differs rather than
+		// only that it does. A fixture that matched while the keys had gone
+		// nowhere would be a characterisation of nothing, and this is the
+		// half that catches it.
+		if (!chk->isChecked() && r1->isChecked() && !r2->isChecked())
+			printf("PASS: a space through the router unticks the box and "
+			       "moves the radio, which is what the driven snapshot is "
+			       "a picture of\n");
+		else {
+			printf("FAIL: a space through the router unticks the box and "
+			       "moves the radio, which is what the driven snapshot is "
+			       "a picture of\n      box checked %d, daily %d, weekly "
+			       "%d\n", int(chk->isChecked()), int(r1->isChecked()),
+			       int(r2->isChecked()));
+			++r;
+		}
+		// AND THAT THE CELLS MOVED, against the focused capture rather than
+		// the undriven one. The state check above can pass while the frame
+		// is identical -- a control whose glyph does not follow its state is
+		// exactly the fault this tree keeps finding -- and comparing with
+		// the focus already moved is what makes the difference attributable
+		// to the key.
+		if (driven != focused)
+			printf("PASS: and the cells differ from a capture with the focus"
+			       " already moved, so it is the key that reached the frame"
+			       " and not the focus\n");
+		else {
+			printf("FAIL: and the cells differ from a capture with the focus"
+			       " already moved, so it is the key that reached the frame"
+			       " and not the focus\n      the two snapshots are"
+			       " identical\n");
+			++r;
+		}
+		const int dr_snap = Qtty::test::check_snapshot(
+		    QStringLiteral(QTTY_SOURCE_DIR),
+		    QStringLiteral("prefs_dialog_driven"), driven, record);
+		r += dr_snap;
+		if (!dr_snap && !record) printf("PASS: driven snapshot matches\n");
+	}
+
 	// A MARK BELONGS TO THE CELL IT SITS IN, not to the boundary nearest
 	// its edges. to_cells() rounds each edge, which is right for the
 	// rectangles it was written for -- a viewport, a panel, a frame, whose
@@ -866,6 +957,11 @@ int suite_render(bool record) {
 		// absorbed silently by `make record`.
 		const struct { const char *name; int rows; } fixtures[] = {
 			{ "prefs_dialog",     14 },
+			// The driven capture is the same dialog at the same size, so it
+			// is the same 14 -- and it is listed here rather than left to
+			// check_snapshot alone for the reason the comment above gives:
+			// a fixture its own generator agrees with is one witness. 8.626.
+			{ "prefs_dialog_driven", 14 },
 			{ "widgets_gallery",  17 },
 		};
 		for (const auto &fx : fixtures) {

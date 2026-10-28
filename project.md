@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2467 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2472 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -52067,3 +52067,63 @@ options meets it on paper instead of in a backtrace.
 at its committed state, checked with `git status`; the six guards and their
 23 skips are untouched. What this entry buys is a measurement, a refuted
 option and a named hazard.
+
+### 8.626 The interactive half of Phase 2's exit criterion (2026-10-29)
+
+Found by walking the goal gap rather than by reading a list of open items:
+for each aim and each roadmap phase, what can a user not yet do, and is
+there code for it. **design.md section 12 gives Phase 2 the exit criterion
+that the Phase 0 dialog "renders and is fully interactive under snapshot
+test". Both fixtures in this tree were render-only** -- built, shown,
+captured -- so half of that criterion was unmet while section 11 called the
+Phase-2 build-out finished.
+
+**AND THE GAP IS NOT THE TICK, IT IS THE MISSING EXAMPLE.** Phase 3 asks
+every product to do this before deleting its own TUI: *"characterisation
+snapshots first, then delete the old screen's TUI code when the shared one
+matches."* A product following that instruction had no worked example of an
+interactive characterisation to copy -- only two captures of dialogs nobody
+touched. That is the highest-value kind of gap because nothing in the tree
+marks it as open: the suite is green, the fixtures match, and the method the
+migration plan rests on had never been demonstrated once.
+
+**THE DECISION, taken from the aims rather than parked.** One view codebase
+rendered on a terminal is the aim; a characterisation that cannot show input
+reaching the frame does not serve it. So the Phase 0 dialog is now driven
+through `InputRouter` -- space on the check box, space on the other radio --
+and captured a second time as `prefs_dialog_driven`. Through the router and
+not `setChecked()`, because the input path is the point: a key reaches
+`InputRouter`, which is where a terminal's bytes arrive, and poking the
+widget would redraw the same cells while proving nothing.
+
+The fixture was read rather than blessed, which is what `testing.h` asks:
+
+    [x] Enable telemetry        ->   [ ] Enable telemetry
+    ( ) Daily     (o) Weekly    ->   (o) Daily     ( ) Weekly
+
+and the attribute plane gains `g reverse` on the focused radio's three
+cells, which is the focus indication arriving with the focus.
+
+**THE CONTROL FOUND A FAULT IN MY OWN CHECK, which is the part worth
+keeping.** Withholding the key reddened the state check and the fixture
+comparison -- and left *"the cells differ from the undriven capture, so the
+interaction reached the frame"* **passing**. Focusing is itself visible,
+qtty drawing focus as reverse video, so the cells differed because the focus
+had moved. **The sentence was testing focus and saying input.** It compares
+against a capture taken with the focus already moved now, so both captures
+end on the same widget and the only thing between them is the two spaces;
+with the delivery removed both checks redden. Sabotage entry 803 keeps it
+that way, and names that check rather than the state one because it is the
+one that has already been wrong.
+
+**A check that is nearly right is the expensive kind**: it passes, it reads
+as careful, and the thing it names is not the thing it tests. The control
+cost one build and the sentence would otherwise have stood as the worked
+example every product was told to copy.
+
+**WHAT IS STILL NOT DONE, stated so it is not read as complete.** "Fully
+interactive" here is two keys on two controls, not the whole dialog: the
+combo box, the tree and the button box are rendered but not driven, and no
+check drives a mouse. The criterion is met in the sense that matters for
+Phase 3 -- the method exists and is demonstrated end to end -- and the
+remaining controls are more of the same rather than another kind of thing.
