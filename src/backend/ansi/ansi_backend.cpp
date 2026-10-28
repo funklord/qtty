@@ -1388,7 +1388,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			// pixmap alone left a resized sticker referencing a virtual
 			// placement still sized to the rectangle it no longer spans.
 			const ImageEncodeKey ek =
-			    image_key(ci.key, QRect(QPoint(0, 0), img.size()),
+			    image_key(ci.identity(), QRect(QPoint(0, 0), img.size()),
 			              ci.cell_rect.size());
 			bool minted = false;
 			const quint32 id = wire_id_for(ek, &minted);
@@ -1625,7 +1625,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// font-size change rather than deleted by somebody
 				// remembering to.
 				const ImageEncodeKey ek =
-				    image_key(ci.key, QRect(QPoint(0, 0), img.size()),
+				    image_key(ci.identity(), QRect(QPoint(0, 0), img.size()),
 				              QSize());
 				bool minted = false;
 				const quint32 id = wire_id_for(ek, &minted);
@@ -1677,7 +1677,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// stood here said exactly that; it is the stored copy the key
 				// exists to keep unpoisoned now that something does.
 				const ImageEncodeKey ek =
-				    image_key(ci.key, cp.source, cp.cells.size());
+				    image_key(ci.identity(), cp.source, cp.cells.size());
 				auto sx = image_bytes_.find(ek);
 				if (sx == image_bytes_.end())
 					sx = image_bytes_.insert(
@@ -1701,7 +1701,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// Both are in the cache key for that reason: the cell extent
 				// is on this tier's wire, where sixel states only pixels.
 				const ImageEncodeKey ek =
-				    image_key(ci.key, cp.source, cp.cells.size());
+				    image_key(ci.identity(), cp.source, cp.cells.size());
 				auto it2 = image_bytes_.find(ek);
 				if (it2 == image_bytes_.end())
 					it2 = image_bytes_.insert(

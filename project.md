@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2461 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2464 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -51542,3 +51542,77 @@ machine with none of the four installed is a real machine, and it now says
 that no candidate resolves with leading *under this Qt* rather than making
 a claim about what is installed. A check that cannot run should say what it
 could not find.
+
+### 8.620 A key of zero is not a key (2026-10-28)
+
+The lens is 8.601's: **a public struct the caller fills in, where a field
+can be left inconsistent with the rest**. That found `CellBuffer::fill()`
+carrying a template's `width` where the destination should derive it;
+`CellImage` is the other such struct, and `cell.h` says in as many words
+that an application may append its own placement and "writes the three
+fields it knows about".
+
+One of those three is `key`, documented one screen above as
+`QPixmap::cacheKey() -> upload-once identity`. **It defaults to 0, and
+nothing derived one.**
+
+**MEASURED, NOT REASONED ABOUT.** Two images of one size appended with
+`key` left alone, presented to a kitty backend:
+
+    two app-built placements with key left at its default
+    went out as 1 transmission(s)
+
+One transmission for two different pictures. Equal keys make equal
+`ImageEncodeKey`s, `wire_id_for()` hands back the id it already holds with
+`minted = false`, nothing is re-uploaded, and **the second placement draws
+the first one's pixels** for as long as both are on screen. That is
+8.616's failure arriving through the front door: there a weak hash collided
+by accident on Qt 5, here the documented default collides every time, on
+both arms.
+
+**AND THE SECOND FACE IS WORSE, BECAUSE IT IS SILENT EARLIER.**
+`CellImage::operator==` deliberately does not compare the pixmap, and its
+comment explains why: *"`key` is its cacheKey, so two placements have equal
+keys exactly when they carry the same pixels."* **That sentence is
+conditional on somebody having set one.** At the default it is false, so
+two placements showing different pictures compared EQUAL -- and
+`Compositor` decides whether a frame is worth sending with
+`frame.images != prev_->images`. A frame in which only the picture changed
+was therefore never presented at all. The struct's own comment had already
+reasoned this out twice, for `z` and for `clip`, and the premise it rests on
+was the thing missing.
+
+**THE FIX IS ONE ACCESSOR, and it carries out the documentation rather than
+amending it.** `identity()` returns `key` when there is one and
+`pixmap.cacheKey()` when there is not -- which is what `key` is documented
+to be. A real cacheKey is never 0 for a pixmap holding anything, so the two
+cases cannot be confused. `operator==` compares through it, and so do the
+four `image_key()` call sites in the backend, which are the only readers.
+Transmissions went 1 to 2.
+
+**THREE CHECKS, ALL SEEN FAILING.** Two in `suite_placements` on the
+comparison, one in `suite_backend` on the wire. The second comparison check
+is the half that keeps the fix honest: one picture in two placements must
+still be ONE upload at a non-zero identity, so this is a sharpening rather
+than a blanket inequality. All three reddened against `return key;`, which
+is the pre-fix state, and that is now sabotage entry 800.
+
+**AND THE CHANGE BROKE THREE SABOTAGE ANCHORS, WHICH IS THE PART WORTH
+KEEPING.** Rewriting `operator==` and the four call sites moved text that
+three existing entries anchor on -- two on the comparison, one on the
+placeholder upload cache -- so `--validate` reported **3 of 800 entries
+cannot be applied**, each ending "the check it names is undefended". None of
+the three was mine.
+
+That is the spec working exactly as intended, and it is a cost nobody
+budgets for: **an edit to a line under an anchor disarms a check somewhere
+else, silently, and the only thing that says so is a gate run.** Two were
+repaired by rewriting their `find` and `into`; the third was avoided
+instead, by relaying `operator==` so that the clip entry's anchor still
+matches character for character -- **a diff shaped to keep an anchor intact
+is cheaper than a spec edit, because a repaired substitution has to be
+exercised again** and the original did not.
+
+So the repaired entries were re-run rather than revalidated: `--validate`
+only asks whether the anchor still matches, and what changed here was what
+the entries SUBSTITUTE.

@@ -90,10 +90,42 @@ struct CellImage {
 	bool    has_clip = false;
 	QRect   clip;
 
+	// The identity this placement is actually known by, which is `key`
+	// unless nobody set one.
+	//
+	// 0 IS NOT A KEY AND MUST NOT BE USED AS ONE. The comment on `key` above
+	// says it is the pixmap's cacheKey, and the comment on `has_clip` below
+	// says an application appending its own placement "writes the three
+	// fields it knows about" -- so a `key` of 0 is not an application saying
+	// "identity zero", it is an application that has not said. A real
+	// cacheKey is never 0 for a pixmap that holds anything, so the two cases
+	// cannot be confused, and deriving it here is carrying out what `key` is
+	// documented to be rather than inventing a rule.
+	//
+	// IT WAS MEASURED COSTING A PICTURE. Two images of one size appended
+	// with `key` left alone went out as ONE kitty transmission: equal keys
+	// make equal ImageEncodeKeys, wire_id_for() handed back the id it
+	// already held with minted = false, nothing was re-uploaded, and the
+	// second placement drew the first one's pixels for as long as both were
+	// on screen. That is 8.616's failure reached through the front door --
+	// there a weak hash collided by accident, here the default collides
+	// every time.
+	//
+	// And the same zero defeats the comparison below, which is the worse
+	// half because it is silent earlier: Compositor decides whether a frame
+	// is worth sending with `frame.images != prev_->images`, so a frame in
+	// which only the PICTURE changed compares equal to its predecessor and
+	// is never presented at all.
+	quint64 identity() const {
+		return key != 0 ? key : quint64(pixmap.cacheKey());
+	}
+
 	// The pixmap is deliberately NOT compared, and this is not an omission:
 	// `key` is its cacheKey, so two placements have equal keys exactly when
 	// they carry the same pixels. Comparing the key IS comparing the image,
 	// at the cost of a quint64 rather than of a per-frame pixel walk.
+	// COMPARED THROUGH identity(), so that the sentence above is true of a
+	// placement an application built as well as of one harvest() produced.
 	//
 	// `z` IS compared, and omitting it is the trap this field walks into.
 	// The frame loop decides whether a frame is worth sending with
@@ -116,7 +148,8 @@ struct CellImage {
 	// predecessor and never be presented. The surface would then show the
 	// wrong slice of itself until something else dirtied the frame.
 	bool operator==(const CellImage &o) const {
-		return key == o.key && cell_rect == o.cell_rect && z == o.z
+		return identity() == o.identity() && cell_rect == o.cell_rect
+		    && z == o.z
 		    && has_clip == o.has_clip && (!has_clip || clip == o.clip);
 	}
 	bool operator!=(const CellImage &o) const { return !(*this == o); }

@@ -153,5 +153,42 @@ int suite_placements() {
 		      " two lengths give two keys");
 	}
 
+	// -- a placement an application built, with key left alone (8.620) ----
+	//
+	// cell.h documents `key` as the pixmap's cacheKey and tells an
+	// application appending its own placement that it writes the three
+	// fields it knows about. A `key` of 0 is therefore not an identity, it
+	// is an application that has not said -- and operator== does not compare
+	// the pixmap, so without identity() two different pictures of one size
+	// compared EQUAL. Compositor sends a frame only when
+	// `frame.images != prev_->images`, so the picture would change and the
+	// frame would never be presented.
+	{
+		QPixmap red(2 * cw, 2 * ch), blue(2 * cw, 2 * ch);
+		red.fill(Qt::red);
+		blue.fill(Qt::blue);
+
+		Qtty::CellImage pa, pb;            // both keys left at 0
+		pa.cell_rect = QRect(0, 0, 2, 2);
+		pa.pixmap = red;
+		pb.cell_rect = QRect(0, 0, 2, 2);
+		pb.pixmap = blue;
+		CHECK(pa != pb,
+		      "two placements an application built from different pictures"
+		      " differ, although neither set a key and nothing compares the"
+		      " pixmap");
+
+		// The other half of the relationship, so the fix is a sharpening
+		// rather than a blanket inequality: one picture in two placements
+		// must still be ONE upload, which is the property key exists for.
+		Qtty::CellImage pc;
+		pc.cell_rect = QRect(0, 0, 2, 2);
+		pc.pixmap = red;
+		CHECK(pc == pa && pc.identity() == pa.identity()
+		      && pa.identity() != 0,
+		      "and two placements carrying the same picture still agree, at"
+		      " an identity that is not zero");
+	}
+
 	return fails;
 }

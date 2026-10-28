@@ -8972,6 +8972,35 @@ int suite_exec() {
 					surface_ids = ids_where(controls(taken()), "a=T");
 				});
 
+				// -- AND THE SAME TWO PICTURES WITH `key` LEFT ALONE -------
+				//
+				// cell.h tells an application appending its own placement
+				// that it "writes the three fields it knows about", and
+				// `key` defaults to 0. Two different pictures of one size
+				// therefore arrive carrying the SAME identity, which is the
+				// one input wire_id_for() cannot recover from: it hands back
+				// the id it already holds, nothing is re-uploaded, and the
+				// second placement draws the first one's pixels.
+				QVector<int> defaulted_ids;
+				int defaulted_tx = 0;
+				{
+					CellBuffer f_default(20, 6);
+					CellImage da, db;          // key left at its default
+					da.cell_rect = QRect(0, 0, 2, 2);
+					da.pixmap = pm_a;
+					db.cell_rect = QRect(6, 0, 2, 2);
+					db.pixmap = pm_b;
+					f_default.images.append(da);
+					f_default.images.append(db);
+					with_backend("kitty", false, [&](AnsiBackend &be) {
+						be.present(f_default, QRegion());
+						const QVector<QByteArray> ctrls = controls(taken());
+						defaulted_ids = ids_where(ctrls, "a=T");
+						for (const QByteArray &c : ctrls)
+							if (c.contains("a=T")) ++defaulted_tx;
+					});
+				}
+
 				fflush(stdout);
 				::dup2(keep_in, 0);
 				::dup2(keep_out, 1);
@@ -9020,6 +9049,18 @@ int suite_exec() {
 				       (unsigned long long)hkey_a, (unsigned long long)hkey_b,
 				       unsigned(hkey_a & 0xFFFFFF),
 				       unsigned(hkey_b & 0xFFFFFF));
+				printf("info: two app-built placements with key left at its"
+				       " default went out as %d transmission(s), ids %s\n",
+				       defaulted_tx,
+				       defaulted_ids.isEmpty()
+				           ? "none"
+				           : qPrintable(QStringLiteral("%1")
+				                            .arg(defaulted_ids.size())));
+				CHECK(defaulted_ids.size() == 2
+				      && defaulted_ids[0] != defaulted_ids[1],
+				      "two pictures an application appends without setting"
+				      " key go out as two images, rather than the second"
+				      " silently drawing the first one's pixels");
 				CHECK((hkey_a & 0xFFFFFF) != (hkey_b & 0xFFFFFF)
 				      && surface_ids.size() == 2
 				      && surface_ids[0] != surface_ids[1],

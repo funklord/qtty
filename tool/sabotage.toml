@@ -3313,8 +3313,8 @@ check = "on the upload that displays it and on the re-place"
 # Every ordering check above stays green under this one. 8.235.
 name = "a frame whose only change is a z compares equal"
 file = "include/qtty/cell.h"
-find = "\t\treturn key == o.key && cell_rect == o.cell_rect && z == o.z\n\t\t    && has_clip == o.has_clip && (!has_clip || clip == o.clip);"
-into = "\t\treturn key == o.key && cell_rect == o.cell_rect\n\t\t    && has_clip == o.has_clip && (!has_clip || clip == o.clip);"
+find = "\t\treturn identity() == o.identity() && cell_rect == o.cell_rect\n\t\t    && z == o.z\n"
+into = "\t\treturn identity() == o.identity() && cell_rect == o.cell_rect\n"
 count = 1
 check = "and the frame gate still calls that a different frame"
 
@@ -4187,8 +4187,8 @@ check = "goes on drawing them while neither copy moves"
 # transmission states as c=<cols>,r=<rows>. 8.253.
 name = "the placeholder upload cache drops the extent"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\t\t    image_key(ci.key, QRect(QPoint(0, 0), img.size()),\n\t\t\t              ci.cell_rect.size());"
-into = "\t\t\t    image_key(ci.key, QRect(QPoint(0, 0), img.size()),\n\t\t\t              QSize());"
+find = "\t\t\t    image_key(ci.identity(), QRect(QPoint(0, 0), img.size()),\n\t\t\t              ci.cell_rect.size());"
+into = "\t\t\t    image_key(ci.identity(), QRect(QPoint(0, 0), img.size()),\n\t\t\t              QSize());"
 count = 1
 check = "the same pixmap at a new extent is transmitted again"
 
@@ -8788,3 +8788,23 @@ find = "\tconst uchar *s = static_cast<const uchar *>(p);"
 into = "\tconst uchar *s = static_cast<const uchar *>(p);\n\tif (n > 1024) n = 1024;"
 count = 1
 check = "one pixel changed by one level gives a different key"
+
+[[sabotage]]
+# ZERO TREATED AS A KEY. cell.h documents `key` as the pixmap's cacheKey and
+# tells an application appending its own placement that it writes the three
+# fields it knows about, so a key of 0 is an application that has not said
+# rather than an identity. identity() derives one in that case; returning the
+# raw key is the state this replaced, and it costs a picture.
+#
+# Measured by hand before this entry existed: two images of one size appended
+# with key left alone went out as ONE kitty transmission instead of two, the
+# second placement drawing the first one's pixels, and all three checks below
+# reddened. The one named is the cheapest of them -- it needs no terminal,
+# only the comparison -- and the other two cover the same break from the
+# backend's side.
+name = "a placement's identity treats a zero key as a key"
+file = "include/qtty/cell.h"
+find = "\t\treturn key != 0 ? key : quint64(pixmap.cacheKey());"
+into = "\t\treturn key;"
+count = 1
+check = "two placements an application built from different pictures differ, although neither set a key and nothing compares the pixmap"
