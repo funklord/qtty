@@ -15657,8 +15657,18 @@ top-level widget, so shared code manipulates one object in both targets"*
 holder's**, which is why this is a flag rather than a change. It is not a
 one-liner either: the twins are frameless always-on-top `Qt::Tool`
 windows, so ordering them means raising them in z order and living with
-whatever the window manager does, and it cannot be verified headlessly
-here. Recorded in 0b.
+whatever the window manager does. Recorded in 0b.
+
+**~~And it cannot be verified headlessly here.~~ It can, and 8.622
+measured it on 2026-10-28.** `test-platforms` already runs the whole suite
+under xcb on Xvfb, where `raise()` works -- offscreen says outright that it
+does not support it -- so the headless objection was answered by this
+tree's own second arm before this entry was written. Measured in that arm,
+the twin stacks by SHOW order while the TUI path sorts by z, so the same
+two overlays come out in **opposite** orders rather than merely unordered,
+which is the sharper statement of what is above. The scope question is
+untouched and still the holder's; what is gone is the cost argument, since
+a fix here can be defended by that fixture.
 
 ### 8.48 Two drag paths nothing had ever taken (2026-09-07)
 
