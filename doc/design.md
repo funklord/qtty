@@ -1185,25 +1185,6 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
   instead of being unanswerable for want of knowing who they are.
 - **OQ-5.** Accessibility: is a `QAccessible` bridge worth it, given the terminal already
   exposes text to screen readers when the cursor is placed correctly (§5.5)?
-  **Still open, and its premise is measured false as stated, 2026-10-28.** The
-  clause "when the cursor is placed correctly" assumes a cursor is placed. It
-  is not, for most of the toolkit: `compositor.cpp` gives the terminal cursor
-  only to a widget carrying `WA_InputMethodEnabled`, because §5.5's original
-  generic trick — ask the focus widget for `ImCursorRectangle` — was measured
-  in 2026-09-01 to answer for *every* `QWidget`, parking the caret in the
-  middle of a check box's label. That narrowing is correct: a caret means
-  "type here", not "this is focused", and a screen reader says so out loud.
-  Measured over nine focusable kinds, **2 place a cursor (`QLineEdit`,
-  `QSpinBox`) and 7 place none** — check box, radio button, push button,
-  combo box, slider, tab bar and list. So a screen reader following the
-  cursor is told nothing about focus for seven of nine, and the question is
-  not "is a bridge worth it given the cursor suffices" but "is a bridge the
-  only thing that can carry non-text focus". The alternative is to park the
-  cursor on the focused widget's own cell, which is the ncurses convention
-  and what a terminal screen reader follows; its cost is a caret promising
-  text entry where there is none, which is the thing §5.5 was narrowed to
-  stop. **The decision is the copyright holder's**; project.md 8.621 has the
-  measurement.
 
 ---
 

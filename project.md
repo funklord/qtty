@@ -14481,6 +14481,13 @@ and matters for screen readers."* A caret in the middle of a slider is
 not a decoration, it is a claim that typing goes there, and a screen
 reader says it out loud.
 
+**WHAT THIS COSTS design.md's OPEN QUESTION is in 8.621**, written later:
+OQ-5 asks whether a `QAccessible` bridge is worth it "given the terminal
+already exposes text to screen readers when the cursor is placed
+correctly", and the narrowing recorded here means a cursor is placed for
+two of nine focusable kinds. The negative half of the rule is also pinned
+by a check now, which it was not when this entry was written.
+
 **And the rectangle's top-left is not the caret.** Recorded here first as
 a spin box oddity -- Qt answers `10x20+-3+0`, a caret at x = -3, outside
 the widget -- and the measurement that followed showed it was not a spin
@@ -51620,7 +51627,10 @@ the entries SUBSTITUTE.
 ### 8.621 OQ-5 rests on a premise its own code disproved (2026-10-28)
 
 design.md's open questions are the project's own statement of what is
-undecided, so they were read before any lens was derived. OQ-3 and OQ-4 are
+undecided, so they were read before any lens was derived. 8.9 records the
+measurement this entry rests on, in fuller form and with the whole
+`ImCursorRectangle` table; what follows is what 8.9 did not carry, which is
+what its finding costs the question in section 14. OQ-3 and OQ-4 are
 holder decisions already recorded. **OQ-5 is posed on a false premise**, and
 the thing that disproves it is a comment in this tree written weeks ago.
 
@@ -51674,9 +51684,25 @@ naming is to park the cursor on the focused widget's own cell rather than at
 a caret it does not have, which is the ncurses convention and what a
 terminal screen reader actually follows; **its cost is a caret promising
 text entry where there is none**, which is precisely what the narrowing
-above exists to prevent. Both options, their costs, and the fact that the
-decision is the copyright holder's are now in design.md beside the
-question.
+above exists to prevent. Both options and their costs are recorded here, with the
+decision the copyright holder's.
+
+**AND DESIGN.MD IS DELIBERATELY NOT EDITED, which is a correction to this
+entry's own first draft.** OQ-5 was amended in place with the measurement
+before the tree's convention on that was read. **8.79 and 8.98 both record
+it**: a divergence found in `design.md` "is NOT being edited", the tree
+"keeps its lag as a note", and an open question "wants striking through by
+its owner, not answering by me". The holder did direct a `design.md` update
+on 2026-10-27, for retiring the termpaint and legacy adapters; an
+instruction moves as far as it says, and that one said nothing about section
+14. So the amendment was reverted and the finding lives here, which is the
+documented channel for exactly this.
+
+That ordering is the lesson rather than the slip: the convention was two
+entries away in the file this work was already writing into, and the edit
+felt like propagating a correction -- which it was -- to a document that is
+not mine to propagate into. **Finding a stale premise does not confer
+authority to fix it where it is stale.**
 
 **NO LIBRARY BEHAVIOUR CHANGED, AND THAT IS THE RIGHT OUTCOME.** The code
 is correct; the document's premise was stale. What did change is that the
