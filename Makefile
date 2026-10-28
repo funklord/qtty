@@ -34,6 +34,7 @@
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
 #   make test-tray    -- publish a real tray icon on a private D-Bus session
+#   make test-overlay-z -- the GUI twin stacks its windows by z (needs Xvfb)
 #   make test-pty     -- the suite on a real pseudo-terminal
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
@@ -513,6 +514,13 @@ sabotage:
 # milliseconds -- and `check` is what runs before every commit.
 test-consume:
 	@./tool/consume-check
+
+# OUT OF `make check` DELIBERATELY, and for the reason the script opens with:
+# the gate's platform cannot raise a window, so this check would pass there
+# whatever the code did. It needs Xvfb and xwininfo and skips saying so when
+# either is absent, like `test-consume` and `test-tray` do.
+test-overlay-z:
+	@./tool/overlay-z-check
 
 # WHAT A FAILING ARM LEAVES BEHIND is the reason `keep` exists, and it was
 # paid for. Every arm below ran with `2>/dev/null` and its stdout in one
@@ -1910,4 +1918,5 @@ help:
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
+        test-overlay-z \
         tools-check sabotage-check FORCE

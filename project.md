@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2465 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2467 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1143,7 +1143,7 @@ Owned by the copyright holder:
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
-| **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows. ~~And it cannot be verified headlessly here~~ -- **it can, measured 2026-10-28: `test-platforms` already runs the suite under xcb on Xvfb, where `raise()` works, and there the two targets stack the same two overlays in OPPOSITE orders.** So the cost argument is gone from both sides of the decision and only the scope question is left. 8.622 | 8.47, 8.622 |
+| **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. ~~Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows.~~ **SETTLED 2026-10-28: the holder's answer is that the twin should honour z, and 8.623 implements it** -- `set_z()` syncs, the registry sort is stable so equal z keeps creation order, and a static restack raises every visible twin in ascending z. Defended by `make test-overlay-z` under Xvfb, seen to fail without the restack. ~~And it cannot be verified headlessly here~~ -- **it can, measured 2026-10-28: `test-platforms` already runs the suite under xcb on Xvfb, where `raise()` works, and there the two targets stack the same two overlays in OPPOSITE orders.** So the cost argument is gone from both sides of the decision and only the scope question is left. 8.622 | 8.47, 8.622 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
@@ -2783,10 +2783,13 @@ In the order I would take them:
    on Xvfb and `raise()` works there; offscreen says outright that it does
    not support it. Measured in that arm, the twin stacks by show order and
    the TUI path by z, so the same two overlays come out in OPPOSITE orders
-   -- and a fix there CAN be defended by that fixture. **What is left is
-   only the scope question, which is the holder's**: does the twin owe z
-   ordering at all. 8.622 has the measurement and the calibration the
-   reading needed.
+   -- and a fix there CAN be defended by that fixture. **DONE 2026-10-28**:
+   the holder answered that the twin should honour z, and 8.623 implements
+   it -- `set_z()` syncs, the registry sort is stable so equal z keeps
+   creation order, and a static restack raises every visible twin in
+   ascending z. `make test-overlay-z` defends it under Xvfb and was seen to
+   fail without the restack. 8.622 has the measurement and the calibration
+   the reading needed; this item is closed.
 
 ## 0. What this is
 
@@ -15658,6 +15661,10 @@ holder's**, which is why this is a flag rather than a change. It is not a
 one-liner either: the twins are frameless always-on-top `Qt::Tool`
 windows, so ordering them means raising them in z order and living with
 whatever the window manager does. Recorded in 0b.
+
+**SETTLED 2026-10-28.** The holder's answer is that the twin should honour
+z; 8.623 implements it and `make test-overlay-z` defends it. What follows is
+the measurement that made the decision answerable.
 
 **~~And it cannot be verified headlessly here.~~ It can, and 8.622
 measured it on 2026-10-28.** `test-platforms` already runs the whole suite
@@ -51814,8 +51821,12 @@ and see which end it moves to: `base.raise()` moves the 480x320 base to the
 manager under bare Xvfb, so stacking is pure map order and a raise is the
 only thing that reorders it, which is what makes the control clean.
 
-**NOTHING IS FIXED AND NO CHECK IS ADDED, deliberately.** Whether the twin
-owes z ordering is a scope question and the copyright holder's -- design.md
+**~~NOTHING IS FIXED AND NO CHECK IS ADDED, deliberately.~~ The holder
+answered on 2026-10-28 -- the twin should honour z -- and 8.623 is the
+implementation, with this fixture promoted to `make test-overlay-z` as its
+defence.** What follows was the reasoning while the question was open.
+Whether the twin owes z ordering was a scope question and the copyright
+holder's -- design.md
 presents `Overlay` as target-independent and lists `setZ` unqualified. A
 check asserting today's behaviour would pin the thing they may want
 changed, and one asserting the other would fail. What this entry removes is
@@ -51823,3 +51834,72 @@ the cost argument on both sides of the decision: **a fix here can be
 defended**, by exactly the fixture above in the arm that already runs it, so
 "a fix nothing defends is worse than none" no longer applies. The same shape
 as the 0b row that measurement halved on 2026-10-26 rather than informed.
+
+### 8.623 The GUI twin honours z (2026-10-28)
+
+**Settled by the copyright holder 2026-10-28: the GUI twin should honour
+z.** 8.47 raised it as a scope question and 8.622 removed the cost argument
+by showing it could be defended; this is the answer and the implementation.
+
+**WHAT IT WAS.** `Overlay::set_z()` assigned `z_` and did nothing else --
+alone among the five mutators in not calling `sync_gui_twin()`, and 8.47
+recorded that as right "because the twin never reads `z_`". It was right
+while that held. The twins are separate frameless always-on-top `Qt::Tool`
+top-levels, so nothing about them is ordered by a parent's child order: they
+sat in whatever order they were shown in. Measured in 8.622, the TUI path
+and the GUI path stacked the same two overlays in **opposite** orders.
+
+**THREE CHANGES, and the middle one was not on the list.**
+
+- `set_z()` syncs now, and is the mutator that most needs to: its whole
+  effect is an ordering. It returns early when the value is unchanged, so a
+  write that changes nothing does not restack.
+- `visible_overlays()` uses **`std::stable_sort`**, where it used
+  `std::sort`. The order among EQUAL z is what the restack raises windows
+  in, so an unspecified one is a stack that can reshuffle on any sync for no
+  reason an application can see. `cell.h` already states the intent for a
+  placement -- *"equal z keeps the order the painter produced them in"* --
+  and the overlay registry did not guarantee it. Invisible while the only
+  consumer painted them bottom-to-top in one pass.
+- `restack_gui_twins()`, a static, walks `visible_overlays()` ascending and
+  raises each twin, so the highest z is raised last and ends on top. It runs
+  at the end of `sync_gui_twin()`, **after** `tw->show()`, because showing a
+  window puts it on top -- restacking first would undo the ordering for the
+  one overlay that had just changed, which is every call that reaches there.
+
+**TWENTY OVERLAYS, AND THE NUMBER IS MEASURED.** The suite check for equal-z
+stability uses twenty because libstdc++ insertion-sorts below 16 elements,
+which *is* stable: measured, `std::sort` preserves creation order up to
+n = 16 and reorders from n = 17. **A check with two or three overlays passes
+against the unstable spelling and tests nothing.** At twenty it fails
+against it, which is sabotage entry 802.
+
+**AND THE RESTACK ITSELF CANNOT BE CHECKED BY THE SUITE, which is why there
+is a new target.** The gate's platform says outright *"This plugin does not
+support raise()"*, so a restack there is a no-op and a suite check would
+pass whatever the code did -- the vacuous pass in its purest form. `make
+test-overlay-z` runs 8.622's fixture under Xvfb, where raise() works: two
+overlays, the LOWER z shown LAST, told apart by geometry because both twins
+carry the same object name. It reports
+
+    overlay-z-check: the high-z twin is on top although it was shown first,
+                     so the GUI twin stacks by z and not by show order
+
+and **it was seen to fail**: with the `restack_gui_twins()` call removed it
+reports the low-z twin on top and exits non-zero. It is out of `make check`
+for the reason `test-consume` and `test-tray` are, and skips saying so when
+Xvfb or xwininfo is absent.
+
+**WHAT THE SABOTAGE SPEC CANNOT REACH, said plainly.** `make sabotage` runs
+the suite, and no suite check can see the stacking, so entry 802 covers the
+stable sort and nothing covers the restack from inside the spec. That half is
+defended by the new target and by the control above rather than by an entry,
+and saying so is better than an entry that reddens a check which cannot see
+what it names -- the fault this session hit four times in other entries.
+
+**design.md NEEDS NO CHANGE, which is worth stating because the previous
+entry in this area got the convention wrong.** Its section 5.7 presents
+`Overlay` as target-independent and lists `setZ` unqualified. That was a
+divergence while the twin ignored z; it is simply true now. The document is
+the holder's either way -- 8.79 and 8.98 -- and this change moves the code
+to the document rather than the document to the code.

@@ -48,6 +48,11 @@ public:
 
 private:
 	void sync_gui_twin();
+	// Every visible twin restacked in z order. A static because it is not
+	// one overlay's business: the twins are separate top-levels, so there
+	// is no parent whose child order would do it, and putting one of them
+	// right means raising all of them in turn. 8.623.
+	static void restack_gui_twins();
 	QImage img_;
 	// THE OPACITY APPLIED, REMEMBERED. image() converted the format and
 	// painted the whole image on every call, and compose asks once a frame:

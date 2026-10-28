@@ -8831,3 +8831,27 @@ find = "\tif (fw && !fw->testAttribute(Qt::WA_InputMethodEnabled)) fw = nullptr;
 into = "\tif (fw && false) fw = nullptr;"
 count = 1
 check = "the terminal cursor goes to a focused widget that accepts input-method text and to no other kind, so a caret never says 'type here' on a slider"
+
+[[sabotage]]
+# EQUAL z LOSES ITS ORDER. visible_overlays() sorts by z, and the order among
+# EQUAL z is what the GUI twin restack raises windows in -- so an unspecified
+# one is a stack that can reshuffle on any sync for no reason the application
+# can see. cell.h already states the intent for a placement: "equal z keeps
+# the order the painter produced them in".
+#
+# The check it names uses TWENTY overlays, and the number is measured:
+# libstdc++ insertion-sorts below 16 elements, which IS stable, so std::sort
+# preserves creation order up to n=16 and reorders from n=17. A check with
+# two or three would pass against this breakage and test nothing.
+#
+# Note what this entry CANNOT cover: the restack itself. The gate's platform
+# says outright that it does not support raise(), so no suite check can see
+# the stacking, and `make sabotage` runs the suite. That half is defended by
+# `make test-overlay-z` under Xvfb, which was seen to fail with the restack
+# call removed -- it reports the low-z twin on top. 8.623.
+name = "equal z no longer keeps the order the overlays were created in"
+file = "src/graphics/overlay.cpp"
+find = "\tstd::stable_sort(out.begin(), out.end(),\n\t                 [](Overlay *a, Overlay *b) { return a->z() < b->z(); });"
+into = "\tstd::sort(out.begin(), out.end(),\n\t          [](Overlay *a, Overlay *b) { return a->z() < b->z(); });"
+count = 1
+check = "twenty overlays at one z come back in the order they were created, so the order the twins are raised in is settled rather than whatever the sort happened to do"

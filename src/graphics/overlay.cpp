@@ -65,7 +65,17 @@ void Overlay::set_opacity(qreal o) {
 	faded_ = QImage();
 	sync_gui_twin();
 }
-void Overlay::set_z(int z) { z_ = z; }
+// SYNCS, which it did not until 2026-10-28. 8.47 recorded that four of the
+// five mutators call sync_gui_twin() and this one does not, and that it was
+// "right not to, because the twin never reads z_" -- true while the twin
+// ignored z, and the holder has since settled that it should not. Setting z
+// is now the one mutator whose whole effect is an ordering, so it is the one
+// that most needs the restack. 8.623.
+void Overlay::set_z(int z) {
+	if (z_ == z) return;              // no restack for a write that changes nothing
+	z_ = z;
+	sync_gui_twin();
+}
 void Overlay::show() { visible_ = true; sync_gui_twin(); }
 void Overlay::hide() { visible_ = false; sync_gui_twin(); }
 
@@ -92,8 +102,16 @@ QVector<Overlay *> Overlay::visible_overlays() {
 	QVector<Overlay *> out;
 	for (Overlay *o : registry())
 		if (o->isVisible() && !o->image().isNull()) out.append(o);
-	std::sort(out.begin(), out.end(),
-	          [](Overlay *a, Overlay *b) { return a->z() < b->z(); });
+	// STABLE, so equal z keeps registry order -- which is creation order,
+	// and is what `cell.h` already says equal z means for a placement:
+	// "equal z keeps the order the painter produced them in". std::sort
+	// gives no such guarantee, which was invisible while the only consumer
+	// was the compositor painting them bottom-to-top in one pass. The GUI
+	// twin restack raises real windows, so an unspecified order among equal
+	// z is a stack that may reshuffle on any sync for no reason the
+	// application can see. 8.623.
+	std::stable_sort(out.begin(), out.end(),
+	                 [](Overlay *a, Overlay *b) { return a->z() < b->z(); });
 	return out;
 }
 
@@ -133,6 +151,28 @@ void Overlay::sync_gui_twin() {
 		tw->setGeometry(target);
 	}
 	tw->show();
+	// AFTER show(), because showing a window puts it on top of the stack:
+	// restacking first and then showing would undo the ordering for the one
+	// overlay that had just changed, which is every call that gets here.
+	restack_gui_twins();
+}
+
+void Overlay::restack_gui_twins() {
+	// Ascending z, so the highest z is raised LAST and ends up on top.
+	// visible_overlays() is already in that order and is stable, so this is
+	// deterministic for equal z rather than merely usually right.
+	//
+	// raise() and not lower(): the twins are WindowStaysOnTopHint Qt::Tool
+	// windows, so the set being ordered is the set of twins plus whatever
+	// else is on top, and raising each in turn leaves them in z order above
+	// the application's own windows rather than interleaved with them.
+	//
+	// Measured on the offscreen platform this is a no-op and says so --
+	// "This plugin does not support raise()" -- which is why the check that
+	// defends it is in `make test-overlay-z` under Xvfb rather than in the
+	// suite the gate runs. 8.622 has the method, 8.623 the result.
+	for (Overlay *o : visible_overlays())
+		if (o->gui_twin_) o->gui_twin_->raise();
 }
 
 } // namespace Qtty

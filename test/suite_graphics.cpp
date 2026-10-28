@@ -1540,6 +1540,42 @@ int suite_graphics() {
 		o.hide(); o2.hide();
 		CHECK(Overlay::visible_overlays().isEmpty(), "hidden overlays leave registry");
 
+		// EQUAL z KEEPS CREATION ORDER (8.623), which is what `cell.h`
+		// already says equal z means for a placement -- "equal z keeps the
+		// order the painter produced them in" -- and which visible_overlays()
+		// did not guarantee: it used std::sort. That was invisible while the
+		// only consumer was the compositor painting them bottom-to-top in one
+		// pass, and matters now that the GUI twin restack raises real windows
+		// in this order, where an unspecified order is a stack that can
+		// reshuffle on any sync for no reason an application can see.
+		//
+		// TWENTY, and the number is measured rather than round. libstdc++
+		// insertion-sorts below 16 elements, which IS stable, so std::sort
+		// preserves creation order up to n=16 and reorders from n=17 -- so a
+		// check with two or three overlays passes against the unstable
+		// spelling and tests nothing. At twenty it fails against it.
+		{
+			// A plain array, so construction order IS index order and the
+			// expectation needs no bookkeeping of its own.
+			Overlay many[20];
+			for (Overlay &o : many) {
+				o.set_image(img);
+				o.set_z(7);                   // all the same
+				o.show();
+			}
+			const QVector<Overlay *> listed = Overlay::visible_overlays();
+			bool in_order = listed.size() == 20;
+			for (int i = 0; in_order && i < listed.size(); ++i)
+				if (listed[i] != &many[i]) in_order = false;
+			CHECK(in_order,
+			      "twenty overlays at one z come back in the order they were"
+			      " created, so the order the twins are raised in is settled"
+			      " rather than whatever the sort happened to do");
+			for (Overlay &o : many) o.hide();
+		}
+		CHECK(Overlay::visible_overlays().isEmpty(),
+		      "and they leave the registry again");
+
 		// DELETED while visible, which is a different question from hidden
 		// and a worse one. The registry holds raw pointers and hands them to
 		// the compositor, so an overlay that failed to remove itself would

@@ -1,0 +1,103 @@
+#!/bin/sh
+# Does the GUI twin stack its windows in z order? The suite cannot ask: the
+# offscreen platform the gate runs says outright "This plugin does not
+# support raise()", so a restack there is a no-op and a check would pass
+# whatever the code did. Under xcb raise() works, so this runs the fixture
+# 8.622 used to measure the fault and asserts the order the holder settled
+# on 2026-10-28.
+#
+# Bounded: xvfb-run owns the display and tears it down, the probe quits
+# itself on a timer, and every command has a timeout.
+set -e
+for need in xvfb-run xwininfo g++ pkg-config; do
+	command -v "$need" >/dev/null 2>&1 || {
+		echo "overlay-z-check: $need is absent, so the stacking was not checked" >&2
+		exit 0
+	}
+done
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+lib="$root/${BUILD_DIR:-build}/lib/libqtty.a"
+[ -f "$lib" ] || { echo "overlay-z-check: no $lib; run make first" >&2; exit 1; }
+
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT INT TERM
+
+# TWO OVERLAYS, THE LOWER z SHOWN LAST. That ordering is the whole fixture:
+# without a restack the later show() is on top, so show order and z order
+# disagree and the stack says which one won. They are told apart by geometry
+# because both twins carry the same object name.
+cat > "$dir/probe.cpp" <<'CPP'
+#include <qtty/qtty.h>
+#include <qtty/overlay.h>
+#include <QtWidgets>
+#include <cstdio>
+using namespace Qtty;
+static QImage block(int w, int h, QRgb c) {
+	QImage img(w, h, QImage::Format_ARGB32);
+	img.fill(QColor::fromRgb(c));
+	return img;
+}
+int main(int argc, char **argv) {
+	QApplication app(argc, argv);
+	QWidget base;
+	base.resize(GridMetrics::cells(60, 20));
+	base.show();
+	app.processEvents();
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	Overlay high;                      // high z, shown FIRST, on the left
+	high.set_rect(QRectF(0, 0, 10, 5));
+	high.set_image(block(10 * cw, 5 * ch, qRgb(220, 40, 40)));
+	high.set_z(100);
+	high.show();
+	app.processEvents();
+	Overlay low;                       // low z, shown SECOND, on the right
+	low.set_rect(QRectF(20, 0, 10, 5));
+	low.set_image(block(10 * cw, 5 * ch, qRgb(40, 40, 220)));
+	low.set_z(1);
+	low.show();
+	app.processEvents();
+	printf("high_x=%d low_x=%d\n", base.geometry().x(),
+	       base.geometry().x() + 20 * cw);
+	fflush(stdout);
+	QTimer::singleShot(6000, &app, &QCoreApplication::quit);
+	return app.exec();
+}
+CPP
+
+timeout 300 g++ -O1 -std=gnu++17 -fPIC -I "$root/include" -o "$dir/probe" \
+	"$dir/probe.cpp" "$lib" \
+	$(pkg-config --cflags --libs Qt6Widgets Qt6Gui Qt6Core Qt6DBus) \
+	|| { echo "overlay-z-check: the probe did not build" >&2; exit 1; }
+
+# xwininfo's child list is TOP-TO-BOTTOM, and that is not an assumption: the
+# calibration is in 8.622 -- raising a window you own moves it to the START
+# of the list. There is no window manager under bare Xvfb, so stacking is
+# pure map order and a raise is the only thing that reorders it.
+timeout 300 xvfb-run -a -s "-screen 0 1280x1024x24" sh -c "
+	'$dir/probe' -platform xcb > '$dir/probe.out' 2>'$dir/probe.err' &
+	p=\$!
+	sleep 3
+	xwininfo -root -children > '$dir/stack.txt' 2>&1
+	kill \$p 2>/dev/null || true
+	wait \$p 2>/dev/null || true
+" || { echo "overlay-z-check: the Xvfb run failed" >&2; exit 1; }
+
+low_x=$(sed -n 's/.*low_x=\([0-9-]*\).*/\1/p' "$dir/probe.out")
+[ -n "$low_x" ] || { echo "overlay-z-check: the probe printed no geometry" >&2; exit 1; }
+
+# The twins are the two 80x80 windows. Topmost is whichever appears first.
+order=$(grep -oE '80x80\+[0-9-]+\+[0-9-]+' "$dir/stack.txt" | head -2)
+[ "$(echo "$order" | grep -c .)" -eq 2 ] || {
+	echo "overlay-z-check: expected two twins in the stack, found:" >&2
+	echo "$order" | sed 's/^/    /' >&2
+	exit 1
+}
+topmost=$(echo "$order" | head -1 | sed 's/80x80+\([0-9-]*\)+.*/\1/')
+if [ "$topmost" = "$low_x" ]; then
+	echo "overlay-z-check: the LOW z twin is on top -- the twin is stacking by"
+	echo "                 show order, not by z. 8.623, project.md" >&2
+	exit 1
+fi
+echo "overlay-z-check: the high-z twin is on top although it was shown first,"
+echo "                 so the GUI twin stacks by z and not by show order"
