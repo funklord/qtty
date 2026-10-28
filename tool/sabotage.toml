@@ -8808,3 +8808,26 @@ find = "\t\treturn key != 0 ? key : quint64(pixmap.cacheKey());"
 into = "\t\treturn key;"
 count = 1
 check = "two placements an application built from different pictures differ, although neither set a key and nothing compares the pixmap"
+
+[[sabotage]]
+# EVERY FOCUSED WIDGET GETS A CARET. design.md 5.5 originally asked the focus
+# widget for ImCursorRectangle without qualification, and every QWidget
+# answers it -- QWidget's default is a one-pixel rectangle at its horizontal
+# centre -- so the terminal's hardware cursor was parked in the middle of a
+# check box's label. A caret means "type here", not "this is focused", and a
+# screen reader reads it out: on a slider it tells a blind user to type into
+# a slider. WA_InputMethodEnabled is the rule, and until 8.621 nothing
+# asserted the negative half of it.
+#
+# Performed by hand first: removing the test reddens the check named and
+# prints the kinds that regressed -- QCheckBox, QRadioButton, QPushButton,
+# QComboBox, QSlider and QTabBar, each with ime=0 and a cursor. QListWidget
+# is deliberately absent from that list, which is the useful part: the item
+# view is refused by its OWN later guard, so this entry breaks one of the two
+# independent rules and the check still catches it.
+name = "every focused widget reports a caret, not only the ones that take text"
+file = "src/runtime/compositor.cpp"
+find = "\tif (fw && !fw->testAttribute(Qt::WA_InputMethodEnabled)) fw = nullptr;"
+into = "\tif (fw && false) fw = nullptr;"
+count = 1
+check = "the terminal cursor goes to a focused widget that accepts input-method text and to no other kind, so a caret never says 'type here' on a slider"

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2464 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2465 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -51616,3 +51616,110 @@ exercised again** and the original did not.
 So the repaired entries were re-run rather than revalidated: `--validate`
 only asks whether the anchor still matches, and what changed here was what
 the entries SUBSTITUTE.
+
+### 8.621 OQ-5 rests on a premise its own code disproved (2026-10-28)
+
+design.md's open questions are the project's own statement of what is
+undecided, so they were read before any lens was derived. OQ-3 and OQ-4 are
+holder decisions already recorded. **OQ-5 is posed on a false premise**, and
+the thing that disproves it is a comment in this tree written weeks ago.
+
+The question: *"is a `QAccessible` bridge worth it, given the terminal
+already exposes text to screen readers when the cursor is placed correctly
+(section 5.5)?"* The clause does the work, and it assumes a cursor is
+placed.
+
+**`compositor.cpp` already records that section 5.5's mechanism does not
+survive contact.** The document's generic trick was to ask the focus widget
+for `ImCursorRectangle` rather than special-case input classes, on the
+premise that "any widget that supports input methods reports its caret this
+way". Measured 2026-09-01: EVERY `QWidget` answers it, with QWidget's
+default of a one-pixel rectangle at its horizontal centre, so a check box, a
+radio button, a slider, a list, a tab bar and a scroll bar each got the
+terminal's hardware cursor parked in the middle of their label. The rule is
+`WA_InputMethodEnabled` now, which of nine widgets is exactly the line edit
+and the spin box.
+
+**That narrowing is right and is not what is being questioned.** A caret
+does not mean "this is focused", it means "type here" -- and a screen reader
+says so out loud, which is the reason the document gives for placing it
+accurately at all. Parking a caret on a slider tells a blind user to type
+into a slider.
+
+**WHAT NOBODY PROPAGATED IS WHAT IT COSTS OQ-5.** Measured here, each kind
+focused in turn and the compositor asked what it would put on the wire:
+
+| focused | `WA_InputMethodEnabled` | cursor cell | shape |
+|---|---|---|---|
+| `QLineEdit` | yes | (1,0) | Bar |
+| `QSpinBox` | yes | (1,1) | Bar |
+| `QCheckBox` | no | none | Hidden |
+| `QRadioButton` | no | none | Hidden |
+| `QPushButton` | no | none | Hidden |
+| `QComboBox` | no | none | Hidden |
+| `QSlider` | no | none | Hidden |
+| `QTabBar` | no | none | Hidden |
+| `QListWidget` | no | none | Hidden |
+
+**Two of nine place a cursor and seven place none.** A screen reader
+following the terminal cursor is therefore told nothing about focus for
+seven of the nine, which is most of a form. OQ-5 reads as "we may not need a
+bridge, the cursor already does this"; what the cursor does is two widgets
+out of nine, by design and correctly.
+
+So the question is not *is a bridge worth it given the cursor suffices* but
+**is a bridge the only thing that can carry non-text focus at all** -- a
+different question with a different likely answer. The alternative worth
+naming is to park the cursor on the focused widget's own cell rather than at
+a caret it does not have, which is the ncurses convention and what a
+terminal screen reader actually follows; **its cost is a caret promising
+text entry where there is none**, which is precisely what the narrowing
+above exists to prevent. Both options, their costs, and the fact that the
+decision is the copyright holder's are now in design.md beside the
+question.
+
+**NO LIBRARY BEHAVIOUR CHANGED, AND THAT IS THE RIGHT OUTCOME.** The code
+is correct; the document's premise was stale. What did change is that the
+rule is pinned: **the negative half was asserted by nothing.** The positive
+case has been checked since early on -- a focused editor reports a cursor
+cell -- and the half the rule exists for, that a check box and a slider
+report none, was carried only by the comment recording the fix. Widening the
+test again would put the caret back on a slider with nothing to say so, and
+a screen reader would read it out. The new check asserts the relationship
+rather than nine cell positions: a cursor exactly where
+`WA_InputMethodEnabled` is, none anywhere else, and Hidden exactly when
+there is no cell. `working-practice.md` asks for
+a contradiction between document and code to be flagged rather than resolved
+in either direction, and resolving this one either way would be wrong --
+implementing the document reintroduces the caret on a slider, and amending
+it to match the code would quietly record "seven of nine widgets are
+invisible to a screen reader" as intent.
+
+**And the shape is one this tree has paid for twice this week.** 8.616's
+figure was attributed to the wrong thing; 8.619's skip blamed a machine for
+a property of a Qt version; this is a design question resting on a clause
+its own implementation had already measured false. **A correction written
+where the work happens does not reach the place where the decision is
+recorded** -- the comment in `compositor.cpp` is thorough, dated and right,
+and section 14 never heard about it.
+
+**THE CHECK WAS SEEN TO FAIL, and what it printed is worth more than the
+failure.** Removing the `WA_InputMethodEnabled` test reddens it and names
+the kinds that regressed:
+
+    QCheckBox(ime=0,cur=1,hidden=0), QRadioButton, QPushButton,
+    QComboBox, QSlider, QTabBar
+
+Six, which reproduces the 2026-09-01 fault exactly. **`QListWidget` is
+absent from that list, and that is the informative part**: the item view is
+refused by its own later guard, the second of the two measured fixes, so
+this breakage disables only one of two independent rules and the check still
+catches it. A control that reddens for the right six rather than for all
+seven is evidence the check reads the rule and not merely the count. It is
+sabotage entry 801.
+
+**A SMALLER CONFIRMATION, worth the line it takes.** `runtime.h` states that
+`cursor_shape()` is "Hidden exactly when `cursor_cell()` is empty". The
+table above is nine independent instances of that invariant holding, which
+is the first time it has been exercised across widget kinds rather than
+asserted.

@@ -17615,5 +17615,81 @@ int suite_router() {
 		      " rule above is the missing code and not an empty table");
 	}
 
+	// -- WHICH focused widgets get the terminal cursor (8.621) ------------
+	//
+	// The positive case is checked far above: a focused editor reports a
+	// cursor cell. The NEGATIVE half was not, and it is the half the rule
+	// exists for. design.md 5.5 originally asked every focus widget for
+	// ImCursorRectangle, and EVERY QWidget answers it -- QWidget's own
+	// default is a one-pixel rectangle at its horizontal centre -- so a
+	// check box, a radio button, a slider, a list and a tab bar each got
+	// the terminal's hardware cursor parked in the middle of their label.
+	// A caret does not mean "this is focused", it means "type here", and a
+	// screen reader says so out loud: parking one on a slider tells a blind
+	// user to type into a slider.
+	//
+	// WA_InputMethodEnabled is the rule now. Nothing pinned it, so widening
+	// it again would put the caret back with nothing to say so, and OQ-5's
+	// whole premise about screen readers rests on where this cursor goes.
+	// Asserted as the RELATIONSHIP rather than as nine cells: a cursor
+	// exactly where the attribute is, and no cursor anywhere else.
+	{
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *edit = new QLineEdit(&win);
+		auto *spin = new QSpinBox(&win);
+		auto *check = new QCheckBox(QStringLiteral("Enable telemetry"), &win);
+		auto *radio = new QRadioButton(QStringLiteral("Daily"), &win);
+		auto *push = new QPushButton(QStringLiteral("Apply"), &win);
+		auto *combo = new QComboBox(&win);
+		combo->addItems({QStringLiteral("alpha"), QStringLiteral("beta")});
+		auto *slider = new QSlider(Qt::Horizontal, &win);
+		auto *tabs = new QTabBar(&win);
+		tabs->addTab(QStringLiteral("One"));
+		tabs->addTab(QStringLiteral("Two"));
+		auto *list = new QListWidget(&win);
+		list->addItems({QStringLiteral("row one"), QStringLiteral("row two")});
+		const QVector<QWidget *> kinds = {
+			edit, spin, check, radio, push, combo, slider, tabs, list,
+		};
+		for (QWidget *w : kinds) v->addWidget(w);
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 14));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter cr(&win);
+		Compositor cc(&win, &cr);
+		CellBuffer cf(40, 14);
+		int agreed = 0, placed = 0;
+		QStringList disagreed;
+		for (QWidget *w : kinds) {
+			w->setFocus(Qt::OtherFocusReason);
+			QCoreApplication::processEvents();
+			cc.compose(cf);
+			const bool ime = w->testAttribute(Qt::WA_InputMethodEnabled);
+			const bool has = cc.cursor_cell().has_value();
+			const bool hidden = cc.cursor_shape() == CursorShape::Hidden;
+			if (has) ++placed;
+			// The shape half is runtime.h's own stated invariant: Hidden
+			// exactly when the cell is empty.
+			if (has == ime && hidden == !has) ++agreed;
+			else disagreed << QStringLiteral("%1(ime=%2,cur=%3,hidden=%4)")
+			                      .arg(QString::fromLatin1(w->metaObject()->className()))
+			                      .arg(int(ime)).arg(int(has)).arg(int(hidden));
+		}
+		if (!disagreed.isEmpty())
+			printf("info: disagreeing kinds: %s\n",
+			       qPrintable(disagreed.join(QStringLiteral(", "))));
+		CHECK(agreed == kinds.size() && placed == 2,
+		      "the terminal cursor goes to a focused widget that accepts"
+		      " input-method text and to no other kind, so a caret never"
+		      " says 'type here' on a slider");
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	return fails;
 }
