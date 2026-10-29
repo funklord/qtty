@@ -126,6 +126,32 @@ int main(int argc, char **argv) {
 		++failures;
 	} else printf("PASS: inert before setup()\n");
 
+	// section 9: "GridGuard runs as an assertion in every test". Installed
+	// here rather than in each suite, so a suite added later is covered by
+	// having been written rather than by remembering to opt in -- which is
+	// the failure mode a per-suite install has and this does not.
+	//
+	// BEFORE setup(), AND THAT IS THE WHOLE POINT. Qt calls application
+	// event filters in reverse order of installation -- measured, not read
+	// off the documentation: two filters on one QApplication, the second
+	// installed is the first called. setup() installs GridSnap, so a guard
+	// installed AFTER it is called BEFORE the snapper and judges the
+	// geometry a layout just produced rather than the one the snapper
+	// leaves. That is what it did until now, and it reported geometries
+	// that were corrected microseconds later: 365 of the 676 it flagged
+	// across nine suites were pre-snap transients, with the width and x
+	// already on the grid -- taken from the snapped parent -- and only the
+	// y off the row, which is the layout's own stacking before snapping.
+	//
+	// It stayed invisible because `suite_router` deliberately removes the
+	// snapper for one fixture and puts it back, which makes GridSnap the
+	// newer filter and silently corrects the order for every suite after
+	// it. So the verdict depended on whether router had run: `backend` and
+	// `budget` are the only suites that do not reset the counter after
+	// their transients, so alone they failed and in the gate's order they
+	// passed. project.md 8.635.
+	Qtty::GridGuard::install(app);
+
 	Qtty::setup(app);
 
 	// THE KEYBOARD CONVENTIONS ARE OFF, OBSERVED WHERE AN APPLICATION SEES
@@ -171,11 +197,6 @@ int main(int argc, char **argv) {
 		if (!d.held) ++failures;
 	}
 
-	// section 9: "GridGuard runs as an assertion in every test". Installed
-	// here rather than in each suite, so a suite added later is covered by
-	// having been written rather than by remembering to opt in -- which is
-	// the failure mode a per-suite install has and this does not.
-	Qtty::GridGuard::install(app);
 
 	bool record = false, soak = false;
 	// A LIST, not one name. It was a single QString and the last argument

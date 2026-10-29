@@ -53052,7 +53052,50 @@ not fix it, sets the first two as well. **`set_font()` is called by
 font chosen after `setup()` being applied -- a candidate and nothing more,
 since `budget` calls `set_font()` never and fails alone too.
 
-**TWO CANDIDATES WERE TESTED AND BOTH ARE OUT.** The leading one was
+**FOUND AND FIXED, and the cause is one line in `test/main.cpp`.** The
+guard was installed AFTER `setup()`, and `setup()` is what installs
+`GridSnap`. **Qt calls application event filters in reverse order of
+installation** -- measured rather than read off the documentation, with two
+filters on one `QApplication`: the second installed is the first called. So
+the guard ran BEFORE the snapper and judged the geometry a layout had just
+produced, not the one the snapper leaves.
+
+That is exactly the shape: the width and x were already on the grid, the
+layout taking them from the snapped parent, and only the y was off, being
+the layout's own stacking before snapping. Instrumenting the fixture shows
+both halves in one stream -- the warnings fire during `dlg.show()` at
+`+10+12` and `+10+43`, and after the next `processEvents` the same two
+widgets are at `+10+19` and `+10+38`, snapped.
+
+**And the order dependence was `suite_router` correcting it by accident.**
+One of its fixtures removes the snapper to observe unsnapped ordering and
+puts it back -- correctly, and its comment says why. Putting it back makes
+`GridSnap` the NEWER filter, so from that point in the process the snapper
+runs first and the guard sees final geometry. Every suite after router was
+therefore judged correctly and every suite before it was not; `backend` and
+`budget` are simply the only two that do not reset the counter after their
+own transients, so they were the only two that could report it.
+
+**The fix is to install the guard BEFORE `setup()`**, so the snapper is
+always the newer filter. Measured over all thirteen suites run alone:
+
+    before: backend 423 pass + 1 FAIL, budget 26 + 1 FAIL, 676 warnings
+    after:  all thirteen green, backend 424, budget 27, 238 warnings
+
+**438 of the 676 were pre-snap transients**, which is near the 365 the
+y-off-only classification predicted and larger because other shapes were
+corrected too. The guard now means what §7.5 says it means, and the two
+suites that failed alone pass for the right reason rather than because
+router ran first.
+
+**WHAT IS LEFT IS A CLEAN QUESTION.** 238 warnings remain and the suites
+still forgive them through `GridGuard::reset()`. Those are now FINAL
+geometries rather than transients, so asking whether each is a deliberately
+off-grid fixture or a real misalignment is worth doing -- and it is a
+different question from this one, asked of a tenth as much noise.
+
+**TWO EARLIER CANDIDATES WERE TESTED AND BOTH WERE OUT**, which is what
+left the field clear. The leading one was
 `GridSnap`'s re-entrancy flag: its filter opens `if (s_snapping) return
 false`, so a child laid out INSIDE a parent's snap is never snapped, which
 would leave the width and x on the grid -- the layout taking them from the
@@ -53076,13 +53119,13 @@ off the grid. So the six are not "a layout-managed dialog is not snapped",
 and `set_font()` is out as well -- `budget` never calls it and fails alone
 too.
 
-**What that leaves, and it is narrower than where this started**: something
-the two fixtures do keeps `GridSnap` from acting where the plain case has
-it act. The probe rules out the obvious suspects together -- a layout, a
-parent, `WA_DontShowOnScreen`, and a window sized in cells are all present
-in it and all fine. The next step is to take one of backend's six widgets
-and narrow its fixture towards the probe until the snapping starts, rather
-than to reason about which process-wide setter is responsible.
+**And the probe's own numbers were the clue**, read only afterwards: its
+children land at `+10+19` and `+10+38` while the fixture's stayed at `+10+12`
+and `+10+43`. Those are the same widgets before and after snapping. The
+probe never reproduced the fault because it installs no `GridGuard` at all,
+so nothing was watching the intermediate state -- **a control that cannot
+observe the fault is not a control**, and it took measuring the fixture's
+geometry on both sides of one `processEvents` to see it.
 
 **A negative result worth as much as the finding.** Had the probe
 reproduced it, this would be a library defect in `GridSnap` affecting every
