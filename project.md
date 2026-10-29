@@ -52343,3 +52343,66 @@ was thought usable (it segfaults), a late quit region was thought to exist
 need hand-reconstruction (they are self-verifying and moved verbatim).
 **Every step forward came from a measurement that contradicted the previous
 entry's assumption**, including mine.
+
+### 8.630 Neither side was wrong: Qt 5 drops the drag-leave (2026-10-29)
+
+8.629 left one of the 23 recovered checks stepped over on Qt 5 -- a
+refusing drop target sees the enter and no leave -- and said honestly that
+which side was wrong was not known, either `drag_drop_at()` owing the leave
+or the fixture assuming Qt 6's cell resolution. **It is neither. Qt 5
+discards the event in transit.**
+
+**THE FIXTURE'S GEOMETRY RULES OUT THE SECOND ANSWER.** The refusing widget
+is 10 cells by 2 at the origin, and the drive is a motion at cell (2,0), a
+motion at (4,1) and a release at (4,1) -- all three inside it, on either
+arm. So cell resolution was never the difference, and the counters agree:
+`enter=1 leave=0 drop=0` on Qt 5 against `enter=1 leave=1 drop=0` on Qt 6,
+the same library path in both.
+
+**AND THE LIBRARY SENDS IT.** `drag_drop_at()`'s else branch is explicit:
+*"Released over nothing that wants it. The target still hears a leave,
+because it heard an enter."*
+
+**MEASURED WITH NO QTTY IN THE PICTURE**, a `QDragLeaveEvent` through
+`QApplication::sendEvent()` on a widget with `setAcceptDrops(true)`:
+
+| | event filter saw | `QWidget::event()` entered | override ran |
+|---|---|---|---|
+| Qt 6.8.2, `sendEvent` | 1 | 1 | **1** |
+| Qt 5.15.15, `sendEvent` | **0** | **0** | **0** |
+| Qt 5.15.15, the widget's own `event()` | 0 | 1 | **1** |
+
+So **`QApplication::notify()` discards it before the widget or even its
+event filters see it**, and the widget handles it perfectly when reached.
+`sendEvent` returns 0 there, which is the only outward sign.
+
+**THERE IS NO PUBLIC ROUTE AROUND IT.** `QWidget::event()` is protected, so
+a library holding an arbitrary `QWidget *` cannot call it; `postEvent` goes
+through the same `notify`; and a library has no business installing its own
+`QApplication` subclass to override `notify`. **On Qt 5 a synthesised
+drag-leave cannot be delivered at all.** The mechanism is not claimed here
+-- what was measured is that notify drops it, not why.
+
+**WHAT IT COSTS AN APPLICATION, which is the part that matters.** A drop
+target that highlights on `dragEnterEvent` and clears on `dragLeaveEvent`
+-- the ordinary way to show a drop site, and what `drag_move_to`'s own
+comment says the leave ordering exists for -- **keeps its highlight on Qt 5
+after a drag it refused or that left it.** The enter arrives, the leave
+never does. That is a real Qt-5-only defect in what qtty delivers, and it
+is recorded rather than worked around because there is nothing to work
+around it with.
+
+**THE CHECK IS STEPPED OVER, NOT DELETED.** It is correct, it passes on
+Qt 6, and it becomes true the moment Qt 5 is dropped or a route is found.
+The guard now names the cause instead of the uncertainty, and the call site
+in `drag.cpp` says the same thing where somebody changing that line will be
+standing.
+
+**THE SHAPE: a question with two candidate answers had a third, and reading
+the code settled it where guessing between the two would not have.** 8.629
+named both candidates and refused to pick; one probe of the library's own
+else branch eliminated the first, the fixture's geometry eliminated the
+second, and a twenty-line probe of Qt alone found the real one. **Naming
+the candidates honestly is what made the third visible** -- an entry that
+had asserted either would have sent the next reader to fix code that was
+already right.

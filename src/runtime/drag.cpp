@@ -184,6 +184,15 @@ void drag_drop_at(QWidget *under, const QPoint &local, const QPoint &screen)
 	} else {
 		// Released over nothing that wants it. The target still hears a
 		// leave, because it heard an enter.
+		//
+		// ON QT 5 THIS SEND IS DISCARDED, and it is not this file's to fix.
+		// Measured 2026-10-29 with no qtty in the picture: a
+		// QDragLeaveEvent through QApplication::sendEvent() reaches neither
+		// the widget nor its event filters on Qt 5, while the widget's own
+		// event() handles it -- so QApplication::notify() drops it, and
+		// QWidget::event() being protected leaves no public route for an
+		// arbitrary widget. The call stays because it is correct and works
+		// on Qt 6; what it costs an application on Qt 5 is in 8.630.
 		if (target) {
 			QDragLeaveEvent leave;
 			QApplication::sendEvent(target, &leave);

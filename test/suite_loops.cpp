@@ -368,28 +368,38 @@ int suite_loops() {
 			// checks that does not pass there -- named precisely rather
 			// than hidden behind the blanket guard this file replaced.
 			//
-			// The fixture drives two motions and a release. A leave is sent
-			// when drop_target() CHANGES between moves, so the check needs
-			// the two cells to resolve to different widgets; on Qt 5 the
-			// refusing target sees the enter and no leave. What is NOT yet
-			// known is which side is wrong: whether drag_drop_at() owes a
-			// leave to a target that refused the drop -- a library defect
-			// on both arms that Qt 6 hides by resolving the two cells
-			// differently -- or whether the fixture assumes Qt 6's
-			// cell-to-widget resolution. The two have different fixes and
-			// guessing between them is how a wrong one gets committed.
+			// SETTLED 2026-10-29, and NEITHER SIDE IS WRONG: Qt 5 drops the
+			// event in transit. drag_drop_at() does send the leave -- "the
+			// target still hears a leave, because it heard an enter" -- and
+			// this fixture is right to expect it. Measured with no qtty in
+			// the picture, a QDragLeaveEvent through
+			// QApplication::sendEvent() on Qt 5 reaches neither the widget
+			// nor its event filters:
 			//
-			// Reproduction: remove this guard and run the Qt 5 arm. The
-			// `info:` line above prints enters, leaves and drops. 8.629.
+			//   Qt 5  sendEvent : filter 0, QWidget::event 0, override 0
+			//   Qt 5  direct    : filter 0, QWidget::event 1, override 1
+			//   Qt 6  sendEvent : filter 1, QWidget::event 1, override 1
+			//
+			// So QApplication::notify() discards it, and the widget handles
+			// it perfectly when reached. QWidget::event() is protected, so
+			// the library has no public route to it for an arbitrary
+			// widget: on Qt 5 a synthesised drag-leave cannot be delivered
+			// at all. 8.630 records what that costs an application -- a
+			// drop target that highlights on enter keeps the highlight.
+			//
+			// Stepped over rather than deleted, because the check is
+			// correct and becomes true the moment Qt 5 is dropped or a
+			// route is found. Reproduction: remove this guard, run the
+			// Qt 5 arm, and read the `info:` line above.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 			CHECK(no->leaves >= 1,
 			      "and it still hears the leave, because it heard the enter");
 #else
 			printf("SKIP: and it still hears the leave, because it heard the"
-			       " enter\n      a refusing target sees the enter and no"
-			       " leave on Qt 5, and whether drag_drop_at() owes one or"
-			       " the fixture assumes Qt 6's cell resolution is not yet"
-			       " known -- project.md 8.629\n");
+			       " enter\n      Qt 5's QApplication::notify() discards a"
+			       " synthesised QDragLeaveEvent before the widget or its"
+			       " filters see it, so the library cannot deliver one"
+			       " there -- project.md 8.630\n");
 #endif
 		}
 
