@@ -52790,9 +52790,30 @@ things in the test target that must not be removed, and the second is that *a
 run over zero binaries fails rather than passing*, because a loop that finds
 no test binary exits 0 and reads exactly like a pass. These tools do find a
 binary and do run it; what they did not check is that the run produced any
-check. **The guard existed at the binary level and not at the check level**,
-and nothing in the earlier design noticed because every real run produces
-thousands.
+check.
+
+**~~And nothing in the earlier design noticed.~~ That is false, and the
+correction is the finding.** `make test-platforms` -- which is the matrix
+target this tree already had, over QPA platforms instead of Qt versions or
+compilers -- carries the guard in full. Its `agree()` refuses a count of
+zero outright, *"FAILED: no checks ran at all"*, and refuses a later arm
+that disagrees with the first, with the reason written beside it: *"A
+configuration that silently runs fewer is green on the exit status alone."*
+Three lines, and both of the assertions the two new tools had to be taught
+twice.
+
+**So the lesson is not about zero checks, it is about where a project's
+decisions are kept.** Two matrix tools were written without reading the
+matrix target already in the Makefile, and both arrived at its design by
+re-deriving it -- one of them only after shipping a vacuous pass and being
+caught by a figure that could not be true. `working-practice.md` states the
+rule and this is it happening: **a working sibling explaining itself is a
+cheaper source of a project's decisions than the document is**, because it
+is where the decision is being obeyed rather than where it was written. The
+search is for the SHAPE and not the name -- something else in this tree that
+chooses between the same two answers, whatever it is called -- and
+`test-platforms` was not on anybody's list because it is filed under
+platforms rather than under matrices.
 
 **BOTH REFUSE A ZERO NOW, AND BOTH WERE SEEN TO FIRE.** The control breaks
 the patterns -- `^PASS:` to `^NOSUCHPREFIX:` -- so a real, passing suite run
