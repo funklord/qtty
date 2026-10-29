@@ -53105,22 +53105,50 @@ rather than assumed:
       4  QDialog, 4 QColorDialog, 3 QWizard   public
       3  suite_runtime()::OffGridPlot         a fixture, deliberate by name
 
-- **37 are `is_exempt()`'s own "named residue"** -- the case its comment
-  describes in as many words: *"Qt has private widget classes that follow
-  neither convention -- declared in a .cpp, exported nowhere, named like
-  ordinary public classes."* `QWizardRuler`, `QWhatsThat` and `QTipLabel`
-  are each absent from every public Qt header, so they belong beside
-  `QHeaderView`, `QScrollBar` and `QTableCornerButton` -- each with its own
-  reason, which is the bar that comment sets for an addition.
-- **3 are deliberate**, a fixture named `OffGridPlot`.
-- **The remaining ~198 are the real question**, and they are public classes
-  an application does construct and can size. `QToolButton` is the bulk of
-  it at 114, and the style already exempts a `QToolButton` child of a
-  `QToolBar` from both the guard and the snapper, so the question is which
-  other 114 there are and why the snapper leaves them.
+**~~The remaining ~198 are the real question.~~ 38, measured.** That count
+came from a census of CLASS names, and a public class says nothing about
+who BUILT the widget -- which is the discriminator that matters, since the
+exemption's whole principle is *"widgets Qt builds for itself, which the
+application never constructs and cannot size"*. Asked properly, by
+instrumenting the guard to print each widget's parent chain:
 
-That is a bounded piece of work with a shape, which is what this entry was
-for; it is not this one, and it should not be folded into it.
+    114  < QFileDialog < QWidget      Qt's own navigation buttons
+     54  (no parent)                  top-level windows
+     38  < QWidget                    a child of a plain window
+     29  < QWidget < QWizard          Qt's own wizard furniture
+      3  OffGridPlot                  a fixture, deliberate by name
+
+- **143 are Qt's own furniture inside a Qt dialog.** The 114 are six
+  buttons -- `backButton` and its siblings, built by Qt from
+  `qfiledialog.ui`, which is why no `QToolButton` or `QToolBar` appears
+  anywhere in `suite_loops.cpp` while that suite reports 54 of them. They
+  are `is_exempt()`'s stated class exactly: unreachable to be fixed from
+  the style, which is the reason §5.3 reaches for `ICellPainted` or fixed
+  sizing instead. **Not exempted here**, deliberately: that comment sets a
+  high bar for an addition and says why -- *"that is how an exemption grows
+  until the guard reports nothing"* -- and whether qtty accepts a
+  misaligned button inside Qt's file dialog or addresses it by the §5.3
+  path is a decision, not a tidy-up.
+- **54 are top-levels**, and mostly fixtures resized in PIXELS rather than
+  cells -- `640x480`, `400x300`, `100x30`. The snapper skips a window on
+  purpose, the compositor placing and sizing every top-level itself, so
+  these are the guard asking a question the compositor answers elsewhere.
+- **3 are deliberate**, a fixture named `OffGridPlot`.
+
+**AND ONE GROUP IS A GENUINE CANDIDATE, which is what the triage was for.**
+Of the 38, twelve are a row of four push buttons:
+
+    88x19+10+104   87x19+108+104   88x19+205+104   87x19+303+104
+
+The height is one row and the x of each is a whole number of columns; the
+WIDTHS are 87 and 88, which is 390 pixels divided four ways. **A layout
+distributes its remainder in pixels, so a row of equal buttons cannot come
+out in whole cells** -- and §8.486 put a cell-counted floor under what the
+STYLE answers for one button, which is a different question from what a
+layout does with four. Each geometry is reported three times, which is the
+snapper rounding to the nearest cell and the layout putting it back.
+
+That is the bounded piece of work this entry was for. It is not this one.
 
 **TWO EARLIER CANDIDATES WERE TESTED AND BOTH WERE OUT**, which is what
 left the field clear. The leading one was
