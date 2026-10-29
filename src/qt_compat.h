@@ -93,39 +93,24 @@ inline uint qHash(const QRect &r, uint seed = 0) {
 }
 #endif
 
-// WHETHER A NESTED QEventLoop CAN BE TRUSTED. On Qt 5, one
-// QCoreApplication::quit() issued while no loop is running latches a thread
-// quit that makes every later QEventLoop::exec() return immediately without
-// running anything -- permanently, measured in 8.464 with a twelve-line
-// reproduction that answers 0 ms on Qt 5 and 10 ms on Qt 6.
+// WHETHER A NESTED QEventLoop CAN BE TRUSTED -- and the answer turned out to
+// be about WHERE rather than about the version, so the macro that lived here
+// is gone (8.629).
 //
-// The suite does exactly that in its quit-key checks, which exist BECAUSE
-// the quit is unobservable, so every fixture needing a nested loop after
-// them is dead there. Set by the copyright holder 2026-10-20: those
-// fixtures step over on Qt 5 rather than failing.
+// On Qt 5, one QCoreApplication::quit() issued while no loop is running
+// latches a thread quit that makes every later QEventLoop::exec() return
+// immediately without running anything: 8.464's twelve-line reproduction
+// answers 0 ms there and 10 ms on Qt 6. It is clearable, measured in 8.625 --
+// one full exec() round trip resets it -- but not usably, because the round
+// trip dispatches posted events from fixtures already torn down and
+// segfaults.
 //
-// This is not a statement that nested loops are broken on Qt 5 -- they work
-// in a process that has not issued a stray quit, measured: a fresh process
-// that sets up qtty runs a nested loop in 10 ms on both versions, and one
-// that has quit first returns in 0 ms on Qt 5 and still runs on Qt 6. It is
-// a statement about this suite, which has quit.
-//
-// MEASURED, so the step-over is not taken on trust. Forcing this to 1 and
-// running the Qt 5 arm un-skips 23 blocks, of which **19 fail**: the context
-// menu through exec(), the whole of drag and drop, ActionsContextMenu and
-// the file dialog. So the guard is substantively right and not merely
-// convenient. It also disposes of the obvious objection, that a compile-time
-// macro cannot see WHERE in the run it sits and so skips blocks that precede
-// any quit: the context-menu block at suite_router.cpp:5989 is thousands of
-// lines above the first set_quit_keys() and fails all the same, which places
-// the latch earlier still. Reordering the quit-key checks would therefore
-// recover nothing, and what it would take is a bigger restructuring than
-// this macro. 8.618 carries the numbers and names the open question.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-#  define QTTY_NESTED_LOOPS_USABLE 1
-#else
-#  define QTTY_NESTED_LOOPS_USABLE 0
-#endif
+// QTTY_NESTED_LOOPS_USABLE guarded six blocks of suite_router out of the
+// Qt 5 arm, on the holder's instruction of 2026-10-20 that they step over
+// rather than fail. Retired because the premise moved: the quit comes from
+// this library during suite_router's own checks, and a nested loop at that
+// suite's ENTRY still runs on Qt 5. The blocks live in test/suite_loops.cpp
+// now, registered before suite_router, and run on both arms.
 
 namespace Qtty {
 

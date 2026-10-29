@@ -12,6 +12,12 @@ int suite_theme();
 int suite_render(bool record);
 int suite_grid();
 int suite_placements();
+// BEFORE suite_router in the table below, and that is load-bearing: see
+// test/suite_loops.cpp. suite_router reaches the library's qApp->quit()
+// fourteen times -- the checks around them are about quit keys -- and on
+// Qt 5 that latches a thread quit which kills every later nested
+// QEventLoop. These fixtures need a process that has not quit. 8.629.
+int suite_loops();
 int suite_router();
 int suite_widgets_entry(bool record);
 int suite_graphics();
@@ -195,6 +201,7 @@ int main(int argc, char **argv) {
 		{"render",     [&] { return suite_render(record); }},
 		{"grid",       [&] { return suite_grid(); }},
 		{"placements", [&] { return suite_placements(); }},
+		{"loops",      [&] { return suite_loops(); }},
 		{"router",     [&] { return suite_router(); }},
 		{"widgets",    [&] { return suite_widgets_entry(record); }},
 		{"graphics",   [&] { return suite_graphics(); }},

@@ -44,6 +44,7 @@ SOURCES += main.cpp \
            suite_render.cpp \
            suite_grid.cpp \
            suite_placements.cpp \
+           suite_loops.cpp \
            suite_router.cpp \
            suite_widgets.cpp \
            suite_graphics.cpp \

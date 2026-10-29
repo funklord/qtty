@@ -111,7 +111,27 @@ void drag_move_to(QWidget *under, const QPoint &local, const QPoint &screen)
 		g_live->over = target;
 		g_live->over_accepts = false;
 		if (target) {
-			const QPoint p = target->mapFrom(under, local);
+			// UNDER->mapTo(TARGET), not target->mapFrom(under), and the
+			// two are not interchangeable. Qt's contract for
+			// mapFrom(parent, pos) is that `parent` is a parent of the
+			// CALLER -- and drop_target() walks UP from `under`, so
+			// `target` is an ANCESTOR of `under` and the old call had the
+			// pair inverted.
+			//
+			// It was a no-op for as long as nothing exercised it: when the
+			// widget under the pointer IS the target, mapFrom(self, p)
+			// returns p. The first fixture to drop on a LABEL INSIDE a
+			// drop area took the other branch, and that is the case
+			// drop_target exists for -- its own comment says so.
+			//
+			// Measured on a child at (10,20) with a local (5,5), which is
+			// (15,25) in the parent: mapTo gives (15,25) on both versions,
+			// while the inverted mapFrom gives (3,3) on Qt 6 -- with Qt's
+			// own warning, "parent must be in parent hierarchy" -- and
+			// SEGFAULTS on Qt 5, walking off the end of a parent chain
+			// that never contains `under`. So the bug was a wrong drag
+			// coordinate on one arm and a crash on the other. 8.629.
+			const QPoint p = under->mapTo(target, local);
 			QDragEnterEvent enter(p, g_live->supported, g_live->mime,
 			                      Qt::LeftButton, Qt::NoModifier);
 			QApplication::sendEvent(target, &enter);
@@ -122,7 +142,8 @@ void drag_move_to(QWidget *under, const QPoint &local, const QPoint &screen)
 	}
 
 	if (!target) return;
-	const QPoint p = target->mapFrom(under, local);
+	// The same inversion as above, and the same fix: see there. 8.629.
+	const QPoint p = under->mapTo(target, local);
 	QDragMoveEvent move(p, g_live->supported, g_live->mime,
 	                    Qt::LeftButton, Qt::NoModifier);
 	QApplication::sendEvent(target, &move);
@@ -150,7 +171,10 @@ void drag_drop_at(QWidget *under, const QPoint &local, const QPoint &screen)
 
 	QWidget *const target = g_live->over;
 	if (target && g_live->over_accepts) {
-		QDropEvent drop(QPointF(target->mapFrom(under, local)),
+		// The third site of the inversion above, in the DROP rather than the
+		// move -- so a drop on a child of the drop area carried the wrong
+		// point on Qt 6 and crashed on Qt 5 exactly as a move did. 8.629.
+		QDropEvent drop(QPointF(under->mapTo(target, local)),
 		                g_live->supported, g_live->mime,
 		                Qt::LeftButton, Qt::NoModifier);
 		drop.setDropAction(g_live->preferred);

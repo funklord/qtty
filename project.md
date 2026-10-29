@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2472 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2473 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -51504,6 +51504,12 @@ Three options, cheapest first, with what each costs:
   destroyed widget. Any in-process variant meets the same wall, this one
   included -- a second pass still has to run the loop. The latch finding
   stands on its own and makes the child-process option simpler.
+**THE WHOLE LIST IS CLOSED: 8.629 did it on 2026-10-29**, by running the
+fixtures from a suite registered BEFORE router -- 22 of the 23 recovered,
+Qt 5 at 2461 passing with 12 stepped over, and a coordinate inversion in
+the drag path found and fixed on the way. What follows is the pricing while
+it was open.
+
 - ~~**Fork a child process for the quit-issuing checks.**~~ **GONE FROM THE
   LIST 2026-10-29, see 8.627.** A nested loop still runs at `suite_router`'s
   ENTRY on Qt 5, so the latch is set inside that suite and nothing before it
@@ -52241,3 +52247,99 @@ pointer to it was missing, which is the harder kind to see: nothing fails,
 the headers ship, the suite is green, and a product reading the README
 concludes the harness does not exist. The walk that finds it is the one that
 asks what a user could not yet DO rather than what the tree does not have.
+
+### 8.629 The 22 checks, and the coordinate inversion they were hiding (2026-10-29)
+
+The item 8.618, 8.625 and 8.627 priced three times is done, and recovering
+the checks immediately found a real defect in the library -- which is the
+argument for having done it rather than a bonus.
+
+**WHY IT IS A POSITION AND NOT A VERSION.** `suite_router` reaches the
+library's `qApp->quit()` **fourteen** times, measured by instrumenting both
+sites: `InputRouter::on_key()` on a quit key and `on_terminal_lost()`
+unconditionally. The first is within a hundred lines of that suite's output,
+and the checks around them are about exactly that -- *"Ctrl+C in a text
+field copies rather than quitting"*, *"a read-only field has nothing to copy,
+so it quits too"*. So 8.627's hope of moving a late quit-issuing region is
+refuted: there is no such region. But a nested loop still runs at that
+suite's ENTRY on Qt 5, and none of the five suites before it quits, so the
+fixtures only ever needed to run EARLIER. `test/suite_loops.cpp` is them,
+registered before router, and `QTTY_NESTED_LOOPS_USABLE` is retired.
+
+**8.627's OBJECTION WAS WRONG AND IS WITHDRAWN.** It said extraction would
+need fixtures reconstructed by hand, "and a fixture reconstructed slightly
+wrong gives checks that pass while testing something else". Read properly,
+the two risky ones are **self-verifying**: the file-dialog block asserts the
+dialog LISTS `alpha.txt` and `beta.txt` and then picks one, so a wrong
+directory fails loudly; the other asserts the typed text reached the field.
+And neither needed reconstructing -- block 4's whole `if/else` wrapper moved
+verbatim because nothing after it used `tmp`, and block 5's fixture was
+copied verbatim because router's later checks share it. **The objection
+was a guess dressed as a risk assessment, and reading the assertions
+dissolved it.**
+
+**THE DEFECT THE STEP-OVER WAS HIDING: a coordinate mapping with its
+arguments inverted.** `drag_move_to()` and `drag_drop_at()` did
+
+    const QPoint p = target->mapFrom(under, local);
+
+at three sites. Qt's contract for `mapFrom(parent, pos)` is that `parent` is
+a parent of the CALLER -- and `drop_target()` walks UP from `under`, so
+`target` is an ANCESTOR of `under`. The pair was the wrong way round.
+Measured on a child at (10,20) with a local (5,5), which is (15,25) in the
+parent:
+
+| | `under->mapTo(target, local)` | `target->mapFrom(under, local)` |
+|---|---|---|
+| Qt 6.8.2 | (15,25), correct | **(3,3)**, with Qt's own warning *"parent must be in parent hierarchy"* |
+| Qt 5.15.15 | (15,25), correct | **SIGSEGV** in `mapFromParent` |
+
+**It was a no-op for as long as nothing exercised it.** When the widget
+under the pointer IS the target, `mapFrom(self, p)` returns `p` -- and the
+suite's own comment says the parent-walk in `drop_target` "had never taken
+the step that makes it a loop", the `acceptDrops()` test never having been
+false. The first fixture to drop on a **label inside a drop area** -- which
+is the case `drop_target` exists for, and its comment says so -- took the
+other branch. So a real drag onto a child of a drop area carried a wrong
+point on Qt 6 and crashed on Qt 5.
+
+**AND MOVING THE BLOCKS LEAKED PROCESS-WIDE STATE, which the suite caught
+in one run.** One fixture calls `set_keyboard_conventions(true)`, marked
+process-wide in `runtime.h`. Running before router, it rewrote four of that
+suite's checks -- "Tab advances focus chain", two scroll-area ones, and
+*"F6 does not move between windows until an application asks for the
+terminal conventions"*, which names the leak in its own sentence. Saved and
+restored across the whole suite now. **Suite order was a property nobody
+had to think about while these blocks lived inside router; moving them made
+it one.**
+
+**THE COUNT ROSE BY ONE AND THE GATE EXPLAINED THE OTHER TWO.** `main.cpp`
+emits a grid-guard check per suite, so a new suite legitimately adds one:
+2472 to 2473. It first read 2475, because the fixture COPIED for block 5 ran
+to the guard and brought two of router's own checks with it -- they then ran
+twice. **A copied fixture that reaches past its setup duplicates assertions
+silently**, and `count-check` is what turned that into a number rather than
+a surprise; the copy is trimmed to the eleven setup lines it needed.
+
+**WHERE IT LANDS.** Qt 5 goes from 2435 passing with 34 stepped over to
+**2461 passing with 12**, and the arm is green: 22 checks recovered,
+covering the context menu through `exec()`, drag and drop, the QDrag
+ownership paths, `ActionsContextMenu` and the file dialog.
+
+**ONE OF THE 23 IS STILL STEPPED OVER, and it is named rather than hidden.**
+A refusing drop target sees the enter and no leave on Qt 5. Which side is
+wrong is NOT known: either `drag_drop_at()` owes a leave to a target that
+refused -- a defect on both arms that Qt 6 hides by resolving the fixture's
+two cells to different widgets -- or the fixture assumes Qt 6's resolution.
+The two have different fixes and guessing between them is how a wrong one
+gets committed. The guard says so, and the reproduction is to remove it and
+run the Qt 5 arm.
+
+**WHAT THE WHOLE SEQUENCE SAYS.** Four entries to get here, and the thing
+that kept it moving was measuring the objection each time instead of
+accepting it: the latch was thought permanent (8.625 cleared it), clearing
+was thought usable (it segfaults), a late quit region was thought to exist
+(fourteen quits, the first immediately), and the fixtures were thought to
+need hand-reconstruction (they are self-verifying and moved verbatim).
+**Every step forward came from a measurement that contradicted the previous
+entry's assumption**, including mine.
