@@ -53052,10 +53052,42 @@ not fix it, sets the first two as well. **`set_font()` is called by
 font chosen after `setup()` being applied -- a candidate and nothing more,
 since `budget` calls `set_font()` never and fails alone too.
 
-**The experiment that would settle it** is to print the grid metrics and the
-application font around each of backend's five `set_font()` calls in both
-orders, and to narrow `router`'s contribution by replaying only its
-process-wide setters ahead of `backend` rather than the whole suite.
+**TWO CANDIDATES WERE TESTED AND BOTH ARE OUT.** The leading one was
+`GridSnap`'s re-entrancy flag: its filter opens `if (s_snapping) return
+false`, so a child laid out INSIDE a parent's snap is never snapped, which
+would leave the width and x on the grid -- the layout taking them from the
+snapped parent -- and the y off the row. It explains the shape exactly and
+it is event-ordering dependent, which would explain the predecessor
+mattering.
+
+**It does not reproduce.** A probe outside the suite -- `QApplication`,
+`setup()`, one `QWidget` with a `QVBoxLayout` holding a `QLineEdit` and two
+`QPushButton`s, `WA_DontShowOnScreen` like the fixtures, resized in cells
+and shown:
+
+    cell 10x19, GridSnap installed=1
+      QLineEdit    280x19+10+19  aligned=1
+      QPushButton  280x19+10+38  aligned=1
+      QPushButton  280x19+10+76  aligned=1
+    snapped=6  off-grid children=0
+
+**The plain case works.** Every child snapped, six snaps counted, nothing
+off the grid. So the six are not "a layout-managed dialog is not snapped",
+and `set_font()` is out as well -- `budget` never calls it and fails alone
+too.
+
+**What that leaves, and it is narrower than where this started**: something
+the two fixtures do keeps `GridSnap` from acting where the plain case has
+it act. The probe rules out the obvious suspects together -- a layout, a
+parent, `WA_DontShowOnScreen`, and a window sized in cells are all present
+in it and all fine. The next step is to take one of backend's six widgets
+and narrow its fixture towards the probe until the snapping starts, rather
+than to reason about which process-wide setter is responsible.
+
+**A negative result worth as much as the finding.** Had the probe
+reproduced it, this would be a library defect in `GridSnap` affecting every
+application. It did not, so the library's ordinary path is sound and what
+is in question is 365 geometries inside the suite.
 
 **WHICH DIRECTION IS RIGHT IS ALSO OPEN**, and it is the half that decides
 what the fix is. Either those six geometries are genuinely off the grid and
