@@ -1,0 +1,326 @@
+#!/bin/sh
+# The suite under every C++ front end this machine has, and what a second
+# front end must not start saying.
+#
+# WHY. project.md's static-analysis table carries five verdicts, and of the
+# four instruments tried beyond the gate's own `g++ -Wall -Wextra`, exactly
+# one paid out: clang 19, which found a real deprecation g++ cannot see --
+# `QFontDatabase()`'s constructor, which Qt 6.8's own header marks deprecated
+# and g++ does not diagnose (8.603). clang-tidy, cppcheck and `gcc
+# -fanalyzer` were each declined with reasons. So the one instrument with a
+# finding to its name was also the one with no way to run it: `make
+# CXX=clang++ BUILD_DIR=build-clang`, two variables remembered from one
+# paragraph. A configuration nobody can run in one command is one that
+# stops being run.
+#
+# WHAT IT ASSERTS, and the third is the one worth having:
+#
+#   - every front end builds, leaves a binary, and runs the suite with no
+#     FAIL;
+#   - the front ends agree about how many checks there are, since a count
+#     that moves with the compiler is a check behind a conditional nobody
+#     meant to write;
+#   - and NO WARNING ARRIVES OUTSIDE THE KNOWN SET below. That is the half
+#     nothing else can give: a clang-only warning appearing tomorrow is
+#     invisible today, because nothing compiles with clang.
+#
+# WHAT IT DOES NOT DO, deliberately. It does not fail on the known warnings
+# and it does not fix them. Both are reserved decisions: quieting the
+# `QFontDatabase` site needs a QT_VERSION conditional, which would settle
+# the question project.md section 8.1 holds for the copyright holder as a
+# side effect of tidying a diagnostic message; and whether warnings become
+# errors at all is 8.588's parked `-Werror` question, which 8.603 shows is
+# the same decision as adopting a second front end. This target reports
+# where those stand and takes neither.
+#
+# TWO SCRIPTS RATHER THAN ONE, and it was weighed rather than missed.
+# `tool/version-matrix` is this same shape on the Qt axis, and the two share
+# the exit-code naming and the count-agreement check -- about fifty lines of
+# plain shell out of two hundred. What differs is the whole point of each:
+# that one asserts the committed snapshot fixtures were compared, which is
+# meaningless across compilers, and this one asserts the warning set, which
+# is meaningless across Qt versions because the headers differ. A
+# parameterised matrix would carry those as hooks, which is more machinery
+# than the duplication costs. If a third axis arrives, factor them then.
+#
+# AN ARM THAT COMPILED NOTHING FAILS, because a warning set read from a
+# build with no compiler invocation in it is a clean sweep over nothing and
+# reads exactly like a real one. `QTTY_FROM_CLEAN=1` removes each arm's
+# build directories first, which is what makes the reading cover the whole
+# tree rather than only what the run happened to recompile.
+#
+# WHAT MAKES IT STOP. One pass per front end found, no loop over anything
+# else, a timeout on every build and every run, the suite's own watchdog
+# besides, and nothing started in the background.
+#
+# ONE AT A TIME. Two instances would target the same build-<tag>
+# directories, and two makes in one build directory race: measured on the
+# sibling script, a second instance linked the suite while the first was
+# still compiling and the link failed on an undefined reference, which
+# reads exactly like a source fault. Nothing locks; the fix is not to run
+# it twice.
+#
+# A TOOL RATHER THAN A RECIPE. A recipe line containing $(MAKE) runs even
+# under `make -n`, and the sub-make inherits the flag, so a dry run of a
+# recursive target is not a dry run. The recipe calling this names no
+# $(MAKE).
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root" || exit 1
+
+# THE KNOWN SET, as `-Woption<tab>path` pairs, each with its reason. A PAIR
+# rather than a count, because a count drifts by one for reasons nobody can
+# reconstruct a month later while the pair says what it is:
+#
+#   -Wdeprecated-declarations  src/grid/grid_style.cpp
+#       QFontDatabase()'s constructor, deprecated by Qt 6.8's header and not
+#       diagnosed by g++. The portable spelling is a compile error on
+#       Qt 5.15, so the only clean fix is a QT_VERSION conditional, which is
+#       section 8.1's reserved decision. 8.603.
+#
+#   -Wunused-lambda-capture  test/suite_widgets.cpp
+#       Six lambdas capturing a name they do not use. All six were READ
+#       before being called cosmetic: each capture is dead and no check
+#       asserts less than it means to. Six edits in a ten-thousand-line test
+#       file, for warnings the gate's compiler cannot emit, is the churn the
+#       bar excludes. 8.603.
+known_warnings() {
+	cat <<'EOF'
+-Wdeprecated-declarations	src/grid/grid_style.cpp
+-Wunused-lambda-capture	test/suite_widgets.cpp
+EOF
+}
+
+# EVERY FRONT END, asked by path so a wrapper or a versioned name works.
+# Deduplicated on the resolved path, since `c++` and `g++` are commonly one
+# binary and compiling twice with it compares nothing.
+seen=
+names=
+plan=
+for cc in ${QTTY_COMPILERS:-g++ clang++}; do
+	path=$(command -v "$cc" 2>/dev/null) || continue
+	real=$(readlink -f "$path" 2>/dev/null || echo "$path")
+	case " $seen " in *" $real "*) continue ;; esac
+	seen="$seen $real"
+	# The tag names the build directory, so it must be a filename: the
+	# basename with the plus signs dropped, which makes `clang++` into the
+	# `build-clang` that 8.603 established and project.md documents, so
+	# that arm reuses a directory a reader already knows rather than
+	# inventing a second spelling for it.
+	tag=$(basename "$cc" | tr -d '+' | sed 's/[^A-Za-z0-9_.-]/_/g')
+	names="${names:+$names and }$cc"
+	plan="$plan $tag,$path,$cc"
+done
+
+count=$(echo $seen | wc -w | tr -d " ")
+if [ "$count" -eq 0 ]; then
+	echo "compiler-matrix: no C++ front end was found, so nothing was" >&2
+	echo "                 built. A failure and not a skip: a run over" >&2
+	echo "                 zero compilers exits like a pass." >&2
+	exit 1
+fi
+if [ "$count" -eq 1 ]; then
+	echo "compiler-matrix: only $names is installed, so ONE front end will"
+	echo "                 run and nothing will be compared. The second one"
+	echo "                 is what finds a warning the first cannot emit."
+fi
+
+failed=0
+totals=
+for entry in $plan; do
+	tag=${entry%%,*}
+	rest=${entry#*,}
+	path=${rest%%,*}
+	cc=${rest##*,}
+	bd="build-$tag"
+
+	# ITS OWN BUILD DIRECTORY PER FRONT END, never `build`: that one is what
+	# the gate builds from, and in a tree more than one session works in,
+	# rebuilding it under a different compiler is how a concurrent `make
+	# check` links half of two configurations.
+	echo "--- $cc ($path) into $bd"
+
+	# QTTY_FROM_CLEAN FORCES THE WHOLE-TREE READING, by removing this arm's
+	# build directories so every file is compiled and every warning is in
+	# the log. It is opt-in because the directories are ones a reader may
+	# have built by hand -- `build-clang` is the spelling project.md's own
+	# command produces -- and deleting somebody's build without being asked
+	# is a surprise, not a convenience.
+	#
+	# CHECKED BEFORE DELETING, which is the whole of the rule: the path must
+	# be non-empty, relative, and spelled `build-<something>`, so it cannot
+	# be the default `build` the gate uses, a source directory, a home
+	# directory or `/`. An unset variable here is how a clean target eats
+	# something it should not.
+	if [ -n "${QTTY_FROM_CLEAN:-}" ]; then
+		case "$bd" in
+		build-?*) : ;;
+		*)  echo "compiler-matrix: refusing to clean '$bd' -- not a" >&2
+		    echo "                 build-<tag> directory this made" >&2
+		    exit 1 ;;
+		esac
+		case "$bd" in
+		/*|*..*) echo "compiler-matrix: refusing to clean '$bd'" >&2
+		         exit 1 ;;
+		esac
+		echo "    removing $bd and $bd-test so every file is compiled"
+		rm -rf "./$bd" "./$bd-test"
+	fi
+
+	log="$bd-test/compiler-matrix.build"
+	mkdir -p "$bd-test" 2>/dev/null
+	if ! timeout "${QTTY_BUILD_TIMEOUT:-2400}" \
+	     make CXX="$path" BUILD_DIR="$bd" tests-build > "$log" 2>&1; then
+		echo "compiler-matrix: $cc did not build, so it was not run" >&2
+		echo "                 the build output is $log" >&2
+		grep -E 'error:' "$log" | head -10 | sed 's/^/                 /' >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	# A RUN OVER NO BINARY EXITS 0 AND READS EXACTLY LIKE A PASS, which is
+	# why `make test` fails on an empty binary list: a build that reported
+	# success and produced nothing would otherwise count as a front end that
+	# agreed.
+	if [ ! -x "$bd-test/qtty-tests" ]; then
+		echo "compiler-matrix: $cc built but left no suite binary at" >&2
+		echo "                 $bd-test/qtty-tests, so it was not run" >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	# THE WARNING SET. Read out of the build log as `-Woption<tab>path`,
+	# with the path made relative to the tree -- qmake compiles from inside
+	# the build directory, so every source is named through `../../`, and a
+	# set keyed on the spelling rather than the file would never match.
+	# Warnings in somebody else's headers are counted and reported but not
+	# asserted on: they are a fact about the installed Qt, not about this
+	# tree, and failing on them would make the target go red when a
+	# dependency is upgraded.
+	seen_warnings="$bd-test/compiler-matrix.warnings"
+	sed -n 's|^\(.*\):[0-9][0-9]*:[0-9][0-9]*: warning: .*\[\(-W[a-z-]*\)\]$|\2\t\1|p' \
+		"$log" | sed 's|\.\./||g' | sort -u > "$seen_warnings"
+	total_warnings=$(grep -c 'warning:' "$log") || total_warnings=0
+	ours=$(awk -F'\t' '$2 !~ /^\//' "$seen_warnings" | sort -u)
+	theirs=$(awk -F'\t' '$2 ~ /^\//' "$seen_warnings" | sort -u | wc -l)
+
+	# A WARNING SET READ FROM A BUILD THAT COMPILED NOTHING IS NOT A CLEAN
+	# RESULT, and it reads exactly like one. Measured on this target's own
+	# first run: `build-clang` was already up to date from an earlier run by
+	# hand, so `tests-build` had nothing to do, the log held no compiler
+	# invocation at all, and the arm reported `0 warning(s)` and no novel
+	# pair -- a clean sweep over nothing, on the one front end the target
+	# exists for. The exit code was 0 and only reading the count caught it.
+	#
+	# So the compiles are counted and reported beside the warnings, and an
+	# arm that compiled nothing FAILS rather than passing quietly. The
+	# warning check covers WHAT THE RUN COMPILED, which an incremental run
+	# makes a weaker claim than a whole-tree one -- it can miss a novel pair
+	# in a file it did not touch, though it cannot invent one -- so the
+	# count is printed rather than left for the reader to assume.
+	# COUNTED BY OBJECT OUTPUT rather than by the compiler's name and `-c`,
+	# and the difference was paid for: the first version matched
+	# `<cc>++ .* -c `, while qmake emits `clang++ -c -pipe ...` with `-c`
+	# first, so it matched nothing and the guard below read every arm as
+	# having compiled nothing -- including one that had just compiled the
+	# whole tree and reported its eight warnings correctly. The count had
+	# been checked by hand with a DIFFERENT pattern than the one shipped,
+	# which is the trap: a stand-in verifies the half of a tool you looked
+	# at. `-o <name>.o` is what every compile has and nothing else does --
+	# moc writes `.moc` and `.cpp`, the links write bare names, qmake
+	# writes `Makefile` -- and it does not depend on flag order or on what
+	# the compiler is called.
+	compiled=$(grep -cE ' -o [^ ]+\.o( |$)' "$log") || compiled=0
+
+	# A PAIR THIS TREE PRODUCES THAT THE KNOWN SET DOES NOT NAME is the
+	# finding. comm compares two sorted streams and silently gives nonsense
+	# on an unsorted one, so both sides are sorted here rather than trusted
+	# to arrive that way.
+	expected="$bd-test/compiler-matrix.known"
+	known_warnings | sort -u > "$expected"
+	printf '%s\n' "$ours" | sed '/^$/d' | sort -u > "$bd-test/compiler-matrix.ours"
+	novel=$(comm -23 "$bd-test/compiler-matrix.ours" "$expected")
+
+	rc=0
+	QTTY_QPA_PLATFORM=offscreen QTEST_DISABLE_STACK_DUMP=1 \
+	QTEST_DISABLE_CORE_DUMP=1 timeout "${QTTY_TEST_TIMEOUT:-600}" \
+		"$bd-test/qtty-tests" > "$bd-test/compiler-matrix.out" \
+		2> "$bd-test/compiler-matrix.err" || rc=$?
+	out="$bd-test/compiler-matrix.out"
+	pass=$(grep -c '^PASS:' "$out") || pass=0
+	skip=$(grep -c '^SKIP:' "$out") || skip=0
+	fail=$(grep -c '^FAIL:' "$out") || fail=0
+	echo "    $cc: $pass pass, $skip step over, $fail fail -- $((pass + skip))" \
+	     "checks; $compiled file(s) compiled, $total_warnings warning(s)," \
+	     "$theirs of them in other people's headers"
+
+	if [ "$rc" -ne 0 ] || [ "$fail" -ne 0 ]; then
+		echo "compiler-matrix: $cc FAILED, exit $rc" >&2
+		# Named for the same reason `make test` names it: 2, 124 and 128+n
+		# are the three ways this fails without saying anything.
+		case "$rc" in
+		2)   echo "                 2 is the suite's own watchdog, which" >&2
+		     echo "                 prints to stderr before it goes" >&2 ;;
+		124) echo "                 124 is the timeout here, which kills" >&2
+		     echo "                 silently and is not the suite" >&2 ;;
+		13[2-9]|14[0-3])
+		     echo "                 128+n is a signal: $((rc - 128)). A" >&2
+		     echo "                 crash stops the output mid-suite" >&2 ;;
+		esac
+		echo "                 stdout $out" >&2
+		grep '^FAIL:' "$out" | head | sed 's/^/                 /' >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	if [ "$compiled" -eq 0 ]; then
+		echo "compiler-matrix: $cc compiled nothing, so its warning set was" >&2
+		echo "                 not inspected -- $bd was already up to date." >&2
+		echo "                 A clean sweep over no compilation reads like a" >&2
+		echo "                 real one, which is why this is a failure." >&2
+		echo "                 Remove $bd, or run with QTTY_FROM_CLEAN=1." >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	if [ -n "$novel" ]; then
+		echo "compiler-matrix: $cc warns about this tree somewhere the known" >&2
+		echo "                 set does not name. Read it before adding it:" >&2
+		printf '%s\n' "$novel" | sed 's/^/                 /' >&2
+		echo "                 the full log is $log" >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	totals="$totals $cc=$((pass + skip))"
+done
+
+[ "$failed" -eq 0 ] || {
+	echo "compiler-matrix: $failed front end(s) failed" >&2
+	exit 1
+}
+
+# THE CHECK COUNT MUST AGREE ACROSS FRONT ENDS. The source is the same, so a
+# difference is a check behind a compiler conditional -- which nothing in
+# this tree means to have, and which no single run can see.
+first=
+mismatch=
+for t in $totals; do
+	n=${t#*=}
+	[ -n "$first" ] || first=$n
+	[ "$n" = "$first" ] || mismatch=yes
+done
+if [ -n "$mismatch" ]; then
+	echo "compiler-matrix: the front ends ran different numbers of checks --" >&2
+	echo "                $totals" >&2
+	echo "                 the source is the same, so this is a check behind" >&2
+	echo "                 a compiler conditional" >&2
+	exit 1
+fi
+
+if [ "$count" -eq 1 ]; then
+	echo "compiler-matrix: $names passed, and nothing was compared."
+	exit 0
+fi
+echo "compiler-matrix: $count front ends, $first checks each, no failures,"
+echo "                 and no warning about this tree outside the known set."

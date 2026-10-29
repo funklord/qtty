@@ -19,6 +19,7 @@
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-versions -- the suite under every Qt version installed
+#   make test-compilers -- the suite under every C++ front end installed
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
 #   make test-consume  -- build a program against the installed library
@@ -522,6 +523,14 @@ test-consume:
 # either is absent, like `test-consume` and `test-tray` do.
 test-overlay-z:
 	@./tool/overlay-z-check
+
+# The suite under every C++ front end installed. Of the four instruments
+# tried beyond the gate's own `g++ -Wall -Wextra`, clang is the one that paid
+# out -- see tool/compiler-matrix for what it asserts, what it deliberately
+# does not, and why it is a script rather than a recipe. Out of the gate: it
+# builds the library, the tools and the suite once per front end.
+test-compilers:
+	@./tool/compiler-matrix
 
 # The suite under every Qt version installed, which is risk R2b's "CI
 # matrix" in the only form this workspace buys one -- see tool/version-matrix
@@ -1928,5 +1937,5 @@ help:
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
-        test-overlay-z test-versions \
+        test-overlay-z test-versions test-compilers \
         tools-check sabotage-check FORCE

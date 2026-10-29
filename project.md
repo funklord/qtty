@@ -52581,3 +52581,193 @@ flag, so a dry run of a recursive target is not a dry run -- a sibling
 project had the log it meant to read destroyed by the dry run that read it.
 The recipe here names no `$(MAKE)`, so `make -n test-versions` prints one
 line and runs nothing. Verified by running it.
+
+### 8.632 The one instrument that paid out was the one with no way to run it (2026-10-29)
+
+8.631 closed a gap on the Qt axis: a configuration that paid out, reachable
+only by remembering two variables, with no target. **The same lens pointed at
+the compiler axis finds the same gap, and this tree's own records are what
+make it undeniable.** §8.608's table carries five verdicts:
+
+| tool | verdict, 2026-10-27 |
+|---|---|
+| `g++ -Wall -Wextra` | in use, tree at zero, enforced by the gate |
+| clang 19 `-Wall -Wextra` | **paid out** -- one real deprecation g++ cannot see |
+| clang-tidy 19 | declined -- 45 findings, 0 defects |
+| cppcheck 2.17 | declined -- four zero-finding runs, each a preprocessor failure |
+| `gcc -fanalyzer` | declined -- 123 findings, 0 about this code |
+
+Four were tried and declined with reasons, which is the table working. **The
+fifth was tried, paid out, and then had nowhere to live** -- `make CXX=clang++
+BUILD_DIR=build-clang`, two variables in one paragraph of 8.603. So of the
+five rows, the one with a finding to its name is the only one a reader cannot
+run.
+
+`make test-compilers` is `tool/compiler-matrix`. It resolves each candidate
+front end by path, deduplicates on the resolved target -- `c++` and `g++` are
+commonly one binary, and compiling twice with it compares nothing -- builds
+into its own `build-<tag>`, and runs the suite.
+
+**THE ASSERTION WORTH HAVING IS THE THIRD.**
+
+- Every front end builds, leaves a binary, and runs the suite with no `FAIL`.
+  The exit code is named as `make test` names it.
+- The front ends agree about the check count. The source is the same, so a
+  difference is a check behind a compiler conditional, which nothing here
+  means to have and which no single run can see.
+- **No warning about this tree arrives outside a KNOWN SET.** That is the
+  half nothing else gives: a clang-only warning appearing tomorrow is
+  invisible today, because nothing compiles with clang.
+
+**THE SET IS PAIRS, NOT A COUNT**, and that is deliberate. A count drifts by
+one for reasons nobody can reconstruct a month later; `-Woption` with the file
+says what it is:
+
+    -Wdeprecated-declarations   src/grid/grid_style.cpp
+    -Wunused-lambda-capture     test/suite_widgets.cpp
+
+Both are 8.603's, and both are reserved rather than unfixed. The first is
+`QFontDatabase()`'s constructor, which Qt 6.8's header marks deprecated and
+g++ does not diagnose; the portable spelling is a **compile error** on Qt 5.15,
+so the only clean fix is a `QT_VERSION` conditional -- which would settle
+§8.1's reserved question as a side effect of tidying a diagnostic message.
+The second is six lambdas capturing a name they do not use, every one of them
+read before being called cosmetic. **So the target reports where those stand
+and takes neither decision**, which is also why it does not fail on them:
+a target that goes red on a parked decision is one somebody turns off.
+
+**WARNINGS IN SOMEBODY ELSE'S HEADERS ARE COUNTED AND NOT ASSERTED ON.** They
+are a fact about the installed Qt rather than about this tree, and a target
+that reddens when a dependency is upgraded is a target that reddens for
+somebody else's reasons.
+
+**AND ITS OWN FIRST RUN WAS A VACUOUS PASS, which is the finding worth more
+than the target.** It exited 0 and said this:
+
+    --- g++ (/usr/bin/g++) into build-g
+        g++:     2473 pass, 0 fail -- 0 warning(s)
+    --- clang++ (/usr/bin/clang++) into build-clang
+        clang++: 2473 pass, 0 fail -- 0 warning(s)
+    compiler-matrix: 2 front ends, 2473 checks each, no failures,
+                     and no warning about this tree outside the known set.
+
+**clang cannot be at zero warnings: the eight above had been measured forty
+minutes earlier.** `build-clang` was already up to date from that run, so
+`tests-build` had nothing to do, and the arm's build log held **no compiler
+invocation at all** -- 33 lines, 0 compile commands, against the g++ arm's 86
+lines and 36. The warning set was read from a build that compiled nothing, and
+a clean sweep over nothing prints exactly like a real one.
+
+So the target's whole reason for existing was absent on the one front end it
+exists for, and **the exit code was 0**. What caught it was reading the count
+rather than the status -- the figure `0 warning(s)` is impossible for that
+compiler on this tree, and nothing else in the output was wrong.
+
+**THE GUARD IS THE COMPILE COUNT, reported beside the warnings.** An arm that
+compiled nothing now fails, naming the directory and the remedy. Seen to fire:
+with both directories up to date, where the old code reported a clean sweep
+and exited 0, it reports both arms as uninspected and exits 1.
+
+**AND THE REPORT SAYS WHAT THE CHECK COVERED.** The warning set is read from
+what the run compiled, so an incremental run makes a weaker claim than a
+whole-tree one: it can MISS a novel pair in a file it did not touch, though it
+cannot invent one. That asymmetry is why an incremental run is still worth
+something -- it covers the files somebody just changed, which is where a new
+warning would be -- and why the compile count is printed rather than left for
+the reader to assume. `QTTY_FROM_CLEAN=1` removes each arm's build directories
+first, and is opt-in because `build-clang` is the spelling this document's own
+command produces and deleting a reader's build unasked is a surprise.
+
+**AND THE GUARD'S FIRST VERSION WAS WRONG, which is a second finding and
+the better one.** It counted compiles with
+
+    grep -cE '(^|/)(g|clang|c)\+\+ .* -c '
+
+and qmake emits `clang++ -c -pipe ...` with `-c` as the FIRST flag, so the
+pattern -- which requires something between the compiler and ` -c ` -- matched
+nothing. The from-clean run then read every arm as having compiled nothing and
+failed both, **including the clang arm that had just compiled the whole tree
+and reported its eight warnings correctly in the same line.**
+
+**The cause is the stand-in trap, exactly.** The count had been verified by
+hand, against the real log, with `'^\S*(g|clang)\+\+ -c '` -- which matches,
+because it anchors `-c` directly after the compiler -- and then a DIFFERENT
+pattern was written into the script. The hand check was real and the shipped
+code was never the thing checked.
+
+**What saved it is the direction of the failure, and that is luck worth
+naming.** A pattern that matches nothing makes the guard fail closed: every
+arm reads as uninspected and the run goes red, which is noisy and safe. A
+pattern that matched too much -- counting every line of the log, say -- would
+have made the guard pass always, and the vacuous-pass hole it was written to
+close would have stayed open while appearing shut. **The same typo in the
+other direction is invisible**, so a guard's pattern deserves the same "seen
+to fail AND seen to pass on a real artifact" treatment as the check it
+guards.
+
+It counts object outputs now -- `-o <name>.o`, which every compile has and
+nothing else in the log does: moc writes `.moc` and `.cpp`, the links write
+bare names, qmake writes `Makefile`. Verified against both arms' real logs at
+36 each, and against the lines it must not count.
+
+**THE MEASUREMENT, from clean:**
+
+    --- g++ (/usr/bin/g++) into build-g
+        g++:     2473 pass, 0 fail -- 36 compiled, 0 warning(s)
+    --- clang++ (/usr/bin/clang++) into build-clang
+        clang++: 2473 pass, 0 fail -- 36 compiled, 8 warning(s)
+    compiler-matrix: 2 front ends, 2473 checks each, no failures,
+                     and no warning about this tree outside the known set.
+
+Both arms compiled the same 36 translation units, the counts agree at 2473,
+and **the suite passes under a clang-built library** -- 8.603's result at 2454
+reproduced at 2473 after two days of changes. All eight warnings are inside
+this tree and none in anybody's headers.
+
+**AND THE NOVEL BRANCH WAS SEEN TO FIRE, with real data rather than a
+fabrication.** `-Wunused-lambda-capture` was removed from the known set and
+`test/suite_widgets.cpp` touched so exactly one file would recompile:
+
+    clang++: 2473 pass, 0 fail -- 1 file(s) compiled, 6 warning(s)
+    compiler-matrix: clang++ warns about this tree somewhere the known
+                     set does not name. Read it before adding it:
+                     -Wunused-lambda-capture  test/suite_widgets.cpp
+
+One compile instead of a whole tree, which is twenty minutes cheaper and
+exercises the same code path -- and it doubles as the proof that the
+INCREMENTAL path works, since `compiled` is 1 there and the vacuous guard
+correctly allowed it. The script was restored from a pristine copy with the
+revert proved by checksum, and the touch changed an mtime rather than any
+content, so `git status` stayed clean.
+
+**THE PARSING WAS PROVED AGAINST A REAL LOG BEFORE IT WAS TRUSTED**, which is
+cheaper than a rebuild and tests the part most likely to be silently wrong.
+qmake compiles from inside the build directory, so every source is named
+through `../../` -- a set keyed on the spelling as it appears would never
+match anything, and the symptom would be a target that passes for ever. The
+extraction was run over the clang log by hand: it yields
+`-Wdeprecated-declarations<TAB>src/grid/grid_style.cpp`, the known set
+contains exactly that, and `comm` reports nothing novel. **Then the control**:
+a fabricated `-Wshadow<TAB>src/render/cell_paint.cpp` added to the observed
+side is reported. A comparison that has only been seen to agree is not a
+comparison.
+
+**TWO SCRIPTS RATHER THAN ONE, weighed rather than missed.**
+`tool/version-matrix` is the same shape on the Qt axis, and the two share the
+exit-code naming and the count-agreement check -- about fifty lines of plain
+shell out of two hundred, not the four-fifths it looks like. What differs is
+the whole point of each: the Qt axis asserts that the committed snapshot
+fixtures were compared, which is meaningless across compilers, and this one
+asserts the warning set, which is meaningless across Qt versions because the
+headers differ. A parameterised matrix would carry both as hooks, which is
+more machinery than the duplication costs. **If a third axis arrives, factor
+them then** -- and the note is in both headers so the next reader sees the
+trade rather than the duplication.
+
+**WHAT THIS DOES NOT CLAIM.** Not that clang will find anything again: 8.603
+found one defect in one run and the marginal yield of a second run on
+unchanged code is nil. The value is 8.605's standard, stated there for the
+fuzz harness and the same here -- *the instrument rather than the finding*,
+so the next change can be put under a second front end in one command instead
+of this being rebuilt from a paragraph. Whether it earns its keep is answered
+by the next change.
