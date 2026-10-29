@@ -52942,3 +52942,102 @@ ignore rule against, and the four names are a smaller change than the rule
 is. **Seen to fail**: with the `keyboard_conventions()` mention removed it
 names that pair and exits 1, and the documents were restored from pristine
 copies with the revert proved by checksum.
+
+### 8.635 Two suites fail when run alone, and the gate's order is why (2026-10-29)
+
+8.629 found a fixture leaving `set_keyboard_conventions(true)` on and
+silently rewriting four of a later suite's checks. **That is one direction
+of a class, and the other direction had never been tested**: a check that
+passes only because an earlier suite ran first. The suite order is fixed in
+`main.cpp` and nothing had ever run the suites independently.
+
+**Run each in its own process -- `qtty-tests <suite>`, which the runner has
+always supported and which takes several names -- and eleven of thirteen are
+green. Two are not:**
+
+    backend   423 pass, 1 FAIL   every widget geometry landed on the grid -- 6 did not
+    budget     26 pass, 1 FAIL   every widget geometry landed on the grid -- 3 did not
+
+Both are the `GridGuard` check, and the combined run reports neither.
+
+**WHAT THE GUARD IS ACTUALLY DOING, measured per suite alone**, off-grid
+warnings on stderr against the violations its check reports and the
+geometries `reset()` disowned:
+
+    suite        warn   reported   disowned
+    cells           0          0          0
+    theme           6          0          6
+    render         19          0         19
+    grid            8          0          8
+    placements      0          0          0
+    loops          62          0         62
+    router        315          0        315
+    widgets       199          0        199
+    backend         6          6          0
+    exec            0          0          0
+    graphics        0          0          0
+    budget          3          3          0
+    runtime        58          0         59
+
+**Eleven suites disown exactly what they produce**, which is the mechanism
+working as intended: a suite that builds an off-grid widget on purpose calls
+`GridGuard::reset()` and the violation moves into `forgiven`. `router` calls
+it 77 times and `widgets` 72. **`backend` calls it three times and `budget`
+not at all**, so theirs are the only violations that survive to a verdict --
+which is why these two are the suites that can fail at all.
+
+**AND BACKEND'S SIX VANISH IF `suite_router` RUNS FIRST.** Bisected over
+every suite registered before it, one predecessor at a time:
+
+    backend alone   6        placements  6
+    cells           6        loops       6
+    theme           6        router      0   <-- the check passes
+    render          6        widgets     6
+    grid            6
+
+So it is `router` specifically and not "an earlier suite with a lot of
+layout activity" -- `widgets` produces 199 off-grid geometries of its own
+and changes nothing.
+
+**THE CAUSE IS NOT ESTABLISHED, and this entry does not guess one.** What is
+measured: the six are layout-managed geometries whose y is off the row --
+`QLineEdit 120x19+10+12`, `QPushButton 120x19+10+43`, `100x19+10+28` -- so
+the width and x are on the grid and the vertical placement is not. `router`
+sets `set_current_window` 94 times, `set_keyboard_conventions` 61,
+`set_quit_keys` 15 and `set_terminal_focused` twice; `widgets`, which does
+not fix it, sets the first two as well. **`set_font()` is called by
+`suite_backend` and by neither of the others**, five times, and §8.516 is a
+font chosen after `setup()` being applied -- a candidate and nothing more,
+since `budget` calls `set_font()` never and fails alone too.
+
+**The experiment that would settle it** is to print the grid metrics and the
+application font around each of backend's five `set_font()` calls in both
+orders, and to narrow `router`'s contribution by replaying only its
+process-wide setters ahead of `backend` rather than the whole suite.
+
+**WHICH DIRECTION IS RIGHT IS ALSO OPEN**, and it is the half that decides
+what the fix is. Either those six geometries are genuinely off the grid and
+the gate's order hides them -- in which case the gate has been green over a
+real misalignment since the guard was installed -- or running a suite alone
+is a configuration the fixtures were never written for, and the alone run
+manufactures them. **Guessing between those is how a wrong fix gets
+committed**, which 8.629 said in as many words about its own two candidates.
+
+**AND ONE MEASUREMENT OF MINE WAS AN ARTIFACT, recorded because it was
+convincing.** Subtracting `router` alone from the pair suggested backend ran
+424 checks alone and 420 after router -- four silently not running, which
+would have been the worse finding by far. It is arithmetic: `main.cpp` emits
+four checks per PROCESS before any suite -- *inert before setup()*, the
+conventions after setup, the wide-cluster default, the terminal-focus
+default -- so they appear once in every run and cancel out of the
+subtraction. 424 = 4 + 420, 675 = 4 + 671, and the pair's 1095 = 4 + 671 +
+420 exactly. **No check is lost.** A per-process constant counted as a
+per-suite one, and the shape to recognise is that a difference which equals
+a fixed preamble usually IS the preamble.
+
+**The bisection also reintroduced the instrument fault 8.465 paid for.**
+Those runs merged stderr into stdout, so off-grid warnings spliced into
+`PASS:` lines mid-text and the first count came out as six missing checks
+rather than four. Re-measured with the streams separated. **A suite that
+prints warnings cannot be counted through a merged stream**, and the
+temptation is strongest exactly when the warnings are what you are reading.
