@@ -52916,6 +52916,26 @@ the session asking invented a check that could not work and reported a
 confident absence. Three instances, two of them here, one of them a
 consumer of this project's own author.
 
+**THE OBVIOUS EXTENSION IS UNSOUND, and it was measured rather than
+assumed.** The next reader's instinct is to widen this past `set_X`/`X` to
+the other asymmetric pairs a library has -- `show`/`hide`,
+`resume`/`suspend`, `add_`/`remove_`, `enable_`/`disable_`. Swept: one
+apparent hit, `suspend()` documented and `resume()` not, **and it is a
+false positive**. The matches are prose about `Ctrl+Z` not being a suspend,
+about `setDefault(true)` being "only suspended", and about `ISIG` -- none
+of them the method. Both are pure virtuals of `ITerminalBackend`, which a
+backend IMPLEMENTS and an application never calls, so neither belongs in
+adopter prose at all.
+
+**What makes this check sound is the shape of the names it matches**, and
+that does not generalise: `set_keyboard_conventions` and
+`keyboard_conventions` are compound identifiers that cannot occur as
+English, so a word-boundary search for them means what it says. `suspend`,
+`resume`, `show` and `hide` are ordinary words, and the same search over
+them cannot tell an API mention from a sentence. So the real result of the
+sweep is **zero further instances**, and the rule stays at the one cut
+where the technique is valid.
+
 **THE FOUR WERE DOCUMENTED FIRST, then the check added**, so it starts
 green rather than red. A gate that lands red is one somebody reaches for an
 ignore rule against, and the four names are a smaller change than the rule
