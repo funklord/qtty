@@ -15290,7 +15290,16 @@ this tree.
   `python3 ~/.claude/tool/install-session-tooling`. Run; the hook is in
   `~/.claude/settings.json` and takes effect at the next session start.
 
-**Twenty-five minutes between them, and two of the three findings were
+**A second arrived at `20261029T1050Z`**, saying `running all` now lists
+every account's declarations with each line led by the account that made
+it, that `running list` works too, and that an account shares its own
+declarations deliberately -- `2775` group `users` -- once
+`install-session-tooling` has been run. Done here, and verified by reading
+the mode and then the listing: eight declarations across both accounts,
+including the Android build this session could not attribute when it was
+asked what was running.
+
+**Twenty-five minutes between the first two, and all three findings were
 fixed inside the hour.** Worth recording because the channel's cost was
 the open question: a maildrop with no resident process to deliver it
 sounds slow, and in practice the SessionStart hook and the fetch trigger
