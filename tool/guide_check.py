@@ -117,6 +117,63 @@ def umbrella_gaps():
 	return sorted(h for h in here if h != "qtty.h" and h not in included)
 
 
+def unreadable_settings():
+	"""Documented setters whose public getter no document names.
+
+	The docs are checked one way round -- every `Qtty::` name they use must
+	compile against the public headers -- and that direction cannot see the
+	opposite fault: a setting an application is told how to WRITE and not
+	how to READ. The write side is what prose naturally covers, because it
+	is what an example does; the read side is what a program needs when it
+	wants to show the value, reason about it, or find out what somebody
+	else set, and a process-wide setting has no other route to it.
+
+	It is not hypothetical here twice over. 8.628 is this tree's own worked
+	example reinventing an API it was demonstrating, and the same week a
+	session hand-rolled a key-press helper that `testing.h` already
+	shipped. Both read the prose and not the header. Reported from
+	claude-guidelines the same day for a tool rather than a library, in the
+	same shape: `running all` answered "whose is this job" the whole time,
+	nothing a reader loads named it, and the session invented a glob that
+	could not work.
+
+	Deliberately narrow, so that it stays a finding rather than a list.
+	Only a setter the docs ALREADY name counts -- documenting the write
+	side is what creates the obligation -- and only where a public getter
+	of the matching name exists, since there is nothing to say where the
+	value cannot be read. Measured when this was written: 29 public
+	setters, 4 of them documented with an undocumented getter, and three
+	other undocumented readers correctly left out because their own write
+	side is unmentioned too (`terminal_palette`, `is_visible`,
+	`covers_terminal`).
+	"""
+	inc = os.path.join(ROOT, "include", "qtty")
+	decls = ""
+	for header in sorted(h for h in os.listdir(inc) if h.endswith(".h")):
+		with open(os.path.join(inc, header), encoding="utf-8") as f:
+			decls += f.read()
+	prose = ""
+	for rel in DOCS:
+		path = os.path.join(ROOT, rel)
+		if os.path.exists(path):
+			with open(path, encoding="utf-8") as f:
+				prose += f.read()
+
+	def declared(name):
+		return re.search(r"\b%s\s*\(" % re.escape(name), decls) is not None
+
+	def named(name):
+		return re.search(r"\b%s\b" % re.escape(name), prose) is not None
+
+	gaps = []
+	for setter in sorted(set(re.findall(r"\b(set_[a-z0-9_]+)\s*\(", decls))):
+		getter = setter[len("set_"):]
+		if not declared(getter):
+			continue
+		if named(setter) and not named(getter):
+			gaps.append((setter, getter))
+	return gaps
+
 def practice_count():
 	"""How many numbered practices the guide has, counted from the guide."""
 	path = os.path.join(ROOT, "doc", "keyboard-first.md")
@@ -197,6 +254,16 @@ def main():
 		    " themselves:")
 		for line in numbering:
 			say("    %s" % line)
+		return 1
+
+	unreadable = unreadable_settings()
+	if unreadable:
+		say("guide-check: %d documented setter(s) whose getter no document"
+		    " names, so an application is told how to write the setting and"
+		    " not how to read it:" % len(unreadable))
+		for setter, getter in unreadable:
+			say("    Qtty::%s() is documented; Qtty::%s() is not"
+			    % (setter, getter))
 		return 1
 
 	absent = umbrella_gaps()

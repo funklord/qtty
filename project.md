@@ -52833,3 +52833,65 @@ reads a produced artifact has to ask them separately: *did the step run*, and
 compiler invocation in it -- and this one answers the second. Each reads like
 the other until the day one of them is false, and on that day the one you did
 not write is the one that was needed.
+
+### 8.634 Documented how to set it, and never how to read it (2026-10-29)
+
+`guide-check` tests the documents one way round: every `Qtty::` name the
+README and the guide use must compile against the public headers. **That
+direction cannot see the opposite fault**, which is a setting an
+application is told how to WRITE and not how to READ.
+
+**The write side is what prose naturally covers**, because it is what an
+example does. The read side is what a program needs when it wants to show
+the value, reason about it, or find out what somebody else set -- and for a
+process-wide setting there is no other route to it.
+
+**Measured, and the numbers are why this is a check rather than a list.**
+29 public setters in the installed headers; of those, the ones the
+documents already name and whose public getter they do not:
+
+    set_current_window        current_window
+    set_frame_interval        frame_interval
+    set_icon_glyph            icon_glyph
+    set_keyboard_conventions  keyboard_conventions
+
+**Four of 29.** The rule is narrow on purpose: only a setter the docs
+ALREADY name counts, since documenting the write side is what creates the
+obligation, and only where a getter of the matching name exists, since
+there is nothing to say where the value cannot be read. Three other
+undocumented readers fall outside it correctly, their own write side being
+unmentioned too -- `terminal_palette()`, `is_visible()` and
+`covers_terminal()`.
+
+**The wider sweep was measured and refused.** 143 of 252 public
+function-like names appear nowhere an adopter reads -- README, the guide,
+or the example -- and a check on that would be noise nobody keeps: most are
+accessors whose use is obvious from the type, or `testing.h` helpers. The
+setter/getter pair is the cut where the omission is a real asymmetry rather
+than an absence of prose.
+
+**`frame_interval()` is the one that earns the entry on its own.** It
+returns the interval ACTUALLY in force -- `QTTY_FRAME_MS` if set, else 50 ms
+when `SSH_CONNECTION` or `SSH_TTY` says the terminal is remote, else 16 ms
+-- so a program that wants to show or reason about the rate gets those
+decisions already made. Undocumented, the only way to that number was to
+reimplement the environment detection, which is a second copy of a rule
+this project measured once.
+
+**IT HAS COST THIS TREE TWICE ALREADY, which is why the shape is worth a
+gate.** 8.628 is the worked example reinventing an API it was
+demonstrating, and the same week a session hand-rolled a key-press helper
+that `testing.h` already shipped. Both had read the prose and not the
+header. **And the third instance arrived from outside on the same day**, in
+a tool rather than a library: `claude-guidelines`' `running all` answered
+*whose is this job* the whole time, nothing a reader loads named it, and
+the session asking invented a check that could not work and reported a
+confident absence. Three instances, two of them here, one of them a
+consumer of this project's own author.
+
+**THE FOUR WERE DOCUMENTED FIRST, then the check added**, so it starts
+green rather than red. A gate that lands red is one somebody reaches for an
+ignore rule against, and the four names are a smaller change than the rule
+is. **Seen to fail**: with the `keyboard_conventions()` mention removed it
+names that pair and exits 1, and the documents were restored from pristine
+copies with the revert proved by checksum.

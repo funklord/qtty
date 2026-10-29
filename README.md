@@ -225,7 +225,9 @@ What an application may ask for on top, none of it automatic.
 
 For the widgets: `Qtty::set_priority()` for what to drop first on a small
 terminal, `Qtty::CellItemDelegate` for item views with check states and
-icons, `Qtty::set_icon_glyph()` to name a glyph for an icon,
+icons, `Qtty::set_icon_glyph()` to name a glyph for an icon and
+`Qtty::icon_glyph()` to ask what a name currently maps to (empty when
+nothing is registered for it),
 `Qtty::Overlay` for a picture over the cells, and the `qtty.cells` widget
 property to state a size in cells.
 
@@ -241,7 +243,9 @@ installs, and `Qtty::ICellPainted` lets a widget paint cells directly
 instead of going through a `QPainter`.
 
 For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
-terminal user expects and `Qtty::keyboard_conventions_help()` names the keys
+terminal user expects, `Qtty::keyboard_conventions()` reads back whether they
+are on -- the setting is process-wide, so code that did not set it has no
+other way to know -- and `Qtty::keyboard_conventions_help()` names the keys
 that answer, so a status bar keeps no second copy of them.
 `Qtty::shortcut_help()` does the same for the keys **you** bound, which move
 whenever somebody edits a menu, and the two concatenate into one line.

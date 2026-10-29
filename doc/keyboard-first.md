@@ -1109,7 +1109,10 @@ with it, and none of that was free.** `Qtty::set_current_window()`,
 what is drawn; they give a window that has never had focus its first tab
 stop; they dismiss a menu the window being left had open; and the
 terminal takes its title from the window you arrive in, so a tabbed
-terminal names the window you are actually looking at. Those are four
+terminal names the window you are actually looking at.
+`Qtty::current_window()` answers which window that is, as a pointer that
+goes null if the window is destroyed -- a widget deep in the tree has no
+other way to ask. Those are four
 things a desktop gets from window *activation*, which never happens here
 -- so each had to be done by hand, and each was missing at one point.
 Nothing is asked of you except that you move windows with these
@@ -1838,6 +1841,12 @@ whoever runs your program name one instead:
 ```cpp
 Qtty::set_frame_interval(100);     // a dashboard nobody types into
 ```
+
+`Qtty::frame_interval()` reports the interval actually in force, which is
+the one worth asking for: with nothing set it returns the default this
+paragraph describes, so a program that wants to show or reason about the
+rate gets the `QTTY_FRAME_MS` and `SSH_CONNECTION` decisions already made
+rather than reimplementing them.
 
 It reaches a run already going, so you can raise it while a long
 operation paints and put it back afterwards. `0` means *as soon as the
