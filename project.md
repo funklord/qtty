@@ -53135,20 +53135,42 @@ instrumenting the guard to print each widget's parent chain:
   these are the guard asking a question the compositor answers elsewhere.
 - **3 are deliberate**, a fixture named `OffGridPlot`.
 
-**AND ONE GROUP IS A GENUINE CANDIDATE, which is what the triage was for.**
-Of the 38, twelve are a row of four push buttons:
+**ONE GROUP LOOKED LIKE A GENUINE CANDIDATE, AND IS NOT.** Of the 38,
+twelve are a row of four push buttons:
 
     88x19+10+104   87x19+108+104   88x19+205+104   87x19+303+104
 
 The height is one row and the x of each is a whole number of columns; the
-WIDTHS are 87 and 88, which is 390 pixels divided four ways. **A layout
+WIDTHS are 87 and 88, which is 390 pixels divided four ways. A layout
 distributes its remainder in pixels, so a row of equal buttons cannot come
-out in whole cells** -- and §8.486 put a cell-counted floor under what the
-STYLE answers for one button, which is a different question from what a
-layout does with four. Each geometry is reported three times, which is the
-snapper rounding to the nearest cell and the layout putting it back.
+out in whole cells -- and the obvious conclusion is that qtty needs a
+grid-aware remainder, which would be a new mechanism touching every layout.
 
-That is the bounded piece of work this entry was for. It is not this one.
+**It would buy nothing, measured.** 8.27 established for a splitter handle
+that a geometry which does not divide into cells *"renders identically to a
+snapped one -- snapping them by hand changed no pixel"*. That was a
+handle's POSITION, and this is a button's WIDTH, so it was put to the
+renderer rather than inherited: the row above and the same row at 90 px
+each on whole columns produce **byte-identical cell output**, legend and
+attribute planes included.
+
+    off-grid  <Alpha>   <Beta>    <Gamma>  <Delta>
+    snapped   <Alpha>   <Beta>    <Gamma>  <Delta>     identical: YES
+
+**SO THE WHOLE 238 NEEDS NO ACTION, and the reason is one sentence worth
+keeping**: `GridGuard` reports geometry that is off the GRID, which is not
+the same as geometry that renders WRONGLY. Two measurements on different
+widgets and different axes now say the difference is invisible, which is
+N2 -- pixel fidelity is a non-goal -- arriving from the inside. The guard
+is a grid-hygiene signal and the suites forgiving it are right to.
+
+**What that retires is the expensive answer.** A grid-aware layout
+remainder is a real mechanism and somebody would have built it: the
+arithmetic is obviously wrong, the fix is obviously available, and nothing
+in the entry would have said that the output does not change. **An
+invisible fault with an obvious fix is the most expensive kind of finding
+there is**, and the thing that stops it is rendering both and comparing,
+which costs one probe.
 
 **TWO EARLIER CANDIDATES WERE TESTED AND BOTH WERE OUT**, which is what
 left the field clear. The leading one was
