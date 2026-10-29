@@ -52771,3 +52771,44 @@ fuzz harness and the same here -- *the instrument rather than the finding*,
 so the next change can be put under a second front end in one command instead
 of this being rebuilt from a paragraph. Whether it earns its keep is answered
 by the next change.
+
+### 8.633 The same hole, one level in, in both tools that found it (2026-10-29)
+
+8.632's finding was a check reading an artifact produced by a step that had
+done nothing. **Turned on the two tools that found it, the same shape is
+there again** -- and it was in code committed forty minutes earlier.
+
+**WHAT WOULD HAPPEN.** Both matrix tools read the suite's stdout for `PASS:`,
+`SKIP:` and `FAIL:`. A suite that exited 0 having printed nothing leaves all
+three at zero, so `pass + skip` is zero for every configuration, every
+configuration agrees at zero, `fail` is zero, and the summary announces them
+as agreeing. `version-matrix` would go further and claim that *"every
+committed snapshot fixture was compared on each"* -- over no checks at all.
+
+**IT IS THE RULE THE PROJECT ALREADY STATES, one level in.** §9.6 names two
+things in the test target that must not be removed, and the second is that *a
+run over zero binaries fails rather than passing*, because a loop that finds
+no test binary exits 0 and reads exactly like a pass. These tools do find a
+binary and do run it; what they did not check is that the run produced any
+check. **The guard existed at the binary level and not at the check level**,
+and nothing in the earlier design noticed because every real run produces
+thousands.
+
+**BOTH REFUSE A ZERO NOW, AND BOTH WERE SEEN TO FIRE.** The control breaks
+the patterns -- `^PASS:` to `^NOSUCHPREFIX:` -- so a real, passing suite run
+reads as zero checks while everything else about it stays true, which is a
+sharper control than a stub: the suite genuinely ran and genuinely exited 0.
+
+    version-matrix:  Qt 6.8.2 ran and reported no check at all, exit 0.
+                     Zero checks is not agreement.
+    compiler-matrix: g++ ran and reported no check at all, exit 0.
+
+Both exited 1. Both files were restored from pristine copies with the revert
+proved by checksum rather than by eye.
+
+**THE TRANSFERABLE PART is the order of the two questions.** A check that
+reads a produced artifact has to ask them separately: *did the step run*, and
+*did it produce anything*. 8.632's guard answers the first -- a build with no
+compiler invocation in it -- and this one answers the second. Each reads like
+the other until the day one of them is false, and on that day the one you did
+not write is the one that was needed.

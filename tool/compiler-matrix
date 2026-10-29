@@ -254,6 +254,21 @@ for entry in $plan; do
 	     "checks; $compiled file(s) compiled, $total_warnings warning(s)," \
 	     "$theirs of them in other people's headers"
 
+	# A RUN OVER ZERO CHECKS READS EXACTLY LIKE A PASS, which is the rule
+	# section 9.6 states for a run over zero BINARIES -- `make test` fails
+	# when it finds none, because a loop over an empty list exits 0. The
+	# same hole is one level in: a suite that exits 0 having printed nothing
+	# leaves pass, skip and fail all at zero, every front end agrees at
+	# zero, and the summary below would announce them as agreeing. Found by
+	# turning this run's own vacuous-pass finding on the tool that found it.
+	if [ "$((pass + skip))" -eq 0 ]; then
+		echo "compiler-matrix: $cc ran and reported no check at all," >&2
+		echo "                 exit $rc. Zero checks is not agreement:" >&2
+		echo "                 read $out before believing anything else." >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
 	if [ "$rc" -ne 0 ] || [ "$fail" -ne 0 ]; then
 		echo "compiler-matrix: $cc FAILED, exit $rc" >&2
 		# Named for the same reason `make test` names it: 2, 124 and 128+n
