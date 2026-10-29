@@ -53088,11 +53088,39 @@ corrected too. The guard now means what §7.5 says it means, and the two
 suites that failed alone pass for the right reason rather than because
 router ran first.
 
-**WHAT IS LEFT IS A CLEAN QUESTION.** 238 warnings remain and the suites
-still forgive them through `GridGuard::reset()`. Those are now FINAL
-geometries rather than transients, so asking whether each is a deliberately
-off-grid fixture or a real misalignment is worth doing -- and it is a
-different question from this one, asked of a tenth as much noise.
+**WHAT IS LEFT IS A CLEAN QUESTION, and it is already sorted into three
+piles.** 238 warnings remain, the suites still forgive them through
+`GridGuard::reset()`, and these are FINAL geometries rather than
+transients. By widget class, with each name put to Qt's public headers
+rather than assumed:
+
+    114  QToolButton      public
+     29  QWizardRuler     in NO public header -- Qt-private
+     29  QMessageBox      public
+     23  QWidget          public
+     12  QPushButton      public
+      6  QListView        public
+      4  QWhatsThat       in NO public header -- Qt-private
+      4  QTipLabel        in NO public header -- Qt-private
+      4  QDialog, 4 QColorDialog, 3 QWizard   public
+      3  suite_runtime()::OffGridPlot         a fixture, deliberate by name
+
+- **37 are `is_exempt()`'s own "named residue"** -- the case its comment
+  describes in as many words: *"Qt has private widget classes that follow
+  neither convention -- declared in a .cpp, exported nowhere, named like
+  ordinary public classes."* `QWizardRuler`, `QWhatsThat` and `QTipLabel`
+  are each absent from every public Qt header, so they belong beside
+  `QHeaderView`, `QScrollBar` and `QTableCornerButton` -- each with its own
+  reason, which is the bar that comment sets for an addition.
+- **3 are deliberate**, a fixture named `OffGridPlot`.
+- **The remaining ~198 are the real question**, and they are public classes
+  an application does construct and can size. `QToolButton` is the bulk of
+  it at 114, and the style already exempts a `QToolButton` child of a
+  `QToolBar` from both the guard and the snapper, so the question is which
+  other 114 there are and why the snapper leaves them.
+
+That is a bounded piece of work with a shape, which is what this entry was
+for; it is not this one, and it should not be folded into it.
 
 **TWO EARLIER CANDIDATES WERE TESTED AND BOTH WERE OUT**, which is what
 left the field clear. The leading one was
