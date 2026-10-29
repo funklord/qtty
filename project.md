@@ -52988,12 +52988,45 @@ geometries `reset()` disowned:
     budget          3          3          0
     runtime        58          0         59
 
-**Eleven suites disown exactly what they produce**, which is the mechanism
-working as intended: a suite that builds an off-grid widget on purpose calls
-`GridGuard::reset()` and the violation moves into `forgiven`. `router` calls
-it 77 times and `widgets` 72. **`backend` calls it three times and `budget`
-not at all**, so theirs are the only violations that survive to a verdict --
-which is why these two are the suites that can fail at all.
+**Eleven suites disown exactly what they produce.** A suite that builds an
+off-grid widget on purpose calls `GridGuard::reset()` and the violation
+moves into `forgiven`; `router` calls it 77 times and `widgets` 72.
+**`backend` calls it three times and `budget` not at all**, so theirs are
+the only violations that survive to a verdict -- which is why these two are
+the suites that can fail at all.
+
+**~~Which is the mechanism working as intended.~~ That was too kind, and
+the measurement that followed says so.** `GridGuard::reset()` is
+`s_forgiven += s_violations; s_violations = 0` -- a BLANKET forgive of
+everything pending, with no way to say which violation was the deliberate
+one. So a suite that resets to excuse the widget it built off-grid on
+purpose also excuses anything unintentional since its last reset.
+
+**And the forgiven sets are mostly one shape, which is backend's shape.**
+The six that fail have their width and x on the grid and their y off the
+row. Classifying every flagged geometry the same way, per suite run alone:
+
+    suite        flagged   y-off only   share
+    theme              6            4     66%
+    render            19           11     57%
+    grid               8            0      0%
+    loops             62            4      6%
+    router           315          186     59%
+    widgets          199          149     74%
+    runtime           58            2      3%
+    backend            6            6    100%
+    budget             3            3    100%
+
+**365 of 676, and 100 per cent of the nine that are allowed to fail.** So
+the shape is not a peculiarity of the two suites that report it: it is
+everywhere, and the only reason it is visible in `backend` and `budget` is
+that those two happen not to reset the counter afterwards.
+
+**That tips the open direction below**, without settling it. A
+misalignment present in nine suites and forgiven in seven of them is more
+plausibly real than an artifact of running a suite alone -- and the first
+question for whoever takes this is no longer *why do backend's six vanish*
+but **what is inside router's 186.**
 
 **AND BACKEND'S SIX VANISH IF `suite_router` RUNS FIRST.** Bisected over
 every suite registered before it, one predecessor at a time:
