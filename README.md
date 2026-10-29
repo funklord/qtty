@@ -143,6 +143,43 @@ nothing else has to be repeated. `make test-consume` builds and runs a
 program this way against a temporary prefix, so the recipe above is checked
 rather than described.
 
+### Characterising a screen before you change it
+
+`qtty/testing.h` ships for this and is installed with the rest. The
+migration plan's advice is to capture what a screen does now, then make the
+shared code match it -- so the capture comes first and is not written from
+what the new code happens to produce:
+
+```cpp
+#include <qtty/testing.h>
+
+Qtty::InputRouter router(&win);
+Qtty::set_current_window(&win);
+
+const QString before = Qtty::test::snapshot_of(win, 52, 14);
+Qtty::test::press(router, Qt::Key_Tab);        // or Key_Space, an arrow, a chord
+Qtty::test::type(router, QStringLiteral("hello"));
+Qtty::test::click(router, QPoint(4, 2));
+const QString after = Qtty::test::snapshot_of(win, 52, 14);
+
+// 0 when it matches the fixture under <root>/test/snapshot/<name>.txt,
+// 1 when it differs, printing both sides. `record` rewrites it instead.
+return Qtty::test::check_snapshot(SRC_ROOT, QStringLiteral("prefs"), after,
+                                  record);
+```
+
+Use `press()` and `type()` rather than building a `KeyEvent` by hand: the
+wrong combination is silent. `{Qt::Key_Z, QString()}` types nothing and
+`{0, "\t"}` moves no focus, and both return as though delivered -- the
+helpers fill the field the router actually reads. `snapshot_of_screen()` is
+the same for a window with popups over it, and `mouse_press()`,
+`mouse_release()` and `mouse_move()` drive a drag.
+
+Two captures and a comparison are worth more than one capture: assert that
+the driven snapshot differs from an undriven one taken with the focus
+already where the first key will land, or a fixture that matches while the
+keys went nowhere is a characterisation of nothing.
+
 The call sequence, which is the one sharp edge:
 
 ```cpp

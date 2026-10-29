@@ -52193,3 +52193,51 @@ blocks it is that the work wants doing carefully.
 **AND THE REVERT IS COMPLETE**: `suite_router.cpp`, `main.cpp`, `test.pro`
 and `qt_compat.h` are back at their committed state and `suite_loops.cpp` is
 removed, checked with `git status`.
+
+### 8.628 The worked example reinvented the API it was demonstrating (2026-10-29)
+
+8.626 added the interactive characterisation Phase 2's exit criterion asks
+for, and walking the goal gap once more -- what does a product following
+Phase 3 need that is missing -- found the answer was **nothing, and that was
+the problem**.
+
+**`qtty/testing.h` ALREADY SHIPS THE WHOLE VOCABULARY**, and is installed:
+`press()`, `type()`, `mnemonic()`, `click()`, `mouse_press()`,
+`mouse_release()`, `mouse_move()`, `snapshot_of()`, `snapshot_of_screen()`
+and `check_snapshot()`. A product has had everything Phase 3 asks for since
+before this run started.
+
+**AND 8.626's BLOCK HAND-ROLLED ITS OWN `tap()` ANYWAY.** That is worse than
+redundant. `testing.h`'s own comment says why: *"Every wrong combination is
+SILENT. `{Qt::Key_H, QString(), alt}` reaches no mnemonic, `{Qt::Key_Z,
+QString()}` types nothing, and `{0, "\t"}` moves no focus -- each returns as
+if delivered and nothing says otherwise."* The lambda filled the space's
+text correctly by luck; a product copying it for Tab would have got silence,
+and the example existed precisely to be copied. **A worked example that
+reinvents the shipped API teaches the wrong lesson twice: once about the
+helper, and once about hand-rolling events.** It calls
+`Qtty::test::press(dr, Qt::Key_Space)` now.
+
+**THE REAL GAP WAS THE README.** Its adoption section is thorough about
+installing, `pkg-config`, the call sequence and `NullBackend`, and never
+mentioned the characterisation harness -- so the migration plan told every
+product to capture a screen before deleting its TUI, and the one document a
+product reads did not say that the tool for it is installed. The recipe is
+there now: the two captures, the comparison, the helpers, and the warning
+that a hand-built `KeyEvent` fails silently.
+
+**AND IT DISARMED ITS OWN SABOTAGE ENTRY, which is the second instance of
+that shape this session.** Entry 803 anchors on the line that delivers the
+key, and 8.628 rewrote that line -- so `sabotage-check` failed the gate with
+*1 of 803 entries cannot be applied*, the entry's own check undefended. The
+first instance was 8.620, where a change to `operator==` disarmed three
+entries belonging to somebody else. **An edit under an anchor is a cost that
+does not announce itself in the diff**, and only a gate run says so. Fixing
+it means re-RUNNING the entry rather than revalidating, because what changed
+is what it substitutes: done, and it still reddens the check it names.
+
+**A GOAL GAP IS NOT ALWAYS MISSING CODE.** The code was complete and the
+pointer to it was missing, which is the harder kind to see: nothing fails,
+the headers ship, the suite is green, and a product reading the README
+concludes the harness does not exist. The walk that finds it is the one that
+asks what a user could not yet DO rather than what the tree does not have.

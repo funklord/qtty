@@ -168,11 +168,20 @@ int suite_render(bool record) {
 			Qtty::set_focus_widget(dlg.focusWidget());
 			QCoreApplication::processEvents();
 		};
-		const auto tap = [&](Qt::Key k, const QString &text) {
-			dr.on_key({k, text, false, false, false});
+		// Qtty::test::press() AND NOT A LAMBDA OF OUR OWN, because that is
+		// what a product has. testing.h ships press(), type(), mnemonic()
+		// and the mouse helpers precisely so a test does not hand-roll a
+		// KeyEvent, and its own comment says why: "every wrong combination
+		// is SILENT" -- {Qt::Key_Z, QString()} types nothing and returns as
+		// if delivered. The first version of this block built its own tap()
+		// and happened to fill the space's text correctly; a product copying
+		// that for Tab would not have, and nothing would have said so. A
+		// worked example that reinvents the shipped API teaches the wrong
+		// lesson twice over.
+		const auto tap = [&](Qt::Key k) {
+			Qtty::test::press(dr, k);
 			QCoreApplication::processEvents();
 		};
-		const QString space = QStringLiteral(" ");
 
 		// A CAPTURE WITH THE FOCUS MOVED AND NO KEY PRESSED, which is the
 		// yardstick the comparison below needs. Focusing is itself visible
@@ -191,9 +200,9 @@ int suite_render(bool record) {
 		const QString focused = Qtty::test::snapshot_of(dlg, 52, 14);
 
 		focus_on(chk);
-		tap(Qt::Key_Space, space);            // [x] -> [ ]
+		tap(Qt::Key_Space);                   // [x] -> [ ]
 		focus_on(r1);
-		tap(Qt::Key_Space, space);            // Weekly -> Daily
+		tap(Qt::Key_Space);                   // Weekly -> Daily
 		const QString driven = Qtty::test::snapshot_of(dlg, 52, 14);
 
 		// THE STATE FIRST, so the snapshot says WHY it differs rather than

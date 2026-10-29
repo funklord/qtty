@@ -8872,9 +8872,14 @@ check = "twenty overlays at one z come back in the order they were created, so t
 # now, so the difference is the key's. This entry keeps it that way: with the
 # delivery removed, both it and the state check redden, and the fixture
 # mismatch reddens too.
+#
+# RE-ANCHORED 2026-10-29 when the block moved to Qtty::test::press(): the
+# old anchor named a hand-rolled on_key() that 8.628 replaced, and editing
+# a line under an anchor disarms the entry over it. Re-RUN rather than
+# revalidated, since what changed is what it substitutes.
 name = "the driven dialog is captured without the keys being delivered"
 file = "test/suite_render.cpp"
-find = "\t\t\tdr.on_key({k, text, false, false, false});"
-into = "\t\t\tif (false) dr.on_key({k, text, false, false, false});"
+find = "\t\t\tQtty::test::press(dr, k);"
+into = "\t\t\tif (false) Qtty::test::press(dr, k);"
 count = 1
 check = "and the cells differ from a capture with the focus already moved, so it is the key that reached the frame and not the focus"
