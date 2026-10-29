@@ -113,8 +113,21 @@ monospace font with integral metrics (DejaVu Sans Mono for now; bundled font pla
 maintenance: `make record R=render` rewrites the render snapshot after a
 reviewed change. Build against Qt 5 with
 `make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake`; the suite builds and runs
-there too, with 31 checks stepping over where that version cannot be asked
-the question — see project.md 8.465 to 8.467. The example runs with `make run`, or directly as
+there too, with 12 checks stepping over where that version cannot be asked
+the question: five want `QPalette::Accent`, which Qt 6.6 added and 5.15 has
+no equivalent for; five want a screen the Qt 5 offscreen plugin will not
+take (project.md 8.466); one wants a colour scheme Qt 5 does not report;
+and one is a limitation an **application** should know about rather than
+only the suite.
+
+**On Qt 5 a drop target is never told the drag left it.** qtty sends the
+`QDragLeaveEvent`, and `QApplication::notify()` there discards it before the
+widget or even its event filters see it — measured with no qtty in the
+picture, and with no public route around it, `QWidget::event()` being
+protected. So a widget that highlights on `dragEnterEvent` and clears on
+`dragLeaveEvent` keeps its highlight on Qt 5 after a drag it refused or that
+moved away. Clear the highlight on the drop, or on a timer, if you need it
+to work on both. Qt 6 delivers the event normally. project.md 8.630. The example runs with `make run`, or directly as
 `build/example/chat/chat --tui`.
 
 ## Using it from another project
