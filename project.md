@@ -3160,12 +3160,34 @@ design.md §13, reproduced. L is likelihood, I is impact.
 | R5 | Channel B output is too poor for a heavily custom-painted product | M | M | Widen Channel A, or `ICellPainted` per widget | More than 30% of a screen's cells from Channel B |
 | R6 | The effort exceeds the value of unifying four TUIs | M | M | Phase 1 ships value standalone; the phases are independently abandonable | Phase 2 slips more than 50% |
 
-**R2b is live right now**, and nothing has been done about it: the Phase 0
-measurements were taken on Qt 6.4.2 and this machine is **Qt 6.8.2**. The
-suite passes here, but no snapshot in the tree has ever been compared
-across two Qt versions, and there is no CI matrix to do it.
+**~~R2b is live right now, and nothing has been done about it.~~ Taken,
+except the half nobody can buy.** What stood here was that the Phase 0
+measurements were on Qt 6.4.2 against this machine's Qt 6.8.2, that no
+snapshot in the tree had ever been compared across two Qt versions, and
+that there was no CI matrix to do it. Each of the three has moved:
 
-R3's mitigation is likewise not in place -- see §7.5.
+- **Two versions build and run in full**, 5.15.15 and 6.8.2. 8.462 ported
+  the library, 8.463 the suite, and the divergences were chased down to
+  twelve checks that step over with a reason named for each.
+- **The snapshots are compared and they agree**, measured 2026-10-29: the
+  three committed fixtures were recorded under Qt 6.8.2 and match under
+  Qt 5.15.15 on the same offscreen plugin. The fixture file is a third
+  party to both runs, so neither version can satisfy it by re-recording.
+- **`make test-versions` is the matrix**, in the only form this project
+  buys one: a private repository meters Actions minutes, no bill is paid
+  for them, so the matrix is a make target rather than a workflow. 8.631
+  has it, and what it asserts beyond "both are green".
+
+**R3's mitigation is two parts in place and a third that is nobody
+here's to write.** The startup assert exists, and it has been seen to
+REFUSE rather than merely written: `suite_runtime` asserts that
+`grid_font_problem()` rejects a proportional font *and* that the message
+names what was wrong with it, and `make test-platforms` carries an arm
+whose expected result is a refusal -- the `minimal` platform ships no
+font database, so the grid font resolves to nothing and the library
+declines to start. The hard failure is documented. The bundled font is
+the outstanding third, and §7.5 has it: a decision the copyright holder
+owns.
 
 ### 5.1 Platform scope, and it must be decided before Phase 2
 
@@ -12647,8 +12669,17 @@ which is design.md §16's figure.
   make the snapshot fixtures reproducible -- that was the reason this
   entry gave and §7.9 disproves it: the fixtures depend on the cell size
   and nothing else about the font.
-- `TermpaintBackend`, and the four legacy adapters.
-- Qt 5.15 support.
+- ~~`TermpaintBackend`, and the four legacy adapters.~~ **Not absent --
+  RETIRED**, 2026-10-27, and the difference is the whole point of
+  correcting the entry rather than striking it: these were a plan that
+  lapsed, not work left undone, so a reader of this list is not looking
+  at a gap to fill. `AnsiBackend` is the reference backend and a real
+  terminal is the better yardstick. 8.612 has the measurement, 8.613 the
+  removal, and the D6 row in section 3 carries the supersession.
+- ~~Qt 5.15 support.~~ **Done.** The holder settled OQ-3 on 2026-10-19 and
+  the library, both tools, the example and the suite build and run against
+  5.15.15 and 6.8.2 alike -- 8.462 and 8.463, with `make test-versions`
+  running both in one command.
 - ~~The design.md §11 benchmark.~~ **Done**, and the budget holds with
   room. Measured on a 200x60 grid with a 5000-row table, Qt 6.8.2:
   **1.4 ms** to render a frame against a 16 ms local budget, 0.15 ms to
@@ -13926,13 +13957,26 @@ QtGui**, which is exactly the reorganisation that changes what a header
 brings with it. The include is right on every version and is not a
 position on which versions are supported.
 
-**What this does not measure is the thing §0e wanted a second version
-for.** A version axis finds assumptions at *run* time -- the beerssh
-session's probe that passed on 6.10 and failed on 6.4.2 -- and reaching
-that here means compiling the suite, which means the three conditionals,
-which is the decision. So the exposure §0e names is unchanged: it is now
-priced rather than closed. A second Qt **6** would answer it without any
-decision at all, and this machine has only one.
+**~~What this does not measure is the thing §0e wanted a second version
+for.~~ It measures exactly that now, and the prediction under it was
+right.** What stood here was that a version axis finds assumptions at
+*run* time -- the beerssh session's probe that passed on 6.10 and failed
+on 6.4.2 -- that reaching it meant compiling the suite, which meant the
+conditionals, which was the decision; so the exposure was priced rather
+than closed.
+
+The holder took that decision on 2026-10-19 and 8.463 ported the suite.
+**Its first run found twenty-four run-time differences**, where the
+compile-time port had cost seven constructs -- and the axis has gone on
+paying: 8.464, 8.465, 8.466, 8.467, 8.619, 8.629 and 8.630 are all its
+findings. One of them is the argument for the whole axis in one line.
+8.629's inverted coordinate mapping **carried a wrong point on Qt 6 and
+crashed on Qt 5**, so it was a defect on the version this project builds
+for, sitting in a path nothing had exercised, and what made anybody look
+at it was the other version's crash.
+
+`make test-versions` runs every installed version in one command, which
+is what this section's two-variable recipe above had been for.
 
 ### 8.2 The L6 API shape
 
@@ -52406,3 +52450,134 @@ second, and a twenty-line probe of Qt alone found the real one. **Naming
 the candidates honestly is what made the third visible** -- an entry that
 had asserted either would have sent the next reader to fix code that was
 already right.
+
+### 8.631 The version axis had no target, and R2b had been answered without anybody saying so (2026-10-29)
+
+Found by asking §5 whether its live-risk paragraph was still true. It made
+three claims about R2b and one about R3, and three of the four had stopped
+being true -- the same class as yesterday's rotted README count:
+**a claim corrected where the work happened and left standing where a
+reader looks for it.** §5 is the worst place for it, being the one section
+whose job is to say what is unmitigated.
+
+**WHAT IT SAID.** *"R2b is live right now, and nothing has been done about
+it ... no snapshot in the tree has ever been compared across two Qt
+versions, and there is no CI matrix to do it."* And of R3, *"likewise not
+in place"*.
+
+**THE SNAPSHOT CLAIM IS FALSE, measured 2026-10-29.** The three committed
+fixtures were recorded under Qt 6.8.2. Under Qt 5.15.15, on the same
+offscreen plugin, they match:
+
+    PASS: snapshot matches
+    PASS: driven snapshot matches
+    PASS: gallery snapshot
+
+571 checks in the two suites that hold them, no failures and nothing
+stepped over -- and `suite_render.cpp` carries **no `QT_VERSION` guard at
+all**, so no part of that comparison is version-conditional. **The fixture
+file is a third party to both runs**, which is what makes this a comparison
+rather than one witness asked twice: neither version can satisfy it by
+re-recording, and the independent fixture reading beside `check_snapshot`
+cannot be satisfied by recording at all.
+
+**R3's CLAIM IS A THIRD FALSE.** Its mitigation column names three things
+-- a startup assert, a bundled font, a documented hard failure. The assert
+is in place and has been seen to REFUSE rather than merely written:
+`suite_runtime` asserts both that `grid_font_problem()` rejects a
+proportional font and that its message says what was wrong, and
+`test-platforms` carries an arm whose expected result is a refusal, the
+`minimal` platform shipping no font database at all. The documented failure
+is in place. The font is the outstanding third and is the holder's.
+
+**AND R2b's OTHER MITIGATION HAS NOTHING TO DETECT ON THIS PACKAGING.** The
+row asks to *"vendor-check the plugin's presence at startup"*, against the
+risk that offscreen is *"absent from some packaged builds"*. Asked of the
+package manager rather than of the filesystem:
+
+    libqt6gui6      /usr/lib/x86_64-linux-gnu/libQt6Gui.so.6
+    libqt6gui6      .../qt6/plugins/platforms/libqoffscreen.so
+    libqt5gui5t64   the same pair, for Qt 5
+
+**The plugin ships in the same binary package as QtGui itself** on both
+versions, so a program that links QtGui cannot find it absent. That is a
+fact about this distribution and not about every one -- nothing here
+measures Fedora, or a Qt configured without the plugin -- which is the
+limit worth stating rather than implying. What it does settle is why no
+such check was ever written: on the packaging this project is developed
+against there is no state for it to find.
+
+**WHAT WAS ACTUALLY MISSING WAS THE TARGET.** The second version ran by
+hand, as `make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake test` -- two
+variables remembered from one line of §8.1 -- while every other
+configuration here has a target of its own: a second QPA, the sanitizers,
+valgrind, the installed library, a real pty, a real tray, the GUI twin's
+stacking. **A configuration nobody can run in one command is one that
+stops being run**, and this is the axis with the highest yield in the
+tree's history: the compile-time port cost seven constructs, and the
+suite's first run on the second version found twenty-four run-time
+differences (8.463).
+
+`make test-versions` is `tool/version-matrix`. It asks each candidate qmake
+what version it is rather than trusting its name -- `qmake` is Qt 5 here
+and Qt 6 elsewhere -- keeps the first for each major, builds into its own
+`build-qt<major>`, and runs the suite under offscreen:
+
+    --- Qt 6.8.2, /usr/bin/qmake6, into build-qt6
+        Qt 6.8.2:   2473 pass,  0 step over, 0 fail -- 2473 checks
+    --- Qt 5.15.15, /usr/bin/qmake, into build-qt5
+        Qt 5.15.15: 2461 pass, 12 step over, 0 fail -- 2473 checks
+
+**THREE THINGS IT ASSERTS, and the third is the one worth having.**
+
+- Every version builds, produces a binary, runs, and reports no `FAIL:`.
+  The exit code is named the way `make test` names it, because 2, 124 and
+  128+n are the three ways this fails silently; and a build that reports
+  success while leaving no binary is a failure here, because a run over no
+  binary exits 0 and reads exactly like a pass.
+- **No version steps over a snapshot check.** The totals below cannot see
+  that: a check that skips on one version and passes on the other leaves
+  pass+skip equal. The fixtures are the only artifact one version records
+  and another reads, so they are asserted by name.
+- **pass+skip must be the SAME NUMBER on every version.** That is what the
+  suite's skip arithmetic is for -- a guarded block prints one `SKIP` per
+  check it would have made (8.465) -- and nothing had ever checked it: each
+  version's own run is green whether the arithmetic holds or not, and
+  `count-check` asks only the primary one. A disagreement is a block that
+  steps over without accounting for itself, which is a check silently
+  gone. It holds today at 2473 on both.
+
+**FOUR OF THE FOUR FAILURE PATHS WERE SEEN TO FIRE**, two of them on
+purpose and two by accident, which is worth separating:
+
+- **No qmake at all** -- `QTTY_QMAKES=definitely-not-a-qmake` exits 1
+  saying so, rather than reporting a clean sweep over zero versions.
+- **A version that does not build** fired by itself, and the way it fired
+  is the finding under it below.
+- **A snapshot check stepping over** and **the versions disagreeing** were
+  positive controls: the first pattern inverted to `^PASS:.*snapshot`, the
+  second with `total=$((pass))` so the skips stop being counted. Both
+  reported and both exited 1, and the file was restored from a pristine
+  copy with the revert proved by checksum rather than by eye.
+
+**THE ACCIDENT IS WORTH THE PARAGRAPH.** The first run reported *"Qt 6.8.2
+did not build"* on `undefined reference to suite_backend()`, which reads
+exactly like a port that does not compile. The cause was two instances of
+this script running at once against the same `build-qt6-test`: one linked
+while the other was still compiling. **A concurrent make in one build
+directory produces a link error that looks like a source fault**, and the
+first thing a reader will suspect is the Qt version rather than the tree.
+Nothing locks -- the honest fix is not to run it twice -- but the script
+says so where somebody will meet it.
+
+**OUT OF THE GATE, like every other configuration.** It builds the library
+and the suite once per version, which is minutes, and `make check` is what
+runs before every commit. Putting a second full build into the gate is a
+cost decision and not one to take in passing.
+
+**A SCRIPT RATHER THAN A RECIPE, deliberately.** A recipe line containing
+`$(MAKE)` is executed even under `make -n` and the sub-make inherits the
+flag, so a dry run of a recursive target is not a dry run -- a sibling
+project had the log it meant to read destroyed by the dry run that read it.
+The recipe here names no `$(MAKE)`, so `make -n test-versions` prints one
+line and runs nothing. Verified by running it.

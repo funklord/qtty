@@ -18,6 +18,7 @@
 #   make              -- build the library, the tools and the example
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
+#   make test-versions -- the suite under every Qt version installed
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
 #   make test-consume  -- build a program against the installed library
@@ -521,6 +522,15 @@ test-consume:
 # either is absent, like `test-consume` and `test-tray` do.
 test-overlay-z:
 	@./tool/overlay-z-check
+
+# The suite under every Qt version installed, which is risk R2b's "CI
+# matrix" in the only form this workspace buys one -- see tool/version-matrix
+# for why it is a script rather than a recipe, and why the second version had
+# no target until now. Out of the gate, like every other configuration here:
+# it builds the library and the suite once per version, which is minutes, and
+# `make check` is what runs before every commit.
+test-versions:
+	@./tool/version-matrix
 
 # WHAT A FAILING ARM LEAVES BEHIND is the reason `keep` exists, and it was
 # paid for. Every arm below ran with `2>/dev/null` and its stdout in one
@@ -1918,5 +1928,5 @@ help:
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
-        test-overlay-z \
+        test-overlay-z test-versions \
         tools-check sabotage-check FORCE

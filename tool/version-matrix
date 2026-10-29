@@ -1,0 +1,202 @@
+#!/bin/sh
+# The suite under every Qt version this machine has, and what the two
+# versions must agree about.
+#
+# WHY A TARGET AND NOT A WORKFLOW. R2b in project.md section 5 is the risk
+# that the offscreen platform plugin behaves differently across Qt versions.
+# Its stated mitigation is a CI matrix, and no Actions bill is paid for a
+# private repository -- a public one meters nothing and a private one meters
+# minutes, so the matrix runs locally or not at all.
+#
+# WHY A TARGET AT ALL. Until this existed the second version ran by hand, as
+#
+#     make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake test
+#
+# two variables remembered from one line of project.md section 8.1, with
+# every other configuration in this tree -- a second QPA, the sanitizers,
+# valgrind, the installed library, the GUI twin's stacking -- having a target
+# of its own. A configuration nobody can run in one command is one that
+# stops being run, and this is the axis with the highest yield in the tree's
+# history: the Qt 5 port found twenty-four run-time differences in its first
+# run (project.md 8.463), where the compile-time port had cost seven
+# constructs.
+#
+# ONE AT A TIME. Two instances of this script target the same
+# `build-qt<major>` directories, and two makes in one build directory race:
+# measured while this file was being written, a second instance linked
+# `qtty-tests` while the first was still compiling, and the link failed on
+# `undefined reference to suite_backend()`. That reads exactly like a port
+# that does not compile. Nothing here locks, because the honest fix is not
+# to run it twice -- but the failure is worth recognising, since the first
+# thing a reader will suspect is the Qt version rather than the tree.
+#
+# WHAT MAKES IT STOP. One pass per installed Qt version and no loop over
+# anything else. Every build and every run carries a timeout, the suite
+# carries its own watchdog besides, and nothing is started in the background,
+# so no process outlives the script.
+#
+# A TOOL RATHER THAN A RECIPE, deliberately. A recipe line containing
+# $(MAKE) is executed even under `make -n`, and the sub-make inherits the
+# flag, so a dry run of a recursive target is not a dry run -- two sibling
+# projects have been bitten, one of them having its log overwritten by the
+# dry run. The recipe that calls this file names no $(MAKE), so
+# `make -n test-versions` prints one line and runs nothing.
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root" || exit 1
+
+# DISCOVERY ASKS EACH CANDIDATE WHAT IT IS rather than trusting its name:
+# `qmake` is Qt 5 on this machine and Qt 6 on others, so the name is not the
+# version. The first one found for a major version wins -- a second qmake of
+# the same major is the same configuration again and would compare nothing.
+seen=
+names=
+plan=
+for name in ${QTTY_QMAKES:-qmake6 qmake5 qmake-qt5 qmake}; do
+	path=$(command -v "$name" 2>/dev/null) || continue
+	ver=$("$path" -query QT_VERSION 2>/dev/null) || continue
+	[ -n "$ver" ] || continue
+	major=${ver%%.*}
+	case " $seen " in *" $major "*) continue ;; esac
+	seen="$seen $major"
+	names="${names:+$names and }Qt $ver"
+	plan="$plan $major,$path,$ver"
+done
+
+versions=$(echo $seen | wc -w | tr -d " ")
+if [ "$versions" -eq 0 ]; then
+	echo "version-matrix: no qmake answered -query QT_VERSION, so nothing" >&2
+	echo "                was built. This is a failure and not a skip: a" >&2
+	echo "                run over zero versions exits like a pass." >&2
+	exit 1
+fi
+
+# A SINGLE VERSION STILL RUNS, and says what it did not do. The suite is
+# worth running either way; what is missing is the comparison, and a target
+# that went quiet about that would read exactly like one that compared.
+if [ "$versions" -eq 1 ]; then
+	echo "version-matrix: only $names is installed, so ONE version will run"
+	echo "                and nothing will be compared across versions."
+fi
+
+failed=0
+totals=
+for entry in $plan; do
+	major=${entry%%,*}
+	rest=${entry#*,}
+	path=${rest%%,*}
+	ver=${rest##*,}
+	bd="build-qt$major"
+
+	# ITS OWN BUILD DIRECTORY PER VERSION, never `build`. Reusing the
+	# default one would be faster for whichever version it already holds and
+	# would also rebuild it -- in a tree more than one session works in,
+	# clobbering the directory the gate builds from is how a concurrent
+	# `make check` ends up linking half of two configurations.
+	echo "--- Qt $ver, $path, into $bd"
+	if ! timeout "${QTTY_BUILD_TIMEOUT:-1800}" \
+	     make BUILD_DIR="$bd" QMAKE="$path" tests-build; then
+		echo "version-matrix: Qt $ver did not build, so it was not run" >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	# A RUN OVER NO BINARY EXITS 0 AND READS EXACTLY LIKE A PASS, which is
+	# why `make test` fails on an empty binary list and why this says so
+	# here: a build that reported success and produced nothing would
+	# otherwise be counted as a version that agreed.
+	if [ ! -x "$bd-test/qtty-tests" ]; then
+		echo "version-matrix: Qt $ver built but left no suite binary at" >&2
+		echo "                $bd-test/qtty-tests, so it was not run" >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	# STDERR TO ITS OWN FILE, not merged. The offscreen platform writes
+	# notices of its own while the suite prints, and a merged stream splits
+	# PASS lines in half -- so `^PASS:` undercounts, which is the instrument
+	# fault 8.465 spent a round on.
+	out="$bd-test/version-matrix.out"
+	err="$bd-test/version-matrix.err"
+	rc=0
+	QTTY_QPA_PLATFORM=offscreen QTEST_DISABLE_STACK_DUMP=1 \
+	QTEST_DISABLE_CORE_DUMP=1 timeout "${QTTY_TEST_TIMEOUT:-600}" \
+		"$bd-test/qtty-tests" > "$out" 2> "$err" || rc=$?
+
+	pass=$(grep -c '^PASS:' "$out") || pass=0
+	skip=$(grep -c '^SKIP:' "$out") || skip=0
+	fail=$(grep -c '^FAIL:' "$out") || fail=0
+	total=$((pass + skip))
+	echo "    Qt $ver: $pass pass, $skip step over, $fail fail -- $total checks"
+
+	if [ "$rc" -ne 0 ] || [ "$fail" -ne 0 ]; then
+		echo "version-matrix: Qt $ver FAILED, exit $rc" >&2
+		# The exit code is the one datum that separates the ways this can
+		# fail silently, and it is named here for the same reason `make
+		# test` names it.
+		case "$rc" in
+		2)   echo "                2 is the suite's own watchdog, which" >&2
+		     echo "                prints to stderr before it goes" >&2 ;;
+		124) echo "                124 is the timeout here, which kills" >&2
+		     echo "                silently and is not the suite" >&2 ;;
+		13[2-9]|14[0-3])
+		     echo "                128+n is a signal: $((rc - 128)). A" >&2
+		     echo "                crash stops the output mid-suite" >&2 ;;
+		esac
+		echo "                stdout $out" >&2
+		echo "                stderr $err" >&2
+		grep '^FAIL:' "$out" | sed 's/^/                /' >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	# A SNAPSHOT STEPPED OVER IS A SNAPSHOT NOT COMPARED, and the totals
+	# below cannot see it: a check that skips on one version and passes on
+	# the other leaves pass+skip equal. The three committed fixtures are the
+	# only thing in the tree that one version RECORDED and another READS, so
+	# they are the cross-version comparison and are asserted by name.
+	if grep -q '^SKIP:.*snapshot' "$out"; then
+		echo "version-matrix: Qt $ver stepped over a snapshot check, so the" >&2
+		echo "                fixtures were not compared on it:" >&2
+		grep '^SKIP:.*snapshot' "$out" | sed 's/^/                /' >&2
+		failed=$((failed + 1))
+		continue
+	fi
+
+	totals="$totals $ver=$total"
+done
+
+[ "$failed" -eq 0 ] || {
+	echo "version-matrix: $failed version(s) failed" >&2
+	exit 1
+}
+
+# THE CHECK COUNT MUST AGREE ACROSS VERSIONS, which is what the suite's skip
+# arithmetic is for: a guarded block prints one SKIP per check it would have
+# made, so pass+skip is the same number on every version. A disagreement is
+# a block that steps over without accounting for itself, and nothing else
+# would notice -- each version's own run is green either way.
+mismatch=
+first=
+for t in $totals; do
+	n=${t#*=}
+	[ -n "$first" ] || first=$n
+	[ "$n" = "$first" ] || mismatch=yes
+done
+if [ -n "$mismatch" ]; then
+	echo "version-matrix: the versions ran different numbers of checks --" >&2
+	echo "               $totals" >&2
+	echo "                A guarded block prints one SKIP per check it" >&2
+	echo "                steps over, so these must agree. One does not." >&2
+	exit 1
+fi
+
+if [ "$versions" -eq 1 ]; then
+	echo "version-matrix: $names passed, and nothing was compared -- one"
+	echo "                version is one configuration."
+	exit 0
+fi
+echo "version-matrix: $versions versions, $first checks each, no failures --"
+echo "               $totals"
+echo "                Every committed snapshot fixture was compared on each,"
+echo "                which is what R2b asks for."
