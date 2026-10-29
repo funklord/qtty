@@ -51504,12 +51504,13 @@ Three options, cheapest first, with what each costs:
   destroyed widget. Any in-process variant meets the same wall, this one
   included -- a second pass still has to run the loop. The latch finding
   stands on its own and makes the child-process option simpler.
-- **Fork a child process for the quit-issuing checks.** No reordering
-  either, but process plumbing in the suite and a second place where a
-  check's output has to be collected. **Now the cheapest of the two that
-  remain, and simpler than it looked**: 8.625 measured that a process which
-  has not quit needs no clearing at all, so the child needs only to avoid
-  the quit rather than undo it.
+- ~~**Fork a child process for the quit-issuing checks.**~~ **GONE FROM THE
+  LIST 2026-10-29, see 8.627.** A nested loop still runs at `suite_router`'s
+  ENTRY on Qt 5, so the latch is set inside that suite and nothing before it
+  quits: a suite registered BEFORE router already has a process that has not
+  quit, with no process plumbing at all. What is left is how to get the
+  blocks there -- 8.627 prices the two ways and names the fixtures the
+  guards sit inside.
 - **Move every check that quits to the end of the run.** A reordering of a
   17000-line file whose current order other checks depend on, and the most
   expensive of the three.
@@ -52127,3 +52128,68 @@ combo box, the tree and the button box are rendered but not driven, and no
 check drives a mouse. The criterion is met in the sense that matters for
 Phase 3 -- the method exists and is demonstrated end to end -- and the
 remaining controls are more of the same rather than another kind of thing.
+
+### 8.627 The latch is a position, not a version -- and the cut is not clean (2026-10-29)
+
+Third re-pricing of the same item, and the cheapest option so far is now
+known along with exactly what stands in its way. 8.618 offered three ways to
+recover the 23 checks the Qt 5 arm steps over; 8.625 refuted the in-process
+one and left the child process as cheapest. **Neither is needed, and the
+reason is one measurement.**
+
+**A NESTED LOOP STILL RUNS AT suite_router's ENTRY ON QT 5, at 10 ms**, with
+a probe at the top of that function. So the latch is not set when router
+starts. Nothing before it quits: no `quit()` call appears in any of the five
+suites that run first, and none in router before the first guarded block --
+only two comments mentioning one. **The quit comes from the library**,
+`InputRouter` calling `qApp->quit()` on a quit key or a lost terminal, which
+router exercises on purpose.
+
+**So the blocks never needed a child process.** They need a process that has
+not quit, and a suite registered BEFORE router is one. `qt_compat.h`'s
+`QTTY_NESTED_LOOPS_USABLE` reads as a statement about Qt 5 and is really a
+statement about where in one run the fixture sits: **what looks like a
+version question is a position question.**
+
+**THE EXTRACTION WAS ATTEMPTED AND REVERTED, which is what makes the rest of
+this entry worth writing.** The six guarded regions are 996 lines and move
+byte-for-byte -- proved, by checking each body survives the move verbatim --
+into a `suite_loops` registered before router, with the macro retired. It
+compiled down to **four missing names**, and that is where it stops being
+mechanical:
+
+- `cw` and `ch` are function-wide locals and trivial to restate.
+- `tmp` is a `QTemporaryDir` seeded with `alpha.txt` and `beta.txt`, and the
+  guard opens INSIDE the `else` of its validity check. The dir is also read
+  by checks that stay.
+- `dr` is an `InputRouter` over a `host` with a focused `QLineEdit`, and the
+  two checks AFTER the guarded block use the same `dr`.
+
+**So the guards were placed inside fixtures rather than around them.**
+Extracting the guarded part alone means hand-writing that setup again --
+and a fixture reconstructed slightly wrong gives checks that pass while
+testing something else, which is the failure this tree keeps paying for.
+Moving the whole enclosing scope keeps it verbatim but drags unrelated
+checks into another suite, including one that spans the block on both sides.
+
+**WHAT IS LEFT, PRICED.** Two options, and the child process is gone from
+the list:
+
+- **Extract with the enclosing scopes moved wholesale.** Verbatim, no
+  reconstruction, but it moves checks that are not about nested loops and
+  one scope straddles the block.
+- **Move the quit-issuing checks to the end of `suite_router`.** The blocks
+  and their fixtures stay exactly where they are, which is the attraction;
+  the cost is that the quit-key region is large and has entanglements of its
+  own, unmeasured.
+
+Both are deliberate refactors of a seventeen-thousand-line suite where the
+risk is a silently weakened fixture rather than a red check, so neither
+belongs at the end of a long run. **The holder's 2026-10-20 instruction is
+not what blocks this** -- it chose between stepping over and failing, and
+running was not on the table because the latch was thought permanent. What
+blocks it is that the work wants doing carefully.
+
+**AND THE REVERT IS COMPLETE**: `suite_router.cpp`, `main.cpp`, `test.pro`
+and `qt_compat.h` are back at their committed state and `suite_loops.cpp` is
+removed, checked with `git status`.
