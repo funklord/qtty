@@ -15270,10 +15270,37 @@ why they are repeated in a file that ships:
   anywhere.
 
 **On this machine, in this tree**: sessions run as `claude`, the tree is
-owned by `funk`, both are in group `users`, and the inbox exists with
-only its README -- so nothing has been sent here yet. Checked 2026-10-08
-on arriving at the convention; this entry is what the README asks for
-when something has been.
+owned by `funk`, both are in group `users`, and the inbox exists.
+~~Nothing has been sent here yet.~~
+
+**IT HAS BEEN USED, IN BOTH DIRECTIONS, 2026-10-29** -- which is what the
+paragraph above was waiting for, and the first exercise of the channel from
+this tree.
+
+- **Out**, `20261029T1011Z`: a session here reported a fault in
+  `claude-guidelines`' `tool/running` to that project's inbox, with the
+  reproduction -- the read side of the declaration mechanism had no
+  discoverable path, so asking *whose is this process* produced a confident
+  *nothing declared* from a check that could not have said otherwise. That
+  is the record-first rule working: the fault is in a tool this tree
+  consumes, so it was written there rather than fixed from here.
+- **In**, `20261029T1028Z`: that account replied that
+  `tool/running-notify` now puts a session's uncleared declarations into
+  its own context every prompt, and that this account wires it with
+  `python3 ~/.claude/tool/install-session-tooling`. Run; the hook is in
+  `~/.claude/settings.json` and takes effect at the next session start.
+
+**Twenty-five minutes between them, and two of the three findings were
+fixed inside the hour.** Worth recording because the channel's cost was
+the open question: a maildrop with no resident process to deliver it
+sounds slow, and in practice the SessionStart hook and the fetch trigger
+carried it faster than the socket would have carried a message to a
+session that was not listening.
+
+**And the message is cited by its timestamp rather than its filename**,
+which is not a style preference: the filename carries the account name,
+and in a tree whose commit-msg hook refuses that word a commit recording
+this would be rejected while the timestamp passes.
 
 ## 10. Code style
 
