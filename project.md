@@ -2791,6 +2791,51 @@ In the order I would take them:
    fail without the restack. 8.622 has the measurement and the calibration
    the reading needed; this item is closed.
 
+### 0f. Fold, 2026-10-30: two guideline changes this tree does not yet meet
+
+Written at a halt rather than after the work, so it is short. Weekly usage
+reached 98 per cent with the window resetting 2026-11-01T16:00Z, which is
+CLAUDE.md's stop figure and far outside its three-hour exemption.
+
+**A bare `make` must build the library and nothing else.**
+`claude-guidelines` `79e8d6f` names this project in the rule: the default
+builds the main program binaries and the libraries they link, **"not the
+helpers around them ... an inspection tool, an example application ...
+qtty's tools and example chat"**. qtty is purely a library, so `all` should
+build `src` alone, and `qtty-inspect`, `qtty-replay`, `qtty-negotiate`,
+`qtty-tray` and the chat example each need a target of their own. Today
+`all: $(LIB)` runs `$(MAKE) -C $(BUILD_DIR)`, which is qmake's subdirs
+build and makes all six. The handle is already there -- qmake generates
+`sub-src`, `sub-tool-inspect`, `sub-tool-replay`, `sub-tool-negotiate`,
+`sub-tool-tray` and `sub-example-chat`. Whatever moves out of the default
+must stay reachable for `test-tools`, `test-install` and `install`, which
+run and install the tools and the example.
+
+**AND AN EARLIER VERDICT OF MINE WAS WRONG.** Asked the same morning
+against `80de73f`, before the refinement landed, this tree was reported as
+already complying -- on the reading that the tools and the example are "the
+software". `79e8d6f` says they are the helpers, and says so naming qtty.
+Recorded because the wrong answer is the one a later reader would otherwise
+find first: §9.6 still documents `make` as "build the library, the tools
+and the example", which is accurate today and is what has to change.
+
+**The README has to be rewritten.** `e1b41e1`, with `a57a385`, `7b5b5ee`
+and `c7f5d2a`: it opens with paragraphs stating the software's value to its
+reader -- the problem first, then the neighbours named and compared item by
+item -- describes the software it is MEANT to be rather than today's
+snapshot, and carries no progress section. The holder asked for existing
+READMEs to be rewritten now, not only new ones. qtty's opens with build
+instructions. The neighbours to name are the ones §5.2 and design.md §13.2
+already know: Tui Widgets, termpaint, notcurses, and what a team does
+instead -- hand-writing a second TUI view against the same model, which is
+the four products this project exists to consolidate.
+
+**Two messages are unread in `.git/cc-inbox/`**, arrived during this
+session and not opened: reading is cheap, acting on one is not, and the
+`SessionStart` hook puts them in front of whoever arrives next.
+
+Nothing else is open that §0b and §0e do not already carry.
+
 ## 0. What this is
 
 **Render an unmodified Qt Widgets application on a character-cell
