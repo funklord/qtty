@@ -54139,3 +54139,66 @@ was checked against `src/core/theme.cpp` as well, and each is mentioned by
 both its capture and its resolver. No third instance. The class is closed
 until something new is added, and the thing to re-run when a field is
 added is the second sweep rather than the first.
+
+### 8.648 The render protocol a consumer inferred does not exist (2026-11-02)
+
+**`fuzznet/gui/test/qtty_render_test.cpp` is the most valuable thing any
+consumer has built against qtty**, and its header says why it exists: the
+other GUI suites "assert what a widget HOLDS -- the strings a user would
+read -- and they all passed while the trust view showed a user 63 hex digits
+of a 64-digit fingerprint at 80 columns. The text was whole and the screen
+was not, and no assertion over the text can see that."
+
+It also records two things qtty should answer for.
+
+**IT HAD TO READ OUR TEST SUITE TO LEARN HOW TO CALL US.** Its note is
+explicit -- *"THE PROTOCOL IS THEIRS AND GETTING IT WRONG LOOKS LIKE A
+DEFECT IN US"* -- and lists four steps taken out of `test/suite_render.cpp`:
+the widget must carry `WA_DontShowOnScreen`, be resized in cell units
+through `GridMetrics::cells`, be shown, and have its events pumped. It then
+explains its own first wrong answer by having got them wrong: *"the first
+version of this probe did none of it and reported a truncated label that was
+entirely the probe's doing."* Meanwhile `render_once()`'s public comment was
+**two sentences** and named none of it.
+
+**MEASURED, THERE IS NO SUCH PROTOCOL.** Over a composite of three
+`QFormLayout` rows and a `QListWidget`, omitting each of the four steps in
+turn:
+
+    all four steps                  56 inked cells
+    without WA_DontShowOnScreen     56
+    resized in pixels, not cells    56
+    never shown                     56
+    events never pumped             56
+
+Five arms, one answer. **None of the four is required**, and a first probe
+that did none of them was not wrong for that reason. The suite does them
+because a test wants a window that cannot reach a screen and a geometry it
+chose -- not because the function needs them. A simple label could not have
+shown this either way, which is why the fixture was made a composite: at a
+single `QLabel` every arm drew 13 cells and the probe discriminated nothing.
+
+**THE REAL TRAP IS THE BUFFER, and it fits the symptom exactly.** A
+`CellBuffer` IS the screen, and a widget wider than it is clipped by it,
+silently. Measured on a 42-character label in a window 44 cells wide:
+
+    buffer 44 cells -> 42 of 42 characters
+    buffer 40 cells -> 40 of 42
+    buffer 30 cells -> 30 of 42
+    buffer 20 cells -> 20 of 42
+
+A truncated label, from a buffer narrower than the widget, with nothing
+saying so. That is a far better explanation of a probe reporting a truncated
+label than four omitted setup calls, and it is now the first thing
+`render_once`'s comment says, with `terminal_cells()` named as where the
+width should come from.
+
+**The second thing they record is not fixable here and is worth surfacing.**
+Their qtty target is deliberately outside their own `make check`, because
+"qtty is pre-alpha with the API movement its README promises -- so a target
+wired into the default gate would break this tree whenever that one moved,
+and a gate that breaks for somebody else's reasons is a gate people switch
+off." So the single most valuable consumer test of this library does not run
+by default, and the reason is this library's API stability. Nothing in this
+entry changes that; it is recorded because it is the clearest statement
+anybody has made of what adoption actually waits on.

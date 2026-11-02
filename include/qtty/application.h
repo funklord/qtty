@@ -478,6 +478,37 @@ bool is_tui_active();
 
 // Render one frame of `win` into `buf` (and collect section 5.7 placements when
 // `placements` is non-null). Used by tests, tools, and custom frame loops.
+//
+// THE BUFFER IS THE SCREEN, AND THAT IS THE ONE WAY TO GET A WRONG ANSWER
+// HERE. A widget wider or taller than `buf` is clipped by it, silently, and
+// a clipped label looks exactly like a rendering defect in this library.
+// Measured, a 42-character label in a window 44 cells wide:
+//
+//     buffer 44 cells -> 42 of 42 characters
+//     buffer 40 cells -> 40 of 42
+//     buffer 20 cells -> 20 of 42
+//
+// So size the buffer from the window, or the terminal -- `terminal_cells()`
+// -- and not by hand.
+//
+// AND THERE IS NO SETUP PROTOCOL, WHICH IS WORTH SAYING BECAUSE A CONSUMER
+// INFERRED ONE. fuzznet's `gui/test/qtty_render_test.cpp` read four steps out
+// of this project's own `test/suite_render.cpp` -- the widget must carry
+// `WA_DontShowOnScreen`, be resized in cell units through
+// `GridMetrics::cells`, be shown, and have its events pumped -- and then
+// explained a wrong result by having got them wrong: "the first version of
+// this probe did none of it and reported a truncated label that was entirely
+// the probe's doing". Its note calls the protocol ours and says getting it
+// wrong "looks like a defect in US".
+//
+// Measured 2026-11-02 over a composite of three `QFormLayout` rows and a
+// `QListWidget`, omitting each step in turn: **56 inked cells in all five
+// arms**. None of the four is required. The suite does them because a test
+// wants a window that cannot reach a screen and a geometry it chose, not
+// because this function needs them.
+//
+// What DOES matter is `setup(app)` before the first widget is constructed,
+// for the reason its own comment gives.
 void render_once(QWidget &win, CellBuffer &buf,
                 QVector<CellImage> *placements = nullptr);
 
