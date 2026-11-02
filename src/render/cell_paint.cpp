@@ -691,6 +691,7 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 	if (s.state() & DirtyFont)      font_ = s.font();
 	if (s.state() & DirtyTransform) xf_ = s.transform();
 	if (s.state() & DirtyOpacity)   opacity_ = s.opacity();
+	if (s.state() & DirtyCompositionMode) comp_ = s.compositionMode();
 }
 
 // The clip in cells, or an invalid rect when there is none.
@@ -1685,6 +1686,24 @@ QColor CellPaintEngine::pen_ink() const {
 // The palette-role rule for a fill, in one place. See the declaration in
 // qtty/paint.h for why it is not written out twice.
 CellPaintEngine::FillCell CellPaintEngine::brush_cell() const {
+	// CLEAR MEANS ERASE, AND IT IS THE ONE COMPOSITION MODE THIS ENGINE CAN
+	// HONOUR EXACTLY. A cell written as Cell{} is the terminal's own ground,
+	// which is what punching a hole asks for.
+	//
+	// Measured 2026-11-02: the mode was not tracked at all, so an
+	// application filling a region under CompositionMode_Clear got the
+	// region FILLED -- the opposite of what it asked, and the one error
+	// worse than ignoring a request. Every other mode describes a blend a
+	// cell has no channels for and is still ignored, which is the honest
+	// answer rather than a guess.
+	//
+	// Through the same FillCell the surface-role rule uses, so the erase
+	// behaves identically however it was reached -- including the guard that
+	// refuses to erase a shape one cell wide or tall, which is 8.639's and
+	// stays: an explicit Clear over a caret-sized region is indistinguishable
+	// from the accident that guard exists for.
+	if (comp_ == QPainter::CompositionMode_Clear)
+		return FillCell{Cell{}, true};
 	const QRgb col = brush_colour(brush_).rgba();
 	// role_of(), not a copy of its list. This carried the same six roles in
 	// the same order and asked `pal.color(role)` -- the palette's CURRENT

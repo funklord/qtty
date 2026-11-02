@@ -3789,6 +3789,60 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// CLEAR MEANS ERASE, AND IT USED TO MEAN FILL.
+			//
+			// CompositionMode_Clear is the one composition mode a cell grid
+			// can honour exactly: a cell written as Cell{} is the terminal's
+			// own ground, which is what punching a hole asks for. The mode
+			// was not tracked at all, so an application filling a region
+			// under Clear got the region FILLED -- the opposite of what it
+			// asked, which is worse than ignoring the request.
+			//
+			// The overlay's colour has NO PALETTE ROLE on purpose. The first
+			// probe used white, which is Fusion's Base, so the surface-role
+			// rule erased it and every mode looked identical -- true, and
+			// not about composition at all. That trap has now confounded
+			// three measurements in this file's history.
+			//
+			// Every other mode is asserted UNCHANGED in the same breath,
+			// because honouring one mode and quietly guessing at the rest
+			// would be the worse outcome and nothing else here would see it.
+			const auto punched = [&](QPainter::CompositionMode m) {
+				Qtty::CellBuffer pb(10, 2);
+				{
+					Qtty::CellPaintDevice dev(pb);
+					QPainter p(&dev);
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(40, 160, 60));
+					p.drawRect(QRectF(0, 0, 10.0 * cw, 2.0 * ch));
+					p.setCompositionMode(m);
+					p.setBrush(QColor(255, 200, 60));
+					p.drawRect(QRectF(0, 0, 4.0 * cw, 2.0 * ch));
+				}
+				int ground = 0;
+				for (int x = 0; x < 10; ++x)
+					if (pb.at(x, 0).bg.kind() == Qtty::Color::Default)
+						++ground;
+				return ground;
+			};
+			const int p_over = punched(QPainter::CompositionMode_SourceOver);
+			const int p_clear = punched(QPainter::CompositionMode_Clear);
+			const int p_dest = punched(QPainter::CompositionMode_Destination);
+			const int p_xor = punched(QPainter::CompositionMode_Xor);
+			printf("info: cells left at the ground -- SourceOver %d, Clear"
+			       " %d, Destination %d, Xor %d\n", p_over, p_clear, p_dest,
+			       p_xor);
+			const char *cmsg = "CompositionMode_Clear erases the cells it"
+			    " covers and every other mode is left alone";
+			if (p_over == 0 && p_clear == 4 && p_dest == 0 && p_xor == 0)
+				printf("PASS: %s\n", cmsg);
+			else {
+				printf("FAIL: %s\n      condition: over %d, clear %d,"
+				       " dest %d, xor %d\n", cmsg, p_over, p_clear, p_dest,
+				       p_xor);
+				++r;
+			}
+
 			const int slant_q = slanted(6), slant_r = slanted_raster(6);
 			printf("info: a slanted band marks %d cells, raster %d\n",
 			       slant_q, slant_r);

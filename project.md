@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2483 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2484 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -55009,3 +55009,49 @@ behaviour, it is paid by whoever edits a guarded line, and `make check` is
 what collects it. Worth knowing before touching a line that an entry
 names -- `grep` of `tool/sabotage.toml` for the line answers it in a
 second.
+
+### 8.660 Clear meant fill (2026-11-02)
+
+**The last unchecked piece of QPainter state, and the worst answer of the
+four.** §8.657's lens swept what an application can express: colour, pen
+width, pen style, brush pattern, font attributes, opacity, transform and
+clip. Composition mode was the one left, and it was **not tracked at all** --
+`updateState()` read pen, brush, font, transform and opacity, and nothing
+else.
+
+Most composition modes describe blends a cell has no channels for, and
+ignoring those is the honest answer. **`CompositionMode_Clear` is not one of
+them.** It means erase, which this engine can express exactly -- a cell
+written as `Cell{}` is the terminal's own ground, and that is precisely what
+punching a hole asks for.
+
+Measured: an application filling a region under `Clear` got the region
+**filled**. Not ignored -- inverted. Of the four instances this lens found,
+the other three dropped something the application said; this one did the
+opposite of it.
+
+The fix routes through the FillCell the surface-role rule already uses, so
+an erase behaves identically however it was reached:
+
+    mode              cells left at the ground, of 4 covered
+    SourceOver        0        0
+    Clear             0  ->    4
+    Destination       0        0
+    Xor               0        0
+
+**Every other mode is asserted UNCHANGED in the same check**, because
+honouring one and quietly guessing at the rest would be the worse outcome
+and nothing else here would have seen it.
+
+**AND WHITE CONFOUNDED THE MEASUREMENT FOR THE THIRD TIME THIS SESSION.**
+The first probe punched with `QColor(255, 255, 255)`, which is Fusion's
+`Base` -- a surface role the default theme leaves at `Color::Default` -- so
+the overlay erased by §8.639's rule and every mode looked identical. True,
+and not about composition at all. §8.638 lost a committed paragraph to the
+same colour and §8.645 nearly lost a finding to it; the fixture uses a
+colour with no palette role and says why.
+
+**What is deliberately not honoured**: the erase guard that refuses a shape
+one cell wide or tall still applies. An explicit `Clear` over a caret-sized
+region is indistinguishable from the accident §8.639's guard exists for, and
+the guard is the older rule. 2483 checks to 2484.

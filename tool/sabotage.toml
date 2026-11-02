@@ -8892,3 +8892,11 @@ into = "\tif (false) {"
 count = 1
 check = "a hatched brush resolves to the colour the area actually is, so a denser pattern lands nearer the brush and a sparser one nearer the ground"
 
+[[sabotage]]
+name = "Clear fills the hole it was asked to punch again"
+file = "src/render/cell_paint.cpp"
+find = "\tif (comp_ == QPainter::CompositionMode_Clear)\n\t\treturn FillCell{Cell{}, true};"
+into = "\tif (false)\n\t\treturn FillCell{Cell{}, true};"
+count = 1
+check = "CompositionMode_Clear erases the cells it covers and every other mode is left alone"
+

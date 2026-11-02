@@ -3,6 +3,7 @@
 // custom ICellPainted widgets do.
 #pragma once
 #include <QWidget>
+#include <QPainter>
 #include <QPaintDevice>
 #include <QtPlugin>
 #include <QPaintEngine>
@@ -201,6 +202,13 @@ private:
 	// route. Folded into the alpha the fill blends with, rather than into the
 	// colour, so palette-role matching still sees the brush's own colour.
 	qreal opacity_ = 1.0;
+	// THE COMPOSITION MODE, AND ONLY ONE OF ITS VALUES MATTERS HERE.
+	// CompositionMode_Clear means erase, which this engine can express
+	// exactly -- a cell written as Cell{} is the terminal's own ground. The
+	// rest describe blends a cell has no channels for. Tracked because it
+	// was not: an application punching a hole got the hole FILLED, which is
+	// the opposite of what it asked. 8.660.
+	QPainter::CompositionMode comp_ = QPainter::CompositionMode_SourceOver;
 	// Where the last text item on this row ended, in CELLS. Qt positions each
 	// run by the FONT's advances, and a run of wide clusters is narrower in
 	// pixels than it is in cells -- so the run after it starts on top of its
