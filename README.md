@@ -385,6 +385,17 @@ partial alpha blends against what the cell holds, an unknown ground takes
 the paint opaque, and a gradient or texture brush is resolved rather than
 believed — are not what a pixel canvas does.
 
+**One colour rule is worth knowing before those four.** The palette role
+behind a brush is recovered by matching its RGB, so a fill in a colour that
+happens to equal a surface role's is read as that role — `Qt::white` is
+Fusion's `Base` — and the default theme, which names no colour for any
+role, treats a surface it has not coloured as the terminal's own
+background. Such a fill erases rather than paints, silently: a white
+ellipse tints no cells where the same ellipse in an unthemed green tints
+232 of 300. An application that colours its own surfaces, with
+`Qtty::set_theme(Qtty::CellTheme::from_palette(palette()))`, does not meet
+it.
+
 **Known limits, so they are not a surprise.** The library is a static
 `libqtty.a`; there is no shared build and no CMake package file. The font is
 resolved by `setup()` and must be monospace with integral metrics — see the

@@ -18,6 +18,23 @@ namespace Qtty {
 // (project.md section 11 item 3). CellPaintEngine recovers the palette role
 // behind a pen or brush and asks the theme what that role looks like on a
 // terminal; it does not read QGuiApplication::palette() for the answer.
+//
+// A CONSEQUENCE AN APPLICATION MEETS WITHOUT LOOKING FOR IT. The role is
+// recovered by matching the colour's rgb, so a literal colour that happens
+// to equal a surface role's is read as that role. Fusion's Base is
+// #ffffff, so setBrush(Qt::white) is a fill in Base -- and under this
+// default theme, which names no colour for any role, a surface the theme
+// has not coloured is the terminal's own background. The fill ERASES.
+// Measured in a 30x10 buffer: a white ellipse tinted 0 cells where the
+// same ellipse in an unthemed green tinted 232, and a white rectangle
+// tinted 0 where the green one tinted all 300.
+//
+// It is not fixable here. QPainter carries a colour and not the role that
+// produced it, so the engine cannot tell "the application said white" from
+// "this widget's Base is white". The remedy is the application's and is one
+// line: install a theme that names its surfaces, and the rule stops
+// applying to them -- measured, with from_palette() below the same white
+// ellipse tints 232. A product painting its own charts wants that anyway.
 struct CellTheme {
 	Color window_text, text, button_text;         // foregrounds
 	Color window, base, button;                 // backgrounds

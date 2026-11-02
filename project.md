@@ -53568,3 +53568,49 @@ news here either: §8.248 and §8.515 record the same mechanism for
 ToolTipText against WindowText, and the rule is stated in `brush_cell()`'s
 own comment. So this is a known class met from the fill side, reached
 because a probe chose the one colour that triggers it.
+
+### 8.639 The erase rule was stated where no application author reads (2026-11-02)
+
+§8.638's wrong reading cost a committed paragraph, and the reason it was
+available to make is worth more than the correction. **`brush_cell()`'s
+erase rule is documented thoroughly -- in `cell_paint.cpp`.** An
+application author does not open that file. Every public header and every
+document in the tree was silent on it, so an author painting a chart in
+`Qt::white` gets nothing, silently, with nowhere to look.
+
+The rule, stated for them now: the palette role behind a brush is recovered
+by matching its RGB, a literal colour that happens to equal a surface
+role's is therefore read as that role, and the default theme -- which names
+no colour for any role -- treats a surface it has not coloured as the
+terminal's own background. Such a fill erases.
+
+**It is not fixable in the engine**, which is why documenting it is the
+answer rather than a cheaper answer. `QPainter` carries a colour and not the
+role that produced it, so by the time a brush arrives there is nothing to
+tell "the application said white" from "this widget's `Base` is white".
+
+**The remedy is the application's and is one line, which is the half that
+makes this worth writing down rather than merely warning about.** Measured
+in the same 30x10 buffer:
+
+    theme                     white fill    green fill
+    terminal_default()                 0           232
+    from_palette(palette())          232           232
+
+A theme that names its surfaces leaves no role at `Color::Default`, so the
+erase branch is not reached and the fill paints. A product drawing its own
+charts installs one anyway.
+
+The note is in `qtty/theme.h`, beside the sentence that already said the
+engine recovers the role and stopped one step short of what that means, and
+one paragraph of it is in the README's custom-painting section -- the place
+somebody writing a `paintEvent` is actually standing.
+
+**The lens, which was run and is nearly exhausted**: what other rule about
+what an application's INPUT means lives only in `src/`? Swept for comments
+describing a behaviour an application meets silently, two candidates came
+back and neither is one -- `cell_paint.cpp`'s viewport bound, which the
+entry itself calls the library's fault rather than a documentation gap, and
+`ansi_backend.cpp`'s one-shot quit on a gone terminal, which is internal.
+So the fill rule looks like an outlier rather than a class, and the sweep
+is recorded so nobody runs it twice.
