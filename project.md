@@ -1161,6 +1161,7 @@ Owned by the copyright holder:
 | **Platform scope: is the terminal build Linux-only?** design.md's R2 rates this **H/H -- the highest in its risk table -- with a trigger to act of "Now"**, and 5.1 says it must be decided BEFORE Phase 2. The library is the Phase-2 build-out, so the trigger fired at the start of the work now finished. Qt documents the offscreen plugin as *"only fully supported on X11"*, and that plugin is this design's foundation. Two answers are written out: declare Linux the supported target for the TERMINAL build, which costs nothing if the TUI is a server feature and is the likely case; or accept that a Windows or macOS terminal build needs the fallback or a per-platform spike. **It bounds where the TUI runs and never where the GUI runs.** Nothing records an answer, and 0b did not carry the question at all until now | 5.1, design.md 13.3 |
 | **Should a Channel B stroke carry its pen colour?** Today it does not: a rule drawn through the paint engine lands in a cell with the default colour. The obvious fix was built and measured on a 40x20 fixture -- **294 rule cells all default today, against 174 default and 120 true-colour with the pen carried** -- and the measurement is why it was not taken. **1586 of 1597 pens reaching `line()` resolve to a hard 24-bit colour and 1569 of those to one grey**, because Qt draws sunken borders with `pal.dark()` and `pal.light()`: carrying the pen would paint that grey across the tree, which is the #bebebe incident by a new route. The suite is blind to it -- with the pen carried every check passes and both fixtures re-record identically. The real fix wants an "is this colour anywhere in the palette" rule, which is a section 6 decision and the holder's | 8.x, near "left for the holder" |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
+| **Should a dashed pen render as dashed at all?** Measured 2026-11-02: every `Qt::PenStyle` -- Dash, Dot, DashDot, DashDotDot -- renders cell for cell identically to Solid, so a chart telling series apart by dashing has that removed, which matters most where colour is scarce. **It is a decision rather than a defect, and the direction of the ink is why**: weight and colour ADD to cells drawn anyway, while dashing REMOVES ink, and a twenty-cell line rendered as ten reads as damage rather than style against N2's legible reinterpretation. Both remedies are known -- Unicode's dashed box family, unused here but with no diagonals, so dashing would vanish when a line slopes; or skipping cells, which works at every angle and is about twenty-five lines, threading the dash phase through `stroke_polyline` so it carries across segments. 8.658 | 8.658 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -54894,3 +54895,48 @@ keeps what the application said where the grid can express it, and a cell
 can carry weight even though it cannot carry thickness. What it does not do
 is change which cells are marked -- the line is still one cell thick at
 every width, and the measurements above are unchanged by it.
+
+### 8.658 Every pen style renders as solid, and that may be right (2026-11-02)
+
+**Third instance of §8.657's lens -- something the application expressed
+that the terminal never heard.** Colour was the first (§8.645, a white fill
+read back as a surface role and erased), pen weight the second. Pen STYLE is
+the third, and it is the one most likely to matter to a chart: dashing is
+how a plot tells series apart when colour is scarce, which on a sixteen
+colour terminal it is.
+
+**Measured, one horizontal line at each style:**
+
+    SolidLine        ────────────────────
+    DashLine         ────────────────────   identical
+    DotLine          ────────────────────   identical
+    DashDotLine      ────────────────────   identical
+    DashDotDotLine   ────────────────────   identical
+
+Every one of them is the solid line, cell for cell.
+
+**UNLIKE THE OTHER TWO, THIS ONE IS A DECISION RATHER THAN A DEFECT, and
+the difference is which way the ink goes.** Weight and colour ADD
+information to cells that are drawn anyway: a bold glyph and a coloured one
+cost nothing in legibility. Dashing REMOVES ink -- a twenty-cell line
+rendered as ten reads as a line with pieces missing, which on a character
+grid is what damage looks like. design.md's N2 asks for a legible
+reinterpretation rather than a screenshot, and a dashed line may be the case
+where faithfulness and legibility genuinely point apart.
+
+**Both remedies are known and neither is obviously right.** Unicode's dashed
+box-drawing family -- `U+2504` and its relatives -- is unused in this tree,
+as the heavy family was, but it has **no diagonals**: a dashed line would
+lose its dashing when it sloped, which is the angle-dependence §8.657 ruled
+out for weight. Skipping cells instead works at every angle and is faithful,
+and is about twenty-five lines: accumulate length along each visited cell
+and thread the dash phase through `stroke_polyline` so it carries across a
+polyline's segments rather than restarting each one, which for a chart's
+many short segments would otherwise leave every segment "on".
+
+**So it is recorded and not taken.** The question is whether a terminal
+should show a dashed line as dashed at all, and that is a rendering
+convention this tree decides rather than a fault to fix -- the more so since
+§8.657 took one such decision in the same hour, and taking a second one the
+same way on weaker ground is how a convention gets set by accumulation. It
+is in §0b.
