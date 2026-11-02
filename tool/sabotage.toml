@@ -5913,8 +5913,8 @@ check = "a thin fill is drawn at every slope, where whether it appeared at all u
 [[sabotage]]
 name = "a shape between two row samples is nothing again"
 file = "src/render/cell_paint.cpp"
-find = "\t\tif (crossings.isEmpty()) {"
-into = "\t\tif (crossings.isEmpty()) { continue; } if (false) {"
+find = "\t\tmark_covered(y);"
+into = "\t\t(void)y;"
 count = 1
 check = "and at every vertical offset within a cell, so a shape between two sample lines is not nothing"
 
@@ -5935,28 +5935,20 @@ count = 1
 check = "and a rect whose corners arrive reversed fills what the same rect forwards does"
 
 [[sabotage]]
-name = "the row fallback takes one range over the whole row again"
+name = "the coverage pass fills the gap between disjoint parts again"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\t\tif (band_lo[i] <= hi) {            // touching or overlapping"
-into = "\t\t\t\tif (true) {"
+find = "\t\t\t\tif (!inside) continue;\n\t\t\t\tconst double lo = cov_xs[cov_ord[i]];"
+into = "\t\t\t\tconst double lo = cov_xs[cov_ord[i]];"
 count = 1
 check = "and a row the fallback answers for marks each disjoint part and neither the gap nor the cell past it"
 
 [[sabotage]]
-name = "the row fallback marks each edge's range on its own"
+name = "the coverage pass marks by overlap rather than covered pixels again"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\t\tint last = b > a ? int(std::ceil(b / cw)) - 1 : first;"
-into = "\t\t\t\tint last = int(std::floor(b / cw));"
+find = "\t\t\t\tconst int first_px = int(std::ceil(lo - 0.5));\n\t\t\t\tconst int last_px = int(std::ceil(hi - 0.5)) - 1;"
+into = "\t\t\t\tconst int first_px = int(std::floor(lo / cw)) * cw;\n\t\t\t\tconst int last_px = (int(std::ceil(hi / cw)) - 1) * cw;"
 count = 1
-check = "and a row the fallback answers for marks each disjoint part and neither the gap nor the cell past it"
-
-[[sabotage]]
-name = "a row the shape only touches is filled again"
-file = "src/render/cell_paint.cpp"
-find = "\t\t\tif (box_px.bottom() <= top || box_px.top() >= bot) continue;"
-into = "\t\t\tif (false) continue;"
-count = 1
-check = "and no fill marks a cell raster leaves blank, which holds for the thin ones too"
+check = "a fill whose edge stops part way into a pixel never claims more cells than raster, at any fraction"
 
 [[sabotage]]
 name = "a tiled pixmap goes back to one placement per tile"

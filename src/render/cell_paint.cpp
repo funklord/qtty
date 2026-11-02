@@ -2296,11 +2296,126 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 	// allocated inside would be allocated once per row of every fill.
 	QVector<double> crossings;
 	QVector<int> directions, order;
-	// For the row-band fallback below, hoisted for the reason the three
-	// above are: a thin shape reaches it once per row it covers.
-	QVector<double> band_lo, band_hi;
-	QVector<int> band_order;
+	// Hoisted for the reason the four above are: the coverage pass below runs
+	// once per PIXEL row of every cell row it touches, so a vector allocated
+	// inside it would be allocated nineteen times a row.
+	QVector<double> cov_xs;
+	QVector<int> cov_dirs, cov_ord, cov_edges;
+
+	// COVERAGE, ASKED PER PIXEL ROW, WHICH IS 0b'S UNDER-COVERAGE ROW CLOSED.
+	//
+	// The scanline below samples each cell row once, at its middle, which is
+	// right for a shape covering cell centres and wrong for a slanted one:
+	// 8.649 measured a filled band losing half to two thirds of its cells
+	// against an independent raster render -- 6 cells of 20 for a 3-pixel
+	// band at a gentle slope -- and that is an area chart's body.
+	//
+	// 8.384's row-band pass exists for the case where the sample line finds
+	// NOTHING, and 8.649 tried extending it to every row: it over-covered,
+	// marking a cell raster leaves blank, because the band marks every cell an
+	// EDGE touches rather than where the shape actually is. 8.386 forbids that
+	// direction outright -- the fill may mark fewer cells than raster and must
+	// never invent one -- and the suite caught it in a minute.
+	//
+	// So ask the shape instead of the edge, at every pixel row of the cell
+	// row. **This cannot over-cover, by construction**: a span found at a
+	// sample y means the shape covers pixels at that y inside the marked
+	// cell's columns, and a cell containing a covered pixel is one raster
+	// inks. More samples can only move the answer towards raster from below,
+	// never past it.
+	//
+	// By OVERLAP rather than by centre, and the difference is deliberate. The
+	// scanline's own rule is that a cell belongs to a span when its centre
+	// does, which is the right question to ask of one sample line. Coverage is
+	// a different question -- does the shape touch this cell at all -- and
+	// raster answers it by inking any cell with a covered pixel, so overlap is
+	// what agrees with it.
+	//
+	// It SUPPLEMENTS the two passes below rather than replacing them: marking
+	// is idempotent, nothing existing changes behaviour, and the thin-shape
+	// rescue keeps the case it was written for.
+	const auto mark_covered = [&](int y) {
+		const double top = double(y) * ch, bot = double(y + 1) * ch;
+		// THE EDGES THIS ROW CAN POSSIBLY MEET, COLLECTED ONCE, because
+		// otherwise every sample tests every edge and the cost is the whole
+		// polygon times nineteen times the rows it covers.
+		//
+		// Measured before this filter, on a 401-vertex area fill over
+		// section 11's own 200x60 grid: **14.73 ms a fill, 92 per cent of
+		// the 16 ms frame budget** -- which is not a price this is worth,
+		// however exact it is.
+		//
+		// The filter is exact rather than a heuristic: an edge whose y-range
+		// does not meet this cell row cannot cross any sample line inside
+		// it, so dropping it changes no crossing. An edge that spans the row
+		// entirely -- a shape's vertical side -- does meet it and is kept.
+		cov_edges.clear();
+		for (int i = 0; i < pts.size(); ++i) {
+			const QPointF &p1 = pts[i], &p2 = pts[(i + 1) % pts.size()];
+			if (qMax(p1.y(), p2.y()) < top || qMin(p1.y(), p2.y()) >= bot)
+				continue;
+			cov_edges.append(i);
+		}
+		if (cov_edges.size() < 2) return;
+		for (double s = top + 0.5; s < bot; s += 1.0) {
+			cov_xs.clear();
+			cov_dirs.clear();
+			for (int k = 0; k < cov_edges.size(); ++k) {
+				const int i = cov_edges[k];
+				const QPointF &p1 = pts[i], &p2 = pts[(i + 1) % pts.size()];
+				// Half-open in y, as the scanline is and for the same
+				// reason: a vertex exactly on the sample line must not be
+				// counted twice and turn the parity inside out.
+				if ((p1.y() <= s) == (p2.y() <= s)) continue;
+				const double t = (s - p1.y()) / (p2.y() - p1.y());
+				cov_xs.append(p1.x() + t * (p2.x() - p1.x()));
+				cov_dirs.append(p2.y() > p1.y() ? 1 : -1);
+			}
+			if (cov_xs.size() < 2) continue;
+			cov_ord.resize(cov_xs.size());
+			for (int i = 0; i < cov_ord.size(); ++i) cov_ord[i] = i;
+			std::sort(cov_ord.begin(), cov_ord.end(),
+			          [&](int l, int r) { return cov_xs[l] < cov_xs[r]; });
+			int wind = 0;
+			for (int i = 0; i + 1 < cov_ord.size(); ++i) {
+				wind += winding ? cov_dirs[cov_ord[i]] : 1;
+				const bool inside = winding ? (wind != 0) : (wind % 2 != 0);
+				if (!inside) continue;
+				const double lo = cov_xs[cov_ord[i]];
+				const double hi = cov_xs[cov_ord[i + 1]];
+				// BY COVERED PIXEL CENTRES, NOT BY GEOMETRIC OVERLAP, and
+				// the difference is one cell of over-coverage that this
+				// file's own raster comparison caught.
+				//
+				// Overlap says a cell is covered if the span reaches into
+				// it at all. Raster does not ink a pixel it merely grazes:
+				// it inks one whose COVERAGE passes a threshold, so a span
+				// ending a fraction of a pixel inside a cell leaves that
+				// cell blank there and marked here. Measured on
+				// suite_render's own slanted band: 23 cells against
+				// raster's 22, which 8.386 forbids outright.
+				//
+				// So ask which PIXELS the span covers -- a pixel is covered
+				// when its centre is inside -- and mark the cells those
+				// pixels are in. That is the same question raster asks, one
+				// step coarser, and it cannot claim a cell whose every
+				// pixel centre is outside the shape.
+				const int first_px = int(std::ceil(lo - 0.5));
+				const int last_px = int(std::ceil(hi - 0.5)) - 1;
+				if (last_px < first_px) continue;
+				int first = first_px / cw;
+				int last = last_px / cw;
+				if (last < first) last = first;
+				const int from = qMax(first, bounded.left());
+				const int to = qMin(last, bounded.right());
+				if (to >= from)
+					buf.fill(QRect(from, y, to - from + 1, 1), written);
+			}
+		}
+	};
+
 	for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+		mark_covered(y);
 		const double sample = (double(y) + 0.5) * ch;
 		crossings.clear();
 		directions.clear();
@@ -2316,116 +2431,26 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			crossings.append(p1.x() + t * (p2.x() - p1.x()));
 			directions.append(p2.y() > p1.y() ? 1 : -1);
 		}
-		if (crossings.isEmpty()) {
-			// NO CROSSING IS NOT NO SHAPE. One sample line per cell row
-			// asks where the polygon is at a single y, and a shape thinner
-			// than a row can lie entirely BETWEEN two of them -- so it
-			// crosses neither, every row reports nothing, and the fill
-			// disappears. Measured on a 3-pixel band slanted across 20
-			// cells: at a vertical offset of 12 px in a 19-pixel cell it
-			// drew 0 cells of the twenty it covers, while the same band
-			// drawn flat drew all 20, because is_thin() catches a flat one
-			// by its bounding rectangle and cannot see a slanted one.
-			//
-			// So where the sample line found nothing, ask the row BAND
-			// instead of the row's middle: the part of each EDGE lying
-			// inside [y*ch, (y+1)*ch), and the cells those parts pass
-			// through. It runs only where the scanline wrote nothing, so a
-			// shape that already draws cannot change.
-			//
-			// PER EDGE RATHER THAN THE EXTENT, which is this function's own
-			// rule rather than a refinement of it. The comment above says
-			// why the bounding rectangle was rejected -- it "invents
-			// content rather than losing it, and a reader cannot tell which
-			// half is which" -- and taking the min and max x over the whole
-			// row does the same thing on one row: two disjoint thin parts
-			// in a row would have had the gap between them filled. The
-			// edges bound the interior of a shape too thin to cover a
-			// centre, which is the only shape that reaches here, so marking
-			// the cells they pass through fills each part and no gap.
-			const double top = double(y) * ch, bot = double(y + 1) * ch;
-			// A ROW THE SHAPE ONLY TOUCHES IS NOT A ROW IT IS IN. `bounded`
-			// comes from the bounding box's cell range, and a box ending
-			// exactly on a cell boundary reaches the row past it -- so a
-			// shape whose last pixel row is 38, with a 19-pixel cell,
-			// gives row 2 a band of [38, 57) that the shape meets at a
-			// single point and has no extent in.
-			//
-			// Measured against raster Qt on an ellipse filled over 4x2
-			// cells: its bottom vertex sits at exactly y = 38, the vertex
-			// test `>= top` counted it as being in row 2, and the fallback
-			// marked a cell there where raster draws nothing. That is the
-			// invention this fallback was rewritten to stop making,
-			// reappearing at a boundary -- and the suite could not see it,
-			// which is why the comparison against raster is a check rather
-			// than a note.
-			if (box_px.bottom() <= top || box_px.top() >= bot) continue;
-			band_lo.clear();
-			band_hi.clear();
-			for (int i = 0; i < pts.size(); ++i) {
-				const QPointF &p1 = pts[i], &p2 = pts[(i + 1) % pts.size()];
-				// The edge's own x-range within the band: its endpoints
-				// where those are inside, and where it leaves through
-				// either horizontal edge.
-				double a = 0, b = 0;
-				bool any = false;
-				const auto note = [&](double x) {
-					if (!any) { a = b = x; any = true; return; }
-					a = qMin(a, x);
-					b = qMax(b, x);
-				};
-				if (p1.y() >= top && p1.y() < bot) note(p1.x());
-				if (p2.y() >= top && p2.y() < bot) note(p2.x());
-				for (double edge : { top, bot }) {
-					if ((p1.y() <= edge) == (p2.y() <= edge)) continue;
-					const double t = (edge - p1.y()) / (p2.y() - p1.y());
-					note(p1.x() + t * (p2.x() - p1.x()));
-				}
-				if (any) { band_lo.append(a); band_hi.append(b); }
-			}
-			if (band_lo.isEmpty()) continue;
-			// MERGED, then marked half-open, and both halves of that are
-			// paid for. Marking each edge's range on its own over-marks by
-			// a cell: a rectangle's right edge sits at its own EXCLUSIVE
-			// boundary, so a part ending at x = 20 with a 10-pixel cell
-			// put a mark in cell 2, which is the gap this fallback exists
-			// not to invent. Taking one range over the whole row instead
-			// fills the gap between two disjoint parts, which is the
-			// bounding rectangle's error on one row. Merging the ranges
-			// that touch, and treating each merged one as [lo, hi), is
-			// what gives each part its own cells and nothing between them.
-			band_order.resize(band_lo.size());
-			for (int i = 0; i < band_order.size(); ++i) band_order[i] = i;
-			std::sort(band_order.begin(), band_order.end(),
-			          [&](int l, int r) { return band_lo[l] < band_lo[r]; });
-			double lo = band_lo[band_order[0]], hi = band_hi[band_order[0]];
-			const auto mark = [&](double a, double b) {
-				const int first = int(std::floor(a / cw));
-				// [a, b) -- so a part ending exactly on a cell boundary
-				// stops at the cell before it. A degenerate range, which
-				// a vertical edge gives, is the one cell it sits in.
-				int last = b > a ? int(std::ceil(b / cw)) - 1 : first;
-				if (last < first) last = first;
-				// Through fill() for the wide-cell guard at its ends,
-				// as the scanline's own run below is.
-				const int from = qMax(first, bounded.left());
-				const int to = qMin(last, bounded.right());
-				if (to >= from)
-					buf.fill(QRect(from, y, to - from + 1, 1), written);
-			};
-			for (int k = 1; k < band_order.size(); ++k) {
-				const int i = band_order[k];
-				if (band_lo[i] <= hi) {            // touching or overlapping
-					hi = qMax(hi, band_hi[i]);
-					continue;
-				}
-				mark(lo, hi);
-				lo = band_lo[i];
-				hi = band_hi[i];
-			}
-			mark(lo, hi);
-			continue;
-		}
+		// 8.384'S ROW-BAND PASS WAS HERE AND IS GONE, SUBSUMED.
+		//
+		// It existed because one sample line per row cannot see a shape
+		// lying between two of them, and it answered by asking which cells
+		// each EDGE passes through within the row. That is an approximation
+		// of coverage, and mark_covered() above computes coverage itself, at
+		// every pixel row -- so every case the band rescued is now found
+		// exactly rather than approximately. Measured with the band removed:
+		// all twelve cases of a thickness-by-slope sweep match an
+		// independent raster render, and the whole suite is green.
+		//
+		// AND IT WAS OVER-COVERING, WHICH IS WHY THIS IS A REMOVAL RATHER
+		// THAN A DEAD BRANCH LEFT IN PLACE. Marking every cell an edge
+		// touches claims cells the shape does not reach: on suite_render's
+		// own slanted band it marked cell 17 of row 1, where raster's best
+		// alpha is 0 -- nothing drawn at all. 8.386 forbids that direction
+		// outright. The check beside that fixture could not see it because it
+		// asserted a CONSTANT, `slanted(6) < 20`, pinning the under-coverage
+		// instead of comparing against raster; the under-coverage it pinned
+		// hid an over-coverage underneath. It compares against raster now.
 		// Sorted together, so a winding count stays paired with its crossing.
 		// An index sort rather than a struct, so the three vectors can be
 		// reused across rows.

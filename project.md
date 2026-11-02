@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2480 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2481 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1147,7 +1147,7 @@ Owned by the copyright holder:
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index. **And a third, found by 8.515's gate: ToolTipText is in NO list `role_of()` searches**, so the role is not merely out-ranked by WindowText, it is not looked for -- which means the two obstacles are one fix rather than two, and neither can be taken without the other. Measured: ToolTipText and WindowText are both `#000000`, so listing it after WindowText does nothing and listing it before sends every body-text colour to black | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
-| **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
+| **~~Should Channel A's fill walk whichever axis a shape is long in?~~ CLOSED 2026-11-02, and the question answered itself: NO.** The fill did not need to walk the other axis, it needed to stop asking one sample line per row what the whole row contains. It asks for coverage at every PIXEL row now, and a thickness-by-slope sweep that was short in nine of twelve cases against an independent raster render is exact in all twelve. The row's own estimate -- "a rasteriser rather than a guard, a cost nobody has asked for" -- was right that it is per-pixel work and wrong that the cost is prohibitive: measured, 0.66 ms for a 60x20 chart of 60 points, 4 per cent of a 16 ms frame. §8.654 | §8.654 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
 | **~~A tab's mnemonic does nothing.~~ ~~It works with the conventions on (8.67); what is left is the DEFAULT.~~ The MARK is drawn now, 8.493, on the holder's instruction**: under the conventions the letter is underlined, because that is when `Alt` and it reach the tab -- which is this row's own rule rather than a change to it. The default with the conventions OFF is untouched and still binds nothing. Original row: `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
@@ -54612,3 +54612,139 @@ call rather than a defect to fix: a terminal table under `ResizeToContents`
 has columns whose pixel positions drift by one per column, visible only as
 the odd separator appearing or not. Removing it means not drawing Qt's grid,
 and this tree has chosen to draw it. Suite green at 2480, nothing changed.
+
+### 8.654 The fill asks for coverage now, and 0b's row is closed (2026-11-02)
+
+**§0b asked whether Channel A's fill should walk whichever axis a shape is
+long in, and called closing it "a rasteriser rather than a guard -- a cost
+nobody has asked for".** The question answers itself once the work is done:
+**no**. The fill did not need to walk the other axis. It needed to stop
+asking one sample line per row what the whole row contains.
+
+**WHAT IT WAS.** A filled band 20 cells wide, against an independent raster
+render of the same path, before:
+
+    thick  slope   qtty  raster
+      3      0       20     20   exact
+      3     10        6     20   UNDER
+      8     40        9     29   UNDER
+     19     10       20     39   UNDER
+
+Nine of twelve short, by half to two thirds. That is an area chart's body,
+and §8.649 named the consumers it degrades.
+
+**WHAT IT IS NOW: all twelve exact.** `mark_covered()` asks the polygon for
+its spans at **every pixel row** of each cell row and marks the cells those
+spans cover, unioned with the scanline. It supplements rather than replaces,
+so nothing existing changed behaviour.
+
+**TWO THINGS HAD TO BE MEASURED RATHER THAN REASONED, and both corrected an
+argument I had already written down.**
+
+*By covered pixel CENTRES, not by geometric overlap.* The first version
+marked any cell a span reached into, with a comment claiming over-coverage
+was impossible by construction -- a span at a sample y means the shape
+covers pixels there. It is not impossible: raster does not ink a pixel it
+merely grazes, it inks one whose coverage passes a threshold. A span ending
+a fraction of a pixel inside a cell leaves it blank there and marked here.
+Asking which pixel CENTRES the span covers is the same question raster asks,
+one step coarser.
+
+*And the edges this row can meet, collected once.* Without that filter every
+sample tests every edge: measured, **14.73 ms for a 401-vertex fill over
+§11's own 200x60 grid, 92 per cent of the 16 ms frame budget**. The filter
+is exact rather than a heuristic -- an edge whose y-range misses the row
+cannot cross a sample line inside it -- and it took the same fill to 9.15 ms.
+
+**AND 8.384'S ROW-BAND PASS IS GONE, SUBSUMED.** It existed for the case one
+sample line cannot see, and answered by asking which cells each EDGE passes
+through -- an approximation of coverage. With coverage computed directly,
+every case it rescued is found exactly, and removing its 110 lines leaves
+the sweep exact and the suite green.
+
+**It was also over-covering, which is why it is removed rather than left as
+a dead branch.** On `suite_render`'s own slanted band it marked cell 17 of
+row 1, where raster's best alpha is **0** -- nothing drawn at all. §8.386
+forbids that direction outright. **The check beside that fixture could not
+see it, because it asserted a CONSTANT**: `slanted(6) < 20`, pinning the
+under-coverage rather than comparing against raster. The under-coverage it
+pinned was hiding an over-coverage underneath. It compares against raster
+now, and the first attempt to rewrite it asserted `== 20` on the reasoning
+that a band twenty cells wide covers twenty cells -- it covers 23, sloping
+into a second row -- which is the same mistake one layer up.
+
+**THE COST, MEASURED, AND THE KNOB NAMED.** Sampling every pixel row is
+exact at pixel resolution, which a coarser step is not; steps of 2 and 3
+pixels were also exact on all twelve cases but are not *provably* so, since
+a feature thinner than the step can fall between samples. So the exact step
+stands and its price is published:
+
+    a 60x20 chart, 60 points      0.66 ms    4.2% of a 16 ms frame
+    an 80x24 chart, 100 points    1.38 ms    8.6%
+    a 120x40 chart, 200 points    3.80 ms   23.7%
+    200x60, 400 points            9.15 ms   57.2%   the ceiling, not a case
+
+A real chart costs a few per cent of a frame. The ceiling is a deliberately
+pathological shape -- denser than any chart a 200-column terminal can show --
+and if it ever matters the sample step is one line.
+
+**And two of my own measurements were stale binaries before they were
+right.** Probe executables link the library statically, so one built before
+the last `make` carries the previous library: a sweep read "4 under" and a
+cost table read three times too fast, both from binaries the build step had
+not rebuilt. That is this tree's own rule about concluding from a stale
+binary, met in a probe rather than a test.
+
+**AND `make test` COULD NOT SEE WHAT THE GATE DID.** Removing 8.384's band
+pass orphaned **four sabotage entries anchored to it**, so three checks were
+left defended by nothing -- the suite stayed green throughout, because a
+sabotage entry is not a check and nothing in `make test` reads the spec.
+`sabotage-check` caught it: *"its anchor matches 0 times, and the spec says
+1. The entry cannot be applied, so the check it names is undefended."*
+
+That is the gate earning its place. A sabotage harness exists so that a
+green check is known to be a check; removing the code a sabotage targets
+silently converts it back into an assertion nobody has seen fail.
+
+**Re-anchored to the coverage pass, and two of the three now encode mistakes
+this entry records making:**
+
+    a shape between two row samples is nothing again
+        -> disable mark_covered()
+    the coverage pass fills the gap between disjoint parts again
+        -> drop the `inside` test, so a gap is marked
+    the coverage pass marks by overlap rather than covered pixels again
+        -> floor(lo) instead of ceil(lo - 0.5), which is exactly the
+           over-coverage measured above
+
+Four entries become three, 803 to 802: two of the old four defended the same
+check by breaking two halves of the band's range merging, and with the band
+gone one sabotage of the coverage pass covers it.
+
+**Run for real rather than validated.** `sabotage.py --validate` is what
+`make check` runs and it compares anchors only -- a re-anchored entry whose
+sabotage no longer breaks anything would pass it and defend nothing, which
+is this file's own vacuous-pass hazard wearing a new hat.
+
+**AND RUNNING THEM FOUND A RULE DEFENDED BY NOTHING.** The sabotage for the
+pixel-centre rule -- `floor(lo)` in place of `ceil(lo - 0.5)` -- reddened no
+check: it moves the pixel index by at most one, which rarely crosses a cell
+boundary. Re-aimed at the real mistake, cell-level overlap, it still
+reddened nothing, because the over-coverage measured earlier in this entry
+came from the BAND pass, which is now gone. Nothing in the suite separated
+"marks what the shape covers" from "marks what it reaches into".
+
+So the rule got a fixture: **a fill whose right edge stops a fraction of a
+pixel into a cell**, swept at 20.0, 20.1, 20.3, 20.5, 20.7 and 21.0 pixels
+with a ten-pixel cell, asserting the fill never claims more cells than
+raster. Asserted one-sided, as §8.386's rule is, and that matters here: at
+an edge of exactly 20.5 the fill marks **fewer** cells than raster, which
+inks a half-covered pixel where the centre rule does not. That is the
+tolerated direction, and asserting equality would have pinned a mismatch as
+if it were the rule. 2480 checks to 2481.
+
+**The order is the lesson.** A guard whose sabotage reddens nothing is a
+guard defended by nothing, and `--validate` -- which is what `make check`
+runs -- cannot tell the two apart, because it compares anchors. Running the
+entry is what found that the rule had no check, and the fixture exists
+because the sabotage demanded it rather than the other way round.

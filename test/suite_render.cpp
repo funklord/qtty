@@ -3447,6 +3447,42 @@ int suite_render(bool record) {
 						if (b.at(x, y).bg.kind() != Qtty::Color::Default) ++n;
 				return n;
 			};
+			// THE SAME SHAPE THROUGH AN INDEPENDENT RENDERER, so the check
+			// below can assert a relationship instead of a number somebody
+			// worked out. The first attempt asserted `== 20`, reasoning that
+			// a band twenty cells wide covers twenty cells; it covers 23,
+			// because it slopes into a second row part way across. A
+			// constant arrived at by arithmetic is exactly what this fixture
+			// tells its neighbours not to trust.
+			const auto slanted_raster = [&](int off) {
+				QImage im(20 * cw, 4 * ch, QImage::Format_ARGB32);
+				im.fill(Qt::transparent);
+				{
+					QPainter p(&im);
+					QPainterPath path;
+					path.moveTo(0, off);
+					path.lineTo(20.0 * cw, off + ch * 0.6);
+					path.lineTo(20.0 * cw, off + ch * 0.6 + 3);
+					path.lineTo(0, off + 3);
+					path.closeSubpath();
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(200, 40, 40));
+					p.drawPath(path);
+				}
+				int n = 0;
+				for (int cy = 0; cy < 4; ++cy)
+					for (int cx = 0; cx < 20; ++cx) {
+						bool on = false;
+						for (int y = cy * ch; y < (cy + 1) * ch && !on; ++y)
+							for (int x = cx * cw; x < (cx + 1) * cw; ++x)
+								if (qAlpha(im.pixel(x, y)) >= 40) {
+									on = true;
+									break;
+								}
+						if (on) ++n;
+					}
+				return n;
+			};
 			int off_blank = 0, off_least = -1;
 			for (int off = 0; off < ch; ++off) {
 				const int n = slanted(off);
@@ -3527,23 +3563,34 @@ int suite_render(bool record) {
 				}
 			}
 
-			// THE CONTROL, and the limit in the same breath.
+			// THE CONTROL, and what used to be a limit beside it.
 			//
 			// An empty path marks nothing, which is what stops either check
 			// above passing against an engine that marks whatever it is
-			// handed. And a thick band is unchanged -- both fixes fire only
-			// where the scanline wrote nothing, so a fill that already
-			// covered centres cannot have grown.
+			// handed. And a thick band is not thinned.
 			//
-			// The limit, pinned so that the fix is not quoted for more than
-			// it does: a thin band is drawn as a LINE of cells rather than
-			// as every cell it passes through. A gently slanted 3-pixel
-			// band crosses about twenty cells and is marked in fewer,
-			// because the scanline walks ROWS and that shape wants
-			// columns. It is under-coverage rather than disappearance,
-			// which is the whole of what changed, and whether Channel A's
-			// fill should walk whichever axis a shape is long in is a
-			// design question rather than a defect.
+			// ~~The limit, pinned so that the fix is not quoted for more
+			// than it does: a gently slanted 3-pixel band crosses about
+			// twenty cells and is marked in fewer, and whether Channel A's
+			// fill should walk whichever axis a shape is long in is a design
+			// question rather than a defect.~~
+			//
+			// THAT LIMIT IS GONE and this check now pins its absence. The
+			// fill asks the shape for coverage at every PIXEL row of each
+			// cell row, so a slanted band is marked in all twenty cells it
+			// crosses -- measured against an independent raster render, all
+			// twelve cases of a thickness-by-slope sweep are now exact,
+			// where nine of twelve were short. The design question the old
+			// comment deferred answered itself: the fill does not need to
+			// walk the other axis, it needs to stop asking one sample line
+			// per row what the whole row contains.
+			//
+			// Asserted as EQUALITY WITH RASTER rather than with a width
+			// worked out by hand. "More than before" would be satisfied by a
+			// fill that over-covers, which 8.386 forbids; and a constant is
+			// how the first version of this assertion got it wrong, having
+			// reasoned that a band twenty cells wide covers twenty cells
+			// when it slopes into a second row and covers 23.
 			Qtty::CellBuffer empty_buf(20, 4);
 			{
 				Qtty::CellPaintDevice dev(empty_buf);
@@ -3560,7 +3607,75 @@ int suite_render(bool record) {
 						++empty_cells;
 			const int thick = band(1.0, 8.0 * ch / 19.0, 40);
 			const int thin = band(1.0, 3.0, 40);
-			if (empty_cells == 0 && thick >= thin && slanted(6) < 20)
+			// A FILL WHOSE EDGE STOPS A FRACTION OF A PIXEL INTO A CELL,
+			// which is the one shape that separates "marks what the shape
+			// covers" from "marks what it reaches into".
+			//
+			// The coverage pass asks which pixel CENTRES a span covers. The
+			// alternative -- any cell the span overlaps -- claims a cell an
+			// edge enters by a tenth of a pixel, where raster does not ink a
+			// pixel it merely grazes. Nothing else in this file separates
+			// the two, so a sabotage of that rule reddened nothing and the
+			// rule stood undefended; this is the fixture that defends it.
+			//
+			// Asserted as "never more than raster" rather than as equality,
+			// because 8.386's rule is one-sided: the fill may mark fewer
+			// cells and must never invent one. It is genuinely fewer at an
+			// exact half-pixel edge -- at a right edge of 20.5 px raster
+			// inks the half-covered pixel and the centre rule does not --
+			// and that is the tolerated direction.
+			int frac_over = 0;
+			for (double right : {20.0, 20.1, 20.3, 20.5, 20.7, 21.0}) {
+				Qtty::CellBuffer fb(6, 2);
+				{
+					Qtty::CellPaintDevice dev(fb);
+					QPainter p(&dev);
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(40, 160, 60));
+					QPainterPath path;
+					path.addRect(QRectF(0, 0, right, 2.0 * ch));
+					p.drawPath(path);
+				}
+				QImage fim(6 * cw, 2 * ch, QImage::Format_ARGB32);
+				fim.fill(Qt::transparent);
+				{
+					QPainter p(&fim);
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(40, 160, 60));
+					QPainterPath path;
+					path.addRect(QRectF(0, 0, right, 2.0 * ch));
+					p.drawPath(path);
+				}
+				int fq = 0, fr = 0;
+				for (int cy = 0; cy < 2; ++cy)
+					for (int cx = 0; cx < 6; ++cx) {
+						if (fb.at(cx, cy).bg.kind() != Qtty::Color::Default)
+							++fq;
+						bool on = false;
+						for (int y = cy * ch; y < (cy + 1) * ch && !on; ++y)
+							for (int x = cx * cw; x < (cx + 1) * cw; ++x)
+								if (qAlpha(fim.pixel(x, y)) >= 40) {
+									on = true;
+									break;
+								}
+						if (on) ++fr;
+					}
+				if (fq > fr) ++frac_over;
+			}
+			const char *fracmsg = "a fill whose edge stops part way into a"
+			    " pixel never claims more cells than raster, at any"
+			    " fraction";
+			if (frac_over == 0) printf("PASS: %s\n", fracmsg);
+			else {
+				printf("FAIL: %s\n      condition: %d of 6 widths over\n",
+				       fracmsg, frac_over);
+				++r;
+			}
+
+			const int slant_q = slanted(6), slant_r = slanted_raster(6);
+			printf("info: a slanted band marks %d cells, raster %d\n",
+			       slant_q, slant_r);
+			if (empty_cells == 0 && thick >= thin && slant_q == slant_r)
 				printf("PASS: an empty path marks nothing, a thick band is"
 				       " not thinned, and a thin one is a line of cells\n");
 			else {
