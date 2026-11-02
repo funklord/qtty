@@ -1134,6 +1134,100 @@ int suite_loops() {
 		GridGuard::reset();
 	}
 
+	// ---- QInputDialog, the last concrete widget class with no coverage ---
+	//
+	// FOUND BY CENSUS RATHER THAN BY SUSPICION, which is why it is here at
+	// all: of the 67 concrete Qt Widgets classes in the installed Qt, this
+	// suite named 63. Of the four it did not, three cannot be gaps --
+	// QAbstractSlider is an abstract base whose QSlider and QScrollBar are
+	// both covered, QRhiWidget is GPU rendering and belongs with the
+	// unsupported classes, and QFontComboBox is a QComboBox that fills
+	// itself. QInputDialog is the fourth and is the standard one-line
+	// prompt an application reaches for without thinking.
+	//
+	// It belongs in THIS suite rather than beside the other dialogs because
+	// `getText()` is static and does not return until the dialog closes: it
+	// spins a nested event loop, which is what this file exists for and what
+	// its header explains is dead on the Qt 5 arm unless it runs before
+	// suite_router.
+	//
+	// So the keystrokes come from inside the loop, as they do for the menu
+	// and the file dialog above. Nothing here is new machinery; the point is
+	// that a composite nobody had rendered composes correctly from parts
+	// that were each already covered.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(44, 12));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&host);
+
+		QString drawn;
+		QTimer::singleShot(0, [&] {
+			QCoreApplication::processEvents();
+			CellBuffer shot(44, 12);
+			for (QWidget *w : QApplication::topLevelWidgets())
+				if (w != &host && w->isVisible()) {
+					render_once(*w, shot);
+					break;
+				}
+			drawn = shot.to_text();
+			for (QChar c : QStringLiteral("ada")) {
+				KeyEvent k;
+				k.text = QString(c);
+				r.on_key(k);
+			}
+			KeyEvent ret;
+			ret.qt_key = Qt::Key_Return;
+			r.on_key(ret);
+		});
+		// A WATCHDOG, BECAUSE A NESTED-LOOP FIXTURE WITH NO EXIT HANGS THE
+		// SUITE RATHER THAN FAILING IT.
+		//
+		// Measured while proving these three checks can fail: sabotaging the
+		// keystrokes away did not turn them red, it wedged the run -- the
+		// dialog never got its Return, `getText()` never returned, and the
+		// test binary sat there until it was killed. A hang is worse than a
+		// failure in every way that matters: nothing says which check was
+		// being run, a sweep that kills it reports no result at all, and the
+		// bound has to live INSIDE the program (running-code.md) because
+		// whoever is debugging runs the binary directly.
+		//
+		// So close the dialog unconditionally a beat after the keys, and let
+		// the assertions below judge what came back. When the keys work this
+		// fires after the loop has already returned and finds nothing to
+		// close, which costs one timer; when they do not, the checks go red
+		// with their conditions printed instead of never finishing.
+		QTimer::singleShot(250, [] {
+			for (QWidget *w : QApplication::topLevelWidgets())
+				if (auto *d = qobject_cast<QDialog *>(w))
+					if (d->isVisible()) d->reject();
+		});
+		bool ok = false;
+		const QString got =
+		    QInputDialog::getText(&host, QStringLiteral("Title"),
+		                          QStringLiteral("Name"),
+		                          QLineEdit::Normal, QString(), &ok);
+		QCoreApplication::processEvents();
+		printf("info: QInputDialog returned ok=%d text=\"%s\"\n",
+		       int(ok), qPrintable(got));
+		// THE PROMPT AND THE FIELD, asserted separately from the return
+		// value. A dialog that returns the right string while rendering
+		// nothing is the failure this check exists to catch, and the
+		// return value alone cannot see it.
+		CHECK(drawn.contains(QStringLiteral("Name")),
+		      "QInputDialog draws its prompt label");
+		CHECK(drawn.contains(QStringLiteral("[")) && drawn.contains(
+		          QStringLiteral("<OK>")),
+		      "and its field and buttons, so the composite renders and not "
+		      "only its parts");
+		CHECK(ok && got == QStringLiteral("ada"),
+		      "and the text typed into it through the nested loop is what "
+		      "getText() returns");
+		GridGuard::reset();
+	}
+
 	set_keyboard_conventions(had_conventions);
 	return fails;
 }

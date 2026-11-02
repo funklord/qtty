@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2473 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2476 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -53999,3 +53999,54 @@ Verified rather than read:
 Every box CONTAINS the square, so the picture keeps its proportions inside a
 margin rather than being stretched to fill, and a caller with no cell size
 gets nothing back rather than a plausible wrong answer.
+
+### 8.646 The last Qt widget class with no coverage, and what proving it taught (2026-11-02)
+
+**Found by census rather than by suspicion**, which is the part that
+generalises. §8.645 asked what the consumers need; this asks the forward
+half of the holder's question -- what they will reach for next -- and
+answers it by enumeration instead of guesswork. Of the **67 concrete Qt
+Widgets classes** in the installed Qt, this suite named **63**.
+
+Three of the four it did not name cannot be gaps: `QAbstractSlider` is an
+abstract base whose `QSlider` and `QScrollBar` are both covered,
+`QRhiWidget` is GPU rendering and belongs with §8.4's unsupported classes,
+and `QFontComboBox` is a `QComboBox` that fills itself from the font
+database. **The fourth is `QInputDialog`**, the standard one-line prompt an
+application reaches for without thinking -- and it works, measured end to
+end: the prompt label reaches the cells, the field renders as `[ ]`, the
+buttons as `<OK>` and `<Cancel>`, and the text typed through the nested
+loop is what `getText()` returns.
+
+It is checked now, in `suite_loops` rather than beside the other dialogs,
+because `getText()` is static and does not return until the dialog closes
+-- a nested event loop, which is what that file exists for and what its
+header explains is dead on the Qt 5 arm unless it runs before
+`suite_router`. 2473 checks to 2476.
+
+**AND PROVING THE CHECKS CAN FAIL IS WHERE THE REAL FINDING WAS.** Sabotage
+the keystrokes away and the three checks did not go red -- **the suite
+hung**. The dialog never got its Return, `getText()` never returned, and the
+test binary sat there until it was killed.
+
+That is worse than a failing check in every way that matters: nothing says
+which check was running, a sweep that kills the run reports no result at
+all, and `running-code.md`'s rule applies in full -- the bound has to live
+inside the program, because whoever is debugging runs the binary directly
+and a `timeout` in the recipe does not cover them. So the fixture carries a
+**watchdog**: a timer that closes any visible dialog a beat after the keys,
+unconditionally. When the keys work it fires after the loop has returned,
+finds nothing to close, and costs one timer. When they do not, the three
+checks go red with their conditions printed. Re-sabotaged with it in place:
+three `FAIL:` lines and a non-zero exit, in seconds.
+
+**The transferable rule is about the shape rather than this widget.** A
+fixture that drives a nested loop from a timer has its exit condition in the
+timer, so anything that stops the timer's work from arriving removes the
+exit as well -- the fixture's own failure mode takes out the mechanism that
+would have reported it. Every such fixture wants a bound that does not
+depend on the thing under test. This suite has four more of that shape --
+the `exec()` menu, the two drag fixtures and the file dialog -- and they are
+left alone deliberately, because each is currently green and adding a
+watchdog to a passing fixture is a change with nothing measured behind it.
+Recorded so that the next one written starts with the bound.
