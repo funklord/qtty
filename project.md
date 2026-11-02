@@ -1162,6 +1162,7 @@ Owned by the copyright holder:
 | **Should a Channel B stroke carry its pen colour?** Today it does not: a rule drawn through the paint engine lands in a cell with the default colour. The obvious fix was built and measured on a 40x20 fixture -- **294 rule cells all default today, against 174 default and 120 true-colour with the pen carried** -- and the measurement is why it was not taken. **1586 of 1597 pens reaching `line()` resolve to a hard 24-bit colour and 1569 of those to one grey**, because Qt draws sunken borders with `pal.dark()` and `pal.light()`: carrying the pen would paint that grey across the tree, which is the #bebebe incident by a new route. The suite is blind to it -- with the pen carried every check passes and both fixtures re-record identically. The real fix wants an "is this colour anywhere in the palette" rule, which is a section 6 decision and the holder's | 8.x, near "left for the holder" |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 | **Should a dashed pen render as dashed at all?** Measured 2026-11-02: every `Qt::PenStyle` -- Dash, Dot, DashDot, DashDotDot -- renders cell for cell identically to Solid, so a chart telling series apart by dashing has that removed, which matters most where colour is scarce. **It is a decision rather than a defect, and the direction of the ink is why**: weight and colour ADD to cells drawn anyway, while dashing REMOVES ink, and a twenty-cell line rendered as ten reads as damage rather than style against N2's legible reinterpretation. Both remedies are known -- Unicode's dashed box family, unused here but with no diagonals, so dashing would vanish when a line slopes; or skipping cells, which works at every angle and is about twenty-five lines, threading the dash phase through `stroke_polyline` so it carries across segments. 8.658 | 8.658 |
+| **Should qtty say that the DOCUMENTED surface is the supported one?** Not the parked question, which was whether to promise API stability; measurement narrowed it. 203 names are declared in the public headers and **80 are named in the documentation**, which `make guide-check` compiles against those headers on every `make check` -- so a documented name cannot be removed without failing our own gate. Of the **44** names that were ever public and are not now, **not one was ever documented**, and 33 of the 44 are a single event, the camelCase-to-snake_case migration of 2026-08-27. So the guarantee a consumer wants already exists mechanically; what is missing is the sentence saying so. That sentence is a statement to other projects -- fuzznet keeps its qtty render test out of its own `make check` for want of it -- and committing this tree to a supported subset is the holder's call, not a recording | 8.662, 8.648 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -55117,3 +55118,78 @@ one line to ask. `evidence.md`'s *a count inherits its detector* is the
 principle -- a count is a claim about the instrument until the instrument has
 been shown to move -- and a false POSITIVE is the dangerous direction here,
 because a finding is written up while a non-finding is merely dropped.
+
+### 8.662 The API-stability question, answered by measuring rather than promising (2026-11-03)
+
+**§8.648 parked a question: fuzznet keeps its qtty render test out of its
+own `make check` because this API moves.** That is a real cost to a
+consumer -- it cannot gate on us -- and "should qtty promise stability" is
+unanswerable in the abstract. It is very answerable with a number, and the
+number turns out to narrow the decision rather than inform it.
+
+**The surface, measured at HEAD.** 203 names are declared in the public
+headers -- the set `make install` copies, which is what an application
+gets. 186 of 1196 commits have touched them, from 2026-08-21 to
+2026-11-02. So the headers move often, which is where the consumer's fear
+comes from and it is not unfounded.
+
+**Every name that was ever public and is not now: 44.** Enumerated from
+the whole history in one `git log -p --unified=0` over `include/qtty/`
+rather than sampled, and the difference matters -- see the method note
+below.
+
+- **33 are one event**: a camelCase name whose snake_case twin is at HEAD.
+  `toText`, `setTheme`, `renderOnce`, `setZ`, `toAnsi16` and twenty-eight
+  more, all on 2026-08-27, which is `code-style.md`'s first rule arriving.
+  One migration in the project's first week, not thirty-three breaks.
+- **11 are everything else**, and most are smaller than they look. Three
+  more are that same rename's chain (`encodeITerm2`, `kittyPlace`,
+  `fillRectF` all end 2026-08-27, their twins renamed again or dropped
+  days later). Three lived a single day --
+  `compose_kitty_placeholders`, and `forget_mouse_grab` beside
+  `forget_mouse_grabs`, a singular settled against a plural inside one
+  date. That leaves `crop_placement` (replaced 2026-10-23 by carrying a
+  placement's clip), `rasterize` and `compose_halfblocks` as the genuine
+  removals of a name nothing replaced.
+
+**And the fact that answers the question: not one of the 44 was ever
+named in the documentation.** Checked with `git log -S` over `README.md`
+and `doc/keyboard-first.md` for each -- every one comes back never
+documented.
+
+**Which matters because the documented surface is already gated.** `make
+guide-check` compiles every symbol the documents name against the public
+headers on every `make check` -- 80 of them today -- so removing a
+documented name does not merely break a consumer, it fails our own gate
+before the commit lands. `tool/guide_check.py` was written to stop the
+documents rotting, and the thing it incidentally built is the only
+stability guarantee this project has. **It has never had to fire**, which
+the 44 explain: the churn has been entirely in the 123 names no document
+names.
+
+**So a consumer confined to documented names already has what fuzznet
+wants, by a gate rather than by a promise**, and the two signature changes
+in the period were both a DEFAULTED parameter added (`box`,
+`set_focus_widget`) -- source-compatible for every existing caller, which
+is the compatibility that matters to three consumers who all vendor this
+tree and rebuild it.
+
+**The decision left is narrower than the one that was parked.** Not
+"should qtty promise API stability" but "should qtty say that the
+documented surface is the supported one". That is a statement to other
+projects and so is the holder's; it is in §0b now rather than acted on.
+
+**METHOD, and the limit that caught me.** A first pass sampled one commit
+per half-month and reported **7** removals. It missed 37 because the
+snake_case migration began and finished inside one bucket: a name added
+and removed between two snapshots is in neither. The complete enumeration
+is one git call and costs less than the sample did. `evidence.md`'s *a
+count inherits its detector*, met for the second time in one session --
+and in the same direction both times, a sampled or mis-keyed instrument
+reading quieter than the truth.
+
+Two limits stand and are not worth closing. The declaration regex misses a
+signature split across lines, so 203 and 247 are floors. And this measures
+SOURCE compatibility, not ABI -- a defaulted parameter is an ABI break and
+reads as compatible here, which is right for consumers that vendor and
+rebuild and would be wrong for one linking a shared library.
