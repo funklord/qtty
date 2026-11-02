@@ -54515,10 +54515,24 @@ anybody wants, and no amount of arithmetic on Qt's pixel produces one --
 to be drawn by Channel A, from the section boundaries in CELLS, the way
 every other piece of furniture in this library is drawn.
 
-**That is the next piece of work and it is feature-sized**, so what it needs
-is named rather than guessed: a Channel A element drawing a separator at
-each section's cell boundary, Qt's own grid turned off so its pixel stops
-being counted, and the committed table snapshots re-recorded because every
-one of them changes. The last is why this is not a quiet fix -- re-recording
-reference fixtures is a deliberate act, and the entry says so rather than
-having a session discover it half way through.
+**That is the next piece of work**, so what it needs is named rather than
+guessed: a Channel A element drawing a separator at each section's cell
+boundary -- the section's LAST cell, which is where Qt's line sits today, so
+the content keeps the same room -- and Qt's own grid turned off so its pixel
+stops being counted.
+
+**~~And the committed table snapshots re-recorded, because every one of them
+changes.~~ MEASURED, AND THAT COST IS NOT THERE.** This tree has three
+committed snapshots and **none of them contains a table**; no check anywhere
+asserts on a table's separator glyph; and `showGrid` appears nowhere in
+`src/` or `test/`, so nothing has ever depended on Qt's grid either way. The
+churn is a handful of inline table renderings at most.
+
+**The overstatement is worth correcting rather than quietly dropping**,
+because a cost claim is what decides whether anybody attempts the work. The
+real reason this is not done in the same pass is narrower and is about the
+site: `CE_ItemViewItem` is §17.2's largest chunk and the most heavily
+exercised drawing path here, and two successive ideas in this same area have
+already been wrong -- Qt's `frameWidth` formula in §8.650, and the pixel
+give-back above. A central path deserves a fresh attempt rather than a tenth
+iteration, and the specification above is what makes that attempt cheap.
