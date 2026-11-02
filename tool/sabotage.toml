@@ -8875,3 +8875,12 @@ find = "\t\t\tQtty::test::press(dr, k);"
 into = "\t\t\tif (false) Qtty::test::press(dr, k);"
 count = 1
 check = "and the cells differ from a capture with the focus already moved, so it is the key that reached the frame and not the focus"
+
+[[sabotage]]
+name = "a pen's weight stops reaching the diagonal road again"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (pen_.widthF() > 1.0) cell.attrs |= Attr::Bold;"
+into = "\t\tif (false) cell.attrs |= Attr::Bold;"
+count = 1
+check = "a pen wider than a pixel reaches the cells as weight, on a rule and a diagonal alike, and a hairline carries none"
+

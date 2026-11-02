@@ -3672,6 +3672,66 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// A PEN'S WEIGHT REACHES THE CELLS, AT EVERY ANGLE.
+			//
+			// A stroke becomes a line of cells whatever its width -- a
+			// three-pixel line drawn two rows thick would read as a bar --
+			// but the width was then dropped entirely: pens of 0, 1 and 3
+			// marked the same cells with the same attributes, so an
+			// application telling series apart by weight had that removed.
+			// The shipped example does it, with pens of 3 and 4.
+			//
+			// Attr::Bold carries it, and BOTH ROADS must: a rule goes
+			// through line() and a diagonal through stroke_segment(). If
+			// only one carried it, weight would appear at some angles and
+			// not others -- which is why the heavy box-drawing family was
+			// not used, having no diagonals. So the fixture draws one of
+			// each and requires every inked cell to agree.
+			const auto weighed = [&](double width) {
+				Qtty::CellBuffer wb(14, 3);
+				{
+					Qtty::CellPaintDevice dev(wb);
+					QPainter p(&dev);
+					QPen pen(QColor(40, 160, 60));
+					pen.setWidthF(width);
+					p.setPen(pen);
+					p.setBrush(Qt::NoBrush);
+					p.drawLine(QPointF(0, 3 * ch / 2.0),
+					           QPointF(14.0 * cw, 3 * ch / 2.0));
+					p.drawLine(QPointF(0, 2),
+					           QPointF(14.0 * cw, 3.0 * ch - 2));
+				}
+				int inked = 0, bold = 0;
+				for (int y = 0; y < 3; ++y)
+					for (int x = 0; x < 14; ++x) {
+						const Qtty::Cell &c = wb.at(x, y);
+						if (c.ch == QStringLiteral(" ") || c.ch.isEmpty())
+							continue;
+						++inked;
+						if (c.attrs & Qtty::Attr::Bold) ++bold;
+					}
+				return QPair<int, int>(inked, bold);
+			};
+			const QPair<int, int> w_hair = weighed(0.0);
+			const QPair<int, int> w_one = weighed(1.0);
+			const QPair<int, int> w_thick = weighed(3.0);
+			printf("info: a hairline inks %d cells with %d bold, a 1px pen"
+			       " %d/%d, a 3px pen %d/%d\n", w_hair.first, w_hair.second,
+			       w_one.first, w_one.second, w_thick.first, w_thick.second);
+			const char *wmsg = "a pen wider than a pixel reaches the cells as"
+			    " weight, on a rule and a diagonal alike, and a hairline"
+			    " carries none";
+			if (w_hair.first > 0 && w_hair.second == 0 && w_one.second == 0
+			    && w_thick.first == w_hair.first
+			    && w_thick.second == w_thick.first)
+				printf("PASS: %s\n", wmsg);
+			else {
+				printf("FAIL: %s\n      condition: hairline %d/%d, 1px"
+				       " %d/%d, 3px %d/%d\n", wmsg, w_hair.first, w_hair.second,
+				       w_one.first, w_one.second, w_thick.first, w_thick.second);
+				++r;
+			}
+
 			const int slant_q = slanted(6), slant_r = slanted_raster(6);
 			printf("info: a slanted band marks %d cells, raster %d\n",
 			       slant_q, slant_r);

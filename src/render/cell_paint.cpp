@@ -1907,6 +1907,11 @@ void CellPaintEngine::line(const QLineF &l) {
 		for (int x = span.first; x <= span.second; ++x) {
 			b.set_glyph(x, y, QStringLiteral("─"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
+			// The pen's weight, as stroke_segment() carries it. Both roads
+			// must, or weight would appear on a diagonal and not on a rule
+			// -- which is the angle-dependence that ruled out the heavy
+			// box-drawing family in the first place.
+			if (pen_.widthF() > 1.0) b.at(x, y).attrs |= Attr::Bold;
 		}
 	} else if (qAbs(m.dx()) < cw / 2.0 && one_col) {
 		const int x = cell_of(m.x1(), cw);
@@ -1922,6 +1927,7 @@ void CellPaintEngine::line(const QLineF &l) {
 		for (int y = span.first; y <= span.second; ++y) {
 			b.set_glyph(x, y, QStringLiteral("│"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
+			if (pen_.widthF() > 1.0) b.at(x, y).attrs |= Attr::Bold;
 		}
 	} else {
 		// Everything that is neither a row nor a column, which until this
@@ -2248,6 +2254,30 @@ void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
 		// told apart by colour, so a plot rendered in one ink is a plot with
 		// its legend removed.
 		cell.fg = ink_over(seg_ink, seg_alpha, cell.bg);
+		// AND THE PEN'S WEIGHT, WHICH WAS DROPPED ENTIRELY UNTIL NOW.
+		//
+		// A stroke becomes a line of cells whatever its pen width -- that is
+		// this function's design and it is right, since a three-pixel line
+		// drawn two rows thick reads as a bar rather than a line. But the
+		// width was then thrown away: measured against an independent raster
+		// render, pens of 0, 1 and 3 pixels all marked the same 20 cells, so
+		// an application distinguishing series or emphasis by pen weight had
+		// that distinction silently removed. The shipped example does
+		// exactly that -- `example/chat/chat.h` draws its stickers with pens
+		// of 3 and 4 beside hairlines -- and every one of them came out the
+		// same.
+		//
+		// Attr::Bold carries it. It is the one expression of weight that
+		// works on ALL FOUR segment glyphs: the heavy box-drawing family has
+		// no diagonals, so a heavy line would change weight with its angle,
+		// which is worse than one weight throughout. It collides with
+		// nothing -- Bold otherwise arrives only from a bold FONT, and a
+		// drawn segment has no font -- and the double-line family that would
+		// have been the other candidate already means focus.
+		//
+		// Above one pixel, because Qt spells a hairline as 0 and as 1 and
+		// both are the ordinary case.
+		if (pen_.widthF() > 1.0) cell.attrs |= Attr::Bold;
 	}
 }
 

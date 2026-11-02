@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2481 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2482 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -54842,3 +54842,55 @@ Either is a `git revert` away, and the row entries say so. The reason for
 doing them rather than asking is that both were on this tree's own list of
 work waiting on effort rather than on an answer -- but that was my reading
 of the list, and the list says otherwise about who owns them.
+
+### 8.657 A pen's weight reached nothing (2026-11-02)
+
+**The lens §8.654 handed over -- a pass that approximates where an exact
+answer is available -- pointed at the fill's sibling.** `fill_polygon()` had
+it and now computes coverage; `stroke_polyline()` had never been measured
+against raster the same way. Measured, a stroked line over 20 cells:
+
+    pen    slope   qtty  raster
+    0 px     0       20     20   exact
+    1 px    10       20     20   exact
+    3 px     0       20     40   under
+    3 px    40       20     24   under
+
+**The under-coverage is not the finding, and chasing it would have been
+wrong.** A stroke becomes a line of cells whatever its width, by design: a
+three-pixel line drawn two rows thick reads as a bar rather than a line, and
+§8.386 permits marking fewer cells than raster. That part is right.
+
+**The finding is the column of 20s.** Pens of 0, 1 and 3 pixels marked the
+same cells with the same attributes -- **the width was dropped entirely.**
+An application distinguishing series or emphasis by pen weight had the
+distinction silently removed, which is §8.645's colour finding in a second
+place: something the application expressed, and the terminal never heard.
+The shipped example does exactly this, `example/chat/chat.h` drawing its
+stickers with pens of 3 and 4 beside hairlines.
+
+**`Attr::Bold` carries it, and the alternative is what makes that the right
+choice rather than the first one.** The obvious expression is the heavy
+box-drawing family, and the tree has room for it -- light is ordinary,
+double already means focus, heavy is unused. **But Unicode has no heavy
+diagonals.** A heavy line would change weight with its angle, which is worse
+than one weight throughout. Bold works on all four segment glyphs, and it
+collides with nothing: Bold otherwise arrives only from a bold FONT, and a
+drawn segment has no font.
+
+**BOTH ROADS CARRY IT, and the first attempt only did one.** A rule goes
+through `line()` and a diagonal through `stroke_segment()`. Carrying weight
+in the second alone gave 8 bold cells of 22 -- weight on the diagonal and
+none on the rule, which is precisely the angle-dependence that ruled out
+heavy glyphs. The check requires every inked cell to agree, and sabotaging
+the diagonal road reports 22/14 and goes red.
+
+**Above one pixel**, because Qt spells a hairline as 0 and as 1 and both are
+the ordinary case. 2481 checks to 2482.
+
+**The decision and its reason, since this is a rendering convention rather
+than a defect fix.** It is taken from the aims: a legible reinterpretation
+keeps what the application said where the grid can express it, and a cell
+can carry weight even though it cannot carry thickness. What it does not do
+is change which cells are marked -- the line is still one cell thick at
+every width, and the measurements above are unchanged by it.
