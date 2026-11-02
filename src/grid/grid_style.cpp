@@ -3081,6 +3081,36 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		const QWidget *pw = painted_widget(p, w);
 		const CellClip bound(dev, pw ? cells_of(visible_rect(pw), p, dev, pw) : c);
 		switch (ce) {
+		// A FRAME IS THE STYLE'S TO DRAW, WHATEVER SHAPE IT IS.
+		//
+		// QCommonStyle routes CE_ShapedFrame by shape: StyledPanel reaches
+		// drawPrimitive(PE_Frame), which this style answers with box-drawing
+		// glyphs, while Box, Panel and WinPanel go to qDrawShadeRect, whose
+		// four lines arrive through Channel B. Both are now visible -- the
+		// line widening above is what stopped the second being erased -- but
+		// they do not look alike: measured, a Box frame came out with a
+		// vertical rule in each corner cell where a StyledPanel has a proper
+		// corner, because four separate rules have no corners to draw.
+		//
+		// Sending every box-like shape down the same road fixes that and is
+		// design.md D3's own rule, the style knowing WHAT it draws. HLine and
+		// VLine stay with the base style: they are rules rather than boxes,
+		// and draw_box() needs two rows.
+		case CE_ShapedFrame:
+			if (const auto *fo =
+			        qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
+				switch (fo->frameShape) {
+				case QFrame::Box:
+				case QFrame::Panel:
+				case QFrame::StyledPanel:
+				case QFrame::WinPanel:
+					drawPrimitive(PE_Frame, opt, p, w);
+					return;
+				default:
+					break;
+				}
+			}
+			break;
 		case CE_PushButtonBevel:
 			return;                                   // bevel is the label's brackets
 		case CE_PushButtonLabel:
@@ -4716,6 +4746,94 @@ bool GridSnap::installed() { return s_snap != nullptr; }
 // them is the case the document's own example uses. A style-side reader would
 // silently do nothing for most of the tree, which is worse than not having
 // the property. section 8.8 records it.
+// A FRAME THINNER THAN A CELL IS A FRAME THAT GETS ERASED, so raise it to a
+// cell. Settled by the copyright holder 2026-11-02, answering the question
+// 8.645 parked.
+//
+// `QFrame::frameWidth()` asks the style only for `StyledPanel`, where
+// `PM_DefaultFrameWidth` is a whole cell. For Box, Panel and WinPanel it is
+// `lineWidth + midLineWidth` -- Qt's own number, 2 px measured -- while this
+// style draws a border one CELL wide. The border and the contents then share
+// cell 0, and for a QAbstractScrollArea the contents win: the viewport's
+// background is a surface role the default theme leaves at Color::Default,
+// which erases, and it erases the border drawn before it.
+//
+// Measured: `setFrameShape(QFrame::Box)` on a QPlainTextEdit, a QTextEdit or
+// a QListWidget drew NO side of its four. The experiment that named the cause
+// rather than guessing it -- with a theme that names its surfaces, or with
+// the viewport's `autoFillBackground` off, the same frame came out at 46
+// inked edge cells instead of 3, both arms agreeing.
+//
+// Raising `lineWidth` to a cell is all it takes, and the reason it is this
+// small is that the arithmetic downstream is already right: at a frame width
+// of `cw` a Box frame is indistinguishable from a StyledPanel to
+// `sub_element_rect()`'s vertical fix-up, whose gate is that the inset EQUALS
+// `PM_DefaultFrameWidth`. So the horizontal inset becomes a cell here and the
+// vertical one is corrected there, by code that has been doing it for
+// StyledPanel all along.
+//
+// TERMINAL BUILD ONLY, WITH NO CONDITIONAL, because `GridSnap` is installed
+// by `setup()` and nothing else installs it. A desktop build never reaches
+// this function, so a widget's `lineWidth` is untouched there -- which is
+// what keeps G2's promise that qtty is inert when not active.
+//
+// HLine and VLine are left alone deliberately: their frame width is the
+// rule's own thickness rather than an inset, so raising it would turn a
+// one-pixel rule into a ten-pixel bar. StyledPanel is left alone because the
+// style already answers for it.
+static void raise_frame_line(QWidget *w) {
+	// A QAbstractScrollArea AND NOTHING ELSE, which is narrower than the
+	// first version and is where the fault actually is. The eraser is the
+	// VIEWPORT: a widget with no viewport never had its border overwritten,
+	// and raising its line makes it worse rather than better. Measured, a
+	// plain QFrame with a Box frame drew one clean box before and a DOUBLED
+	// one after -- Qt draws Box as two lines, and once they are a cell apart
+	// they land in different cells. So the widening is applied exactly where
+	// the erase happens and nowhere else.
+	auto *f = qobject_cast<QAbstractScrollArea *>(w);
+	if (!f) return;
+	switch (f->frameShape()) {
+	case QFrame::Box:
+	case QFrame::Panel:
+	case QFrame::WinPanel:
+		break;
+	default:
+		return;
+	}
+	// ONLY A LINE THE APPLICATION HAS NOT CHOSEN. Qt's default is 1; anything
+	// else was set deliberately, and widening somebody's explicit 3 to a cell
+	// is overriding a decision rather than accommodating a grid.
+	//
+	// It also makes a second pass a no-op by construction rather than by
+	// arithmetic, which is worth having since Polish is not the only event
+	// that reaches here. **That second reason is NOT why this line was
+	// added, and the record of it was wrong for a while**: a check appeared
+	// to show a widget reaching lineWidth 8464 under a deliberately widened
+	// version of this function, and the figure was a use-after-free in the
+	// check -- it read the widget after the window owning it had been
+	// destroyed. The guard is right for the first reason; the second is a
+	// bonus, not a measurement.
+	if (f->lineWidth() != 1) return;
+	const int cw = GridMetrics::cw();
+	if (f->frameWidth() >= cw) return;         // already a cell or wider
+	// RAISED BY ASKING QT, NOT BY ARITHMETIC OF MINE, and the first version
+	// did the arithmetic and was wrong. It set `lineWidth` to a cell on the
+	// belief that `frameWidth()` is `lineWidth + midLineWidth`; for Box it is
+	// `2 * lineWidth + midLineWidth`, because a Box is two lines with the mid
+	// line between them. Measured: `lineWidth 10, frameWidth 20` -- the
+	// contents inset by TWO cells and the frame drawn as two boxes a cell
+	// apart, a doubled rule down each side.
+	//
+	// So step the line up and let `frameWidth()` say when a cell has been
+	// reached. The formula is Qt's, it differs per shape, and it is not worth
+	// remembering when the object will answer. Bounded by the cell: each step
+	// adds at least one pixel, so a cell cannot take more than `cw` of them.
+	for (int line = f->lineWidth() + 1; line <= cw; ++line) {
+		f->setLineWidth(line);
+		if (f->frameWidth() >= cw) return;
+	}
+}
+
 static void apply_cells(QWidget *w) {
 	const QVariant v = w->property("qtty.cells");
 	if (!v.isValid()) return;
@@ -4750,7 +4868,10 @@ bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
 	// application has asked and been ignored.
 	if (event->type() == QEvent::Polish
 	    || event->type() == QEvent::DynamicPropertyChange) {
-		if (QWidget *pw = qobject_cast<QWidget *>(obj)) apply_cells(pw);
+		if (QWidget *pw = qobject_cast<QWidget *>(obj)) {
+			apply_cells(pw);
+			raise_frame_line(pw);
+		}
 		return false;
 	}
 	if (event->type() != QEvent::Resize && event->type() != QEvent::Move)

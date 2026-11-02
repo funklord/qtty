@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2476 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2479 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -53966,6 +53966,12 @@ fix's clothes. The remedy that would work reaches a widget property from
 the library -- raising `lineWidth` so Qt's own inset is a whole cell, which
 `GridSnap` is the existing precedent for -- and that is a decision about
 touching an application's widgets, so it is recorded rather than taken.
+**TAKEN since: the holder settled it the same day and §8.650 is the fix.**
+It needed the narrowing this paragraph did not predict -- scroll areas only,
+because a widget without a viewport has nothing erasing its border and is
+made worse by the raise -- and the line is stepped up by asking
+`frameWidth()` rather than by arithmetic, Qt's own being `2 * lineWidth +
+midLineWidth` for a Box and not what the first attempt assumed.
 
 **B2 -- NOT a defect, and two of the three measurements that said otherwise
 were mine.** `gui/trust_view.cpp` reports a fingerprint label that "neither
@@ -54268,3 +54274,120 @@ question rather than a defect". It went red under the fix, correctly: a
 gate that disagrees with a change is the first thing to read, and this one
 was right about what it asserts. It is left exactly as it is, because the
 limit it pins is still the behaviour.
+
+### 8.650 A sub-cell frame is raised to a cell, on the holder's word (2026-11-02)
+
+**Settled by the copyright holder 2026-11-02: "yes, raise lineWidth to a
+cell in the terminal build".** That answers the question §8.645 parked, and
+closes the last of the five findings harvested from the consumers.
+
+The fault: an explicit `setFrameShape(QFrame::Box)` on a scroll-area widget
+drew **no side of its four**, while a default `StyledPanel` drew a clean
+box. `QFrame::frameWidth()` asks the style only for StyledPanel, where
+`PM_DefaultFrameWidth` is a whole cell; for Box it is Qt's own arithmetic on
+`lineWidth`, 2 px by default, so the border and the viewport shared cell 0
+and the viewport's surface-role fill erased the border drawn before it.
+
+**TWO HALVES, AND EACH IS JUSTIFIED BY ITS OWN MEASUREMENT.**
+
+`raise_frame_line()`, at `GridSnap`'s Polish — where `apply_cells()` already
+reads the `qtty.cells` hint — steps a sub-cell frame up to a cell. It needs
+no terminal-build conditional: `GridSnap` is installed by `setup()` and
+nothing else installs it, so a desktop build never reaches the function and
+G2's promise that qtty is inert when not active holds by construction.
+
+And `CE_ShapedFrame` now routes every box-like shape to `PE_Frame`, so the
+style draws the frame whatever shape it is (design.md D3). Without it the
+raised Box frame appeared but looked wrong — four separate rules through
+Channel B, with a vertical rule in each corner cell where a StyledPanel has
+a corner. With it, Box renders identically to StyledPanel.
+
+    QPlainTextEdit, Box        before: no side at all
+                                after: the same box StyledPanel draws
+    QPlainTextEdit, StyledPanel  unchanged
+    plain QFrame, Box            unchanged, lineWidth still 1
+
+**THE LOOP ASKS QT RATHER THAN DOING ARITHMETIC, because the arithmetic was
+wrong.** The first version set `lineWidth` to a cell on the belief that
+`frameWidth()` is `lineWidth + midLineWidth`. For Box it is `2 * lineWidth +
+midLineWidth` -- a Box is two lines with the mid line between -- so the
+result was `lineWidth 10, frameWidth 20`: contents inset by TWO cells and
+the frame drawn as two boxes a cell apart. Stepping the line up and letting
+`frameWidth()` say when a cell is reached handles every shape without
+remembering any of Qt's formulas, and it proved its worth immediately: a
+scroll area needs `lineWidth` 5 to reach a cell and a plain `QFrame` needs
+10, which no single formula of mine would have got right.
+
+**AND IT IS NARROWED TO `QAbstractScrollArea`, WHICH THE FIRST VERSION WAS
+NOT.** The eraser is the viewport; a widget without one never had its
+border overwritten, and raising its line makes it worse. Measured: a plain
+`QFrame` with a Box frame drew one clean box before the wide version and a
+DOUBLED box after. So the widening is applied exactly where the erase
+happens.
+
+**THREE CHECKS, AND THE THIRD IS THE ONE THAT EARNS ITS PLACE.** That Box
+draws a frame at all; that it draws *exactly what StyledPanel draws, side
+for side*; and that a widget with no viewport keeps its own line. Nothing
+in the suite would have seen the doubled-box regression, which is what the
+third pins. Both sabotages verified: disable the raise and Box reports
+`0/0/0/0`, the original defect; widen it to every `QFrame` and the plain
+frame's line reaches 10 and the control fires.
+
+**TWO OF MY OWN INSTRUMENTS WERE WRONG FIRST, in the same check.** It read
+`lineWidth()` before the widget was polished, which made the control
+vacuous -- the answer is 1 whatever the library does, and it passed under
+the very sabotage it exists to catch. Then it read the widths *after*
+`sides()` returned, which destroys the local window owning the widgets:
+a use-after-free printing plausible nonsense, `-30392` for one arm and
+`8464` for another. **That 8464 was briefly recorded in the library as a
+measured runaway** and justified a guard against compounding; the guard is
+kept, because widening somebody's explicit `lineWidth` of 3 is overriding a
+decision rather than accommodating a grid, but its comment now says the
+runaway never happened. The widths are read inside the lambda now, and the
+real numbers are 5, 1 and 1.
+
+**0b's row is closed**, and §8.645's B1 with it.
+
+**THE LENS THIS HANDS OVER, RUN, AND IT BOUNDS THE CLASS.** The cause was
+not "a frame" but a shape: **a style metric the WIDGET caches and lets the
+application override.** `PM_DefaultFrameWidth` is a cell here, and only
+`StyledPanel` asks the style for it. Two siblings have the same shape and
+were measured:
+
+- **`PM_TreeViewIndentation`** -- `QTreeView` asks the style until somebody
+  calls `setIndentation()`. At `setIndentation(5)`, half a cell, the
+  indentation quantises to nothing and the label sits hard against its
+  branch indicator: `>child` with no gap where the default has `> child`.
+  Every character is present and the tree is still readable, under an
+  application choice nobody makes by accident. Below the bar as a fix,
+  recorded so it is not re-measured.
+- **`PM_SplitterWidth`** -- `QSplitter::handleWidth()` keeps whatever
+  `setHandleWidth()` was given. **It is immune, and why is the useful
+  part**: at `setHandleWidth(1)` the handle still draws its rule in its own
+  column, because its geometry came out 14 px wide rather than 1. The
+  handle is a WIDGET, and `GridSnap` snaps widget geometry.
+
+**~~So the class is bounded by what GridSnap can see: a sub-cell measurement
+INSIDE a widget, which no geometry snap reaches because it is not
+geometry.~~ THAT WAS WRONG, and the third measurement is what corrected
+it.** A layout's contents margins are the most commonly reached member of
+this class -- applications set them constantly -- and they are **immune**:
+at margins of 3 px and 7 px, both sub-cell, every child landed exactly on
+the grid, `x%cw`, `y%ch`, `w%cw` and `h%ch` all zero. So a sub-cell
+measurement inside a widget IS reached, because it moves a child widget and
+GridSnap snaps child widgets.
+
+**The real bound is the exemption list, and the code already says so.**
+`GridGuard::is_exempt()` excludes Qt's own internal children -- anything
+whose objectName starts `qt_`, anything whose class carries `Private`, plus
+`QHeaderView`, `QScrollBar` and `QTableCornerButton` -- and its comment
+names "a scroll area's viewport" among them. The viewport is
+`qt_scrollarea_viewport`, so it is **exempt from snapping**, keeps its
+sub-cell inset, and shares the border's cell. That is why a frame was
+vulnerable where a margin was not.
+
+So the vulnerable set is sharp and small: **a widget on the exemption list,
+positioned by a measurement the application can override.** Not the 55
+metrics this style overrides, and not insets in general. A third instance
+would be found by crossing those two lists, which is a search somebody can
+actually finish.

@@ -4981,5 +4981,105 @@ int suite_render(bool record) {
 		}
 	}
 
+	// ---- a frame thinner than a cell is raised, and only where it must be --
+	//
+	// FOUND THROUGH A CONSUMER'S OWN WORDS. fuzznet's gui/log_view recorded a
+	// framed editor rendering as "a left edge and nothing else" and removed
+	// the frame. The default frame draws all four sides, so that symptom is
+	// gone; what was left is what an application reaches by asking for a
+	// frame EXPLICITLY, and it drew nothing at all.
+	//
+	// THE THIRD ARM IS THE ONE THAT EARNS ITS PLACE. The first attempt raised
+	// the line on every QFrame and turned a plain one's single clean box into
+	// a DOUBLED box -- Qt draws Box as two lines, and once they are a cell
+	// apart they land in different cells. Nothing in the suite would have
+	// seen that. So the control is not "a frame still draws" but "a widget
+	// with no viewport is left alone", which is what the narrowing to
+	// QAbstractScrollArea is for.
+	{
+		// THE LINE WIDTH IS READ INSIDE, BECAUSE THE WIDGET DOES NOT OUTLIVE
+		// THIS CALL. `f` is parented to a local window, so it is destroyed
+		// when this returns -- and reading `lineWidth()` afterwards is a
+		// use-after-free that prints plausible nonsense: measured, -30392 for
+		// one arm and 0 for another, which the first version of this check
+		// reported as evidence and nearly had the library hardened against a
+		// runaway that was never happening.
+		const auto sides = [](QWidget *f, int *line_out) {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(Qtty::GridMetrics::cells(24, 5));
+			auto *v = new QVBoxLayout(&win);
+			v->setContentsMargins(0, 0, 0, 0);
+			f->setParent(&win);
+			v->addWidget(f);
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(24, 5);
+			Qtty::render_once(win, b);
+			// Each side counted on its own, because a frame drawing one of
+			// its four is the defect this came from and a total cannot tell
+			// that from a frame drawing all of them badly.
+			int top = 0, bottom = 0, left = 0, right = 0;
+			for (int x = 0; x < 24; ++x) {
+				if (b.at(x, 0).ch != QStringLiteral(" ")) ++top;
+				if (b.at(x, 4).ch != QStringLiteral(" ")) ++bottom;
+			}
+			for (int y = 0; y < 5; ++y) {
+				if (b.at(0, y).ch != QStringLiteral(" ")) ++left;
+				if (b.at(23, y).ch != QStringLiteral(" ")) ++right;
+			}
+			if (line_out)
+				if (auto *fr = qobject_cast<QFrame *>(f))
+					*line_out = fr->lineWidth();
+			return QRect(left, top, right, bottom);   // four counts in one
+		};
+		// THE RELATIONSHIP, NOT EITHER VALUE, which this check had to be
+		// rewritten to do. The first version asserted the absolute -- all
+		// 24 cells of the top row, all 5 of each side -- and failed in the
+		// suite while the same widget rendered a complete box in a probe:
+		// here a framed scroll area loses its BOTTOM rule and keeps the two
+		// corners, which is the fault cell_paint.cpp's rounding comment
+		// describes, and it happens to StyledPanel identically. That is an
+		// environment difference this check has no business pinning. What
+		// it is for is that an explicit Box now draws what a StyledPanel
+		// draws, whatever that is here.
+		const auto drew_something = [](const QRect &q) {
+			return q.x() > 0 && q.y() > 0 && q.width() > 0;
+		};
+		int box_line = 0, styled_line = 0, bare_line = 0;
+		auto *boxed = new QPlainTextEdit;
+		boxed->setFrameShape(QFrame::Box);
+		const QRect box_sides = sides(boxed, &box_line);
+		auto *styled = new QPlainTextEdit;
+		styled->setFrameShape(QFrame::StyledPanel);
+		const QRect styled_sides = sides(styled, &styled_line);
+		auto *bare = new QFrame;
+		bare->setFrameShape(QFrame::Box);
+		const QRect bare_sides = sides(bare, &bare_line);
+		printf("info: sides left/top/right/bottom -- Box %d/%d/%d/%d at"
+		       " lineWidth %d, StyledPanel %d/%d/%d/%d at %d, plain QFrame"
+		       " %d/%d/%d/%d at %d\n",
+		       box_sides.x(), box_sides.y(), box_sides.width(),
+		       box_sides.height(), box_line,
+		       styled_sides.x(), styled_sides.y(), styled_sides.width(),
+		       styled_sides.height(), styled_line,
+		       bare_sides.x(), bare_sides.y(), bare_sides.width(),
+		       bare_sides.height(), bare_line);
+		const char *b1 = "an explicit QFrame::Box on a scroll area draws a"
+		    " frame at all, the line having been raised to a cell";
+		if (drew_something(box_sides) && box_line > 1)
+			printf("PASS: %s\n", b1);
+		else { printf("FAIL: %s\n", b1); ++r; }
+		const char *b2 = "and it draws exactly what a StyledPanel draws, side"
+		    " for side, rather than merely something";
+		if (box_sides == styled_sides) printf("PASS: %s\n", b2);
+		else { printf("FAIL: %s\n", b2); ++r; }
+		const char *b3 = "and a widget with no viewport keeps its own line,"
+		    " so a plain QFrame draws one box rather than two";
+		if (drew_something(bare_sides) && bare_line == 1)
+			printf("PASS: %s\n", b3);
+		else { printf("FAIL: %s\n", b3); ++r; }
+	}
+
 	return r;
 }
