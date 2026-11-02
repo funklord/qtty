@@ -2683,6 +2683,33 @@ by nothing: a wrong technical claim meets a gate, a test or somebody
 re-deriving it, while a deferral sits in the document looking like
 diligence.
 
+**THE DESIGN'S OWN REMAINING-EFFORT LIST IS COVERED, walked 2026-11-02
+against design.md §17 rather than against the last session's conclusion.**
+§17 is the document's estimate of what was left to build, in three tiers,
+and every row of all three is built and exercised:
+
+- **§17.1 infrastructure**, six rows -- `CellBuffer` and colours,
+  `InputRouter`, `Compositor` and `FrameScheduler`, GridStyle hardening,
+  theming and quantisation, the snapshot harness and `qtty-replay`. §7.1
+  records each.
+- **§17.2 widget tier**, eleven rows. The three least certain were put to
+  the tree rather than assumed: `QSplitter`'s handle and drag is exercised
+  twelve times in `suite_router`, the editable combo box five times across
+  two suites, and the item-view chunk §17 calls "the biggest single" is
+  `CellItemDelegate` with the roles and the header fix.
+- **§17.3 graphics**, five rows. The half-block upgrade, the one row whose
+  state was least obvious from §7.3, is in sixteen places across
+  `graphics.cpp`, `cell_paint.cpp` and `compositor.cpp`.
+
+**What §17 says is left is not this tree's**: "per-product screen migration
+(Phases 3-4) is on top and scales with each product's screen count", which
+is work in the four products' own trees and waits on OQ-4. design.md has no
+section after §17 naming unbuilt work.
+
+So a reader asking *what is left to build here* has the answer in one line
+-- the tiers are done -- and the open items below are decisions and a
+sighting rather than construction.
+
 In the order I would take them:
 
 1. **The remaining never-taken branches** -- thinner than when this was
@@ -53344,6 +53371,56 @@ Those runs merged stderr into stdout, so off-grid warnings spliced into
 rather than four. Re-measured with the streams separated. **A suite that
 prints warnings cannot be counted through a merged stream**, and the
 temptation is strongest exactly when the warnings are what you are reading.
+
+### 8.636 A QAccessible bridge is reachable, measured without deciding it (2026-11-02)
+
+OQ-5 asks whether qtty owes a `QAccessible` bridge, and design.md §14
+reserves that direction. **What the decision needs and did not have is
+whether a bridge is even possible here**, which is a fact rather than a
+direction -- so it was measured. Four runs had parked the whole question on
+the grounds that the feature is large; being large is not a reason, and the
+part that presumes no answer is this.
+
+**Qt produces a full accessibility interface for every focusable kind under
+the offscreen platform, with no window ever mapped and no assistive client
+attached** (`QAccessible::isActive()` is 0 throughout):
+
+    QLineEdit     EditableText     QComboBox     ComboBox
+    QSpinBox      SpinBox          QSlider       Slider
+    QCheckBox     CheckBox   tick  QTabBar       PageTabList
+    QRadioButton  RadioButton pick QListWidget   List
+    QPushButton   Button     Go
+
+Nine of nine, each with the right role, with `focusable` set, and with the
+name where the widget carries text. **So the information a screen reader
+wants already exists in process** -- this is not a question of computing it.
+
+**AND THE FOCUS HALF IS WHERE THE PLATFORM BITES, which is the useful part
+of the result.** Focusing each in turn and asking the interface who has
+focus gives **0 of 9**, and the reason is not accessibility:
+
+    QLineEdit    a11y.focused=0   hasFocus=0   Qtty::focusWidget=1
+    ... all nine identical
+
+`QWidget::hasFocus()` is false for the same nine, because the offscreen
+platform activates no window -- the fact recorded against F4 and the reason
+qtty keeps its own process-wide focus at all. **`Qtty::focusWidget()` is
+right for nine of nine.** A bridge would therefore pair Qt's role and name,
+which it gets for free, with qtty's focus notion, which it must supply
+itself; Qt's own `focused` state is the one thing it cannot use.
+
+**WHAT THIS DOES NOT DO is answer OQ-5.** Whether to carry accessibility at
+all, and over what -- a screen reader attached to the terminal is not an
+assistive client attached to this process, so there is a transport question
+underneath -- is the direction §14 reserves and this entry takes no view on
+it. What it removes is the unknown: a bridge is reachable, Qt supplies two
+of the three things it needs, and the third is already in the tree.
+
+**The lesson is the one about measuring a feared cost before deliberating.**
+Parked four times as "a feature of real scope", the question's own
+feasibility took one probe and eleven lines of output, and the answer
+narrows what the decision is about from "is this possible" to "is this
+worth carrying".
 
 ### 8.637 Every wrong claim in the README's comparison was about the neighbour (2026-11-02)
 
