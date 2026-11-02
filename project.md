@@ -53641,3 +53641,102 @@ anything.
 So the answer is **no**, and it is not a judgement anybody has to make. The
 question is retired rather than parked, and the out-of-gate list is where
 both belong.
+
+### 8.641 G3's "four implementations": two are findable, two are not (2026-11-02)
+
+**G3 is the one goal design.md records as part met**, and §8.614 left its gap
+as a name: *"the fourth is unconfirmed"*. Re-taken today from the other
+direction. §8.614 asked which trees **consume qtty**; this asks which trees
+**have a terminal UI of their own** -- the thing G3 proposes to retire --
+because a goal about consolidating four implementations needs the four to
+exist before it needs anybody to adopt anything.
+
+**WHAT WAS SEARCHED.** Nineteen private trees on this machine, for
+`ncurses.h`, `<curses.h>`, `initscr(`, `termpaint`, directories named
+`tui`, `curses` or `term`, and raw-ANSI screen control -- the alternate
+screen (`1049h`), a clear (`[2J`) and absolute cursor positioning -- across
+`.c`, `.cpp`, `.h`, `.hpp`, `.rs` and `.py`, excluding `.git`, vendored
+copies of qtty and fuzznet, `deps/`, and the vendored yt-dlp and libvterm.
+
+**TWO HAND-WRITTEN TERMINAL UIs EXIST:**
+
+    fuzzypickles   tui/ -- C with ncurses, shipped as fzptui
+    netcfgd        crates/netcfgd-sys/src/curses.rs
+
+**AND TWO THINGS THAT LOOK LIKE ONE AND ARE NOT.** `beerssh/src/term/` is a
+terminal EMULATOR -- it embeds libvterm for an SSH client, which is the
+opposite relationship to the one G3 is about. `openmlx4/src/main.c`'s
+only ANSI hit is a comment explaining why a firmware image carrying
+`ESC [2J` must not reach a raw terminal, beside a plain progress callback.
+Neither is a product's own screens drawn by hand.
+
+**raidcfgd HAS NONE**, which is the finding that matters most, because
+§8.614 counts it as one of the three confirmed consumers: it reaches qtty
+from a production entry point while never having had a TUI to retire. It is
+a consumer of G3's answer, not one of G3's four problems. Those are
+different roles and the goal's sentence does not separate them.
+
+**WHAT THIS DOES AND DOES NOT SETTLE.** It does not say the goal is wrong.
+The holder counted four and may be counting products rather than
+implementations, or a tree that is not on this machine. What it does is
+move the gap: it is no longer "which product is the fourth consumer" but
+**"what are the other two implementations, and do they exist here"** -- and
+that is the holder's own count, which is why §8.614 was right to leave it
+with them rather than guess.
+
+**THE SEARCH'S OWN HOLES, because an absence is the easiest thing to
+manufacture.** A toolkit not named -- the three named are design.md's own
+candidates, so this is narrow. A language not covered -- the six cover
+every language these trees use. **A TUI drawing escapes assembled from
+variables rather than written as literals, which this search cannot see
+and is the real residual hole.** And a product whose tree is not on this
+machine, which no search here can reach. Recorded so the next reader
+re-runs the part that is weak rather than the whole thing.
+
+### 8.642 Two rows of the support matrix cannot be tested, and did not need to be (2026-11-02)
+
+**N4 says coverage is defined by §8.4's matrix**, so the matrix is part of
+the project's own statement of what it does. Walking it: the Native row is
+tested widget by widget, the Replaced row has `QTextEdit`,
+`QPlainTextEdit` and `QCalendarWidget` in the suite, and the Unsupported
+row -- *"renders a labelled placeholder box"* -- has `QGraphicsView`
+tested end to end and **nothing for the other six.**
+
+The mechanism is one function walking a widget's metaobject superclass
+chain against a list of seven class names, so the MECHANISM is proven by
+the one row that is tested. What is unproven for the other six is only
+**the spelling of six strings** -- and a misspelling there is silent and
+expensive: the widget renders whatever its `paintEvent` produces instead of
+a box saying what is missing, which §8.4's own note calls "the difference
+between an unsupported widget and a broken one".
+
+**Testing them properly is not available and should not be bought.** Each
+needs its Qt module linked into the suite -- `QtOpenGLWidgets`,
+`QtQuickWidgets`, `QtQuick`, `QtWebEngineWidgets`, `QtMultimediaWidgets` --
+and a gate must not require a module it cannot assume, which is §8.640's
+rule arriving from a third direction. Linking QtWebEngine into a test
+binary to assert one box is the clearest case of the cure costing more than
+the disease.
+
+**So verify the spellings instead, against Qt's own headers, with nothing
+compiled or linked.** A `Q_OBJECT` class's `className()` is its C++ class
+name, and the installed headers declare it:
+
+    QGraphicsView     QtWidgets/qgraphicsview.h
+    QOpenGLWidget     QtOpenGLWidgets/qopenglwidget.h
+    QQuickWidget      QtQuickWidgets/qquickwidget.h
+    QQuickView        QtQuick/qquickview.h
+    QWebEngineView    QtWebEngineWidgets/qwebengineview.h
+    QVideoWidget      QtMultimediaWidgets/qvideowidget.h
+    QAxWidget         not present
+
+Six of seven confirmed. **The seventh is not a fault**: `QAxWidget` is
+ActiveQt, which is Windows-only, and no module of that name is in the
+installed Qt at all -- so its absence here is the expected answer and
+reporting it as a missing class would have been this entry's own
+instrument fault.
+
+A one-off reading rather than a gate, deliberately: the risk is that a
+name was typed wrong once, which a single check retires, and the names do
+not drift. Re-run the loop above after a Qt major bump, where a class could
+genuinely move or be renamed.
