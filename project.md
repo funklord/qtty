@@ -14122,29 +14122,31 @@ at it was the other version's crash.
 `make test-versions` runs every installed version in one command, which
 is what this section's two-variable recipe above had been for.
 
-### 8.2 The L6 API shape
+### 8.2 The L6 API shape -- SETTLED
 
-**design.md §5.6 specifies:** `class Qtty::Application`, constructed from
-a `QApplication` and a `std::unique_ptr<ITerminalBackend>`, with
-`prepareEnvironment()`, `setTheme()` and `exec()`.
+**Closed by the copyright holder 2026-11-02: L6 is free functions, and
+design.md §5.6's `Application` class is struck.** The roadmap item that
+held it, §11 item 5, is closed with it. §8.644 records the decision and
+the three arguments that made the shape right rather than merely shipped.
+What this entry recorded while it was open:
 
-**The code has:** free functions `prepareEnvironment`, `setup`, `exec`,
-`isTuiActive` and `renderOnce`, with the backend hardwired inside
-`exec()`.
+**design.md §5.6 specified** `class Qtty::Application`, constructed from a
+`QApplication` and a `std::unique_ptr<ITerminalBackend>`, with
+`prepareEnvironment()`, `setTheme()` and `exec()`. **The code had** free
+functions -- `prepare_environment`, `setup`, `exec`, `is_tui_active` and
+`render_once` -- and the two halves of the document did not agree with each
+other either: §16.4 called the free-function surface "the intended
+`qtty::Application` API" while §5.6 declared the class.
 
-The free-function shape is what `example/chat/main.cpp` was written
-against and what design.md §16.4 calls "the intended `qtty::Application`
-API", so the two halves of the document do not agree with each other
-either.
-
-**One half of this entry was itself stale and is withdrawn.** "The
-backend hardwired inside `exec()`" has not been true since the seam was
-added: `exec(QApplication &, QWidget &, ITerminalBackend &)` is public
-and is what the convenience `exec(app, win)` calls after building an
-`AnsiBackend` on its own stack. An application can pass `NullBackend`
-today, and a `TermpaintBackend` would need no API change. What remains
-open is only the SHAPE -- free functions or a class -- which is a
-decision on its merits and the copyright holder's.
+**One half of this entry was itself stale and was withdrawn before the
+decision.** "The backend hardwired inside `exec()`" had not been true since
+the seam was added: `exec(QApplication &, QWidget &, ITerminalBackend &)`
+is public and is what the convenience `exec(app, win)` calls after building
+an `AnsiBackend` on its own stack. An application can pass `NullBackend`
+today, and another implementation would need no API change. **That
+withdrawal is why the question could be decided on its merits at all** --
+while the entry claimed the backend was unreachable, a class looked like
+the way to reach it.
 
 ### 8.3 The termpaint and backend READMEs -- fixed
 
@@ -44030,8 +44032,12 @@ as long as it stood: **an open question that reality has closed is not the
 same as one somebody must decide** -- it wanted striking through by its
 owner, and the owner has now delegated exactly that. What has not changed
 is the other half: a question somebody must *decide* is still not mine.
-(README carries the same caution about the API chapter and is this tree's
-own file, so it was never the one waiting.)
+(README carried the same caution about the API chapter and is this tree's
+own file, so it was never the one waiting -- and it is **gone** as of
+2026-11-02, the class having been struck: a caution that design.md says
+something it no longer says is exactly the snapshot a README must not
+carry. What stands in its place is timeless -- the headers are the API,
+design.md is the design. §8.644.)
 
 **Two other triggers in that table are worth knowing about and are not
 being raised as findings.** R3's is *"assert fires"* and the assert
@@ -45646,9 +45652,15 @@ Dependency-ordered:
    frames are bracketed when the terminal confirms it. **And the title
    emitter that was left of it is done** -- see §8.42. That section is
    now closed.
-5. **§8.2**: whether L6 becomes the `Application` class design.md §5.6
-   specifies. The backend seam no longer waits on it, so this is now a
-   design decision taken on its merits rather than a blocker.
+5. ~~**§8.2**: whether L6 becomes the `Application` class design.md §5.6
+   specifies.~~ **CLOSED by the copyright holder 2026-11-02: the class is
+   struck and L6 stays free functions.** design.md §5.6 now specifies what
+   ships and says why the shape won on its merits; §16.4's sentence calling
+   the free-function surface "the intended `qtty::Application` API" is
+   recorded as the bet that paid. §8.644 has the decision and what it
+   closed. **Nothing in the code changed**, which is the point: the item
+   was a question about a document, and every call site was already on the
+   shape that won.
 
 The **member rename** is done. Closing OQ-6 in favour of PascalCase
 *type* names made the tree's `camelCase` members a plain divergence from
@@ -53844,3 +53856,51 @@ that found these seven read design.md for present-tense claims of absence
 is a good detector for the class and blind to a claim that is wrong while
 sounding positive. §5.3's and §5.5's were both of that second kind and came
 from §0b rather than from the sweep.
+
+### 8.644 L6 is free functions: the class is struck (2026-11-02)
+
+**Decided by the copyright holder 2026-11-02, on being shown the
+disagreement: strike design.md §5.6's `Application` class and close §11
+item 5.** Done, and nothing in the code changed -- which is the shape of
+the whole item. It was a question about a document, and every call site in
+the tree, the suite and the shipped example was already on the surface that
+won.
+
+**What was wrong was a three-way disagreement, not a two-way one**, and
+that is why it had stood so long. §5.6 declared a class taking a
+`QApplication` and a `unique_ptr<ITerminalBackend>`, with `setTheme()` and
+a member `exec()`. §16.4 said the example's
+`prepareEnvironment`/`setup`/`exec` surface **is** "the intended
+`qtty::Application` API" -- naming a function the class did not have. And
+`qtty/application.h` shipped §16.4's shape. So a reader of §5.6 wrote code
+that would not compile, and a reader of §16.4 was right without the
+document ever saying the other section was superseded.
+
+**The document now specifies what ships**, with the real signatures and the
+shipped example's own `main()` rather than a sketch -- and the sketch was
+wrong in a way worth keeping: its terminal branch had the application call
+`screen.show()` and stamp `WA_DontShowOnScreen` itself, where `exec()` owns
+both. A document asking the caller to do what the runtime must is worse
+than one that is merely out of date, because the code it produces appears
+to work.
+
+**Three arguments make free functions right rather than merely shipped**,
+recorded because "we did it that way" is the answer that gets relitigated:
+
+- A class earns its place by owning something, and the thing it would own
+  is the backend -- which is already public at the one call that needs it,
+  `exec(app, win, backend)`. §8.2's claim that the backend was hardwired
+  inside `exec()` had been withdrawn before this decision, and **that
+  withdrawal is what let the question be decided on its merits**: while the
+  entry said the backend was unreachable, a class looked like the way to
+  reach it.
+- The lifetime a constructor would manage is the lifetime of `exec()`,
+  which is a call and not an object.
+- The three functions are each callable at exactly one point in a program,
+  in a fixed order the header states, so there is no state between them for
+  an object to hold.
+
+**What the decision does not touch.** `set_theme()` stays in
+`qtty/theme.h`, where it was already, because a theme is process-wide state
+a program may replace at any point rather than a property of one run --
+which is also the reason it was never going to be a method on this class.

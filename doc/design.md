@@ -122,7 +122,7 @@ Retained as the documented fallback (§13.2).
         GUI build │                                  │ TUI build
                 ▼                                    ▼
      ┌────────────────────┐          ┌──────────────────────────────┐
-     │  QApplication      │          │  qtty::Application           │  L6 Runtime
+     │  QApplication      │          │  Qtty::setup, Qtty::exec     │  L6 Runtime
      │  xcb / wayland /   │          │  QApplication(-platform      │
      │  windows / cocoa   │          │      offscreen)              │
      └────────────────────┘          │  Compositor · InputRouter    │
@@ -637,53 +637,61 @@ readers.
 
 ### 5.6 L6 — Runtime
 
-```cpp
-namespace qtty {
-class Application {
-public:
-    // Must be constructed before QApplication: sets QT_QPA_PLATFORM=offscreen,
-    // QT_SCALE_FACTOR=1, and the bundled font dir.
-    static void prepareEnvironment();
+**L6 is free functions, settled by the copyright holder 2026-11-02.** This section
+specified a `class qtty::Application`, constructed from a `QApplication` and a
+`std::unique_ptr<ITerminalBackend>`, with `prepareEnvironment()`, `setTheme()` and
+`exec()`. **That class is struck.** It was never built, §16.4 had already called the
+free-function surface "the intended `qtty::Application` API", and the roadmap item
+holding the choice open is closed with it. What ships is `qtty/application.h`:
 
-    Application(QApplication &, std::unique_ptr<ITerminalBackend>);
-    void setTheme(const CellTheme &);
-    int  exec();
-};
+```cpp
+namespace Qtty {
+// BEFORE QApplication: sets QT_QPA_PLATFORM=offscreen, the scale policy,
+// and the font directory.
+void prepare_environment();
+
+// BEFORE any widget: installs the style, the theme and the grid filters.
+void setup(QApplication &app);
+
+// Drives the terminal. The two-argument form builds an AnsiBackend on its
+// own stack; pass one to choose it -- NullBackend in a test, another
+// implementation later -- and no API changes for that.
+int exec(QApplication &app, QWidget &win, ITerminalBackend &backend);
+int exec(QApplication &app, QWidget &win);
 }
 ```
 
-*Corrected 2026-11-02: no such class exists, and the block above is a proposal rather
-than a description.* `qtty/application.h` ships free functions in namespace `Qtty` --
-`prepare_environment()`, `setup(QApplication &)`, `exec(app, win, backend)` and
-`exec(app, win)`, with the theme set through `set_theme()` in `qtty/theme.h` -- which is
-the shape §16.4 calls "the intended `qtty::Application` API", spelled in this
-workspace's `snake_case`. So a reader who writes `qtty::Application tty(app,
-makeBackend())` from the block above gets a compile error. **Whether the class is still
-wanted is a live question and is the copyright holder's**: §11's roadmap item 5 lists
-it, §16.4 treats the free functions as the destination rather than a stand-in, and
-choosing between them is choosing the shape of a public interface. Only the factual
-half is corrected here -- what exists today -- and the block is kept because it is what
-the question is about.
+The theme is `Qtty::set_theme()` in `qtty/theme.h`, not a method here, because a theme
+is process-wide state that a program may replace at any point and not a property of a
+run.
 
-`main()` becomes:
+`main()` becomes — and this is the shipped example's own shape rather than a sketch:
 
 ```cpp
 int main(int argc, char **argv) {
     const bool tui = wantsTui(argc, argv);
-    if (tui) qtty::Application::prepareEnvironment();
+    if (tui) Qtty::prepare_environment();       // BEFORE QApplication
     QApplication app(argc, argv);
+    if (tui) Qtty::setup(app);                  // BEFORE any widget
 
     MainScreen screen;                          // ← identical in both builds
-    if (tui) {
-        qtty::Application tty(app, makeBackend());
-        screen.setAttribute(Qt::WA_DontShowOnScreen);
-        screen.show();
-        return tty.exec();
-    }
+    if (tui) return Qtty::exec(app, screen);
     screen.show();
     return app.exec();
 }
 ```
+
+Note what the terminal branch does **not** do: it neither shows the window nor stamps
+`WA_DontShowOnScreen`. `exec()` owns both, so an application cannot get the order wrong
+— which the struck class's example got wrong on both counts, asking the caller to do
+what the runtime must.
+
+**Why free functions won on their merits, not only by default.** A class would have to
+own the backend to be worth having, and the backend seam is already public at the one
+call that needs it; the lifetime a constructor would manage is the lifetime of
+`exec()`, which is a call rather than an object; and the three functions are each
+callable at exactly one point in a program, in a fixed order the header states, so
+there is no state between them for an object to hold.
 
 **On `Qt::WA_DontShowOnScreen` — the one place this design leans on undocumented
 behaviour.** Its entire official documentation is *"Indicates that the widget is hidden
@@ -1521,6 +1529,10 @@ library — and extended with the frontend-selection and packaging story:
   mosaic, hardware cursor via `ImCursorRectangle`) so the example runs in a real
   terminal *today*; its `prepareEnvironment`/`setup`/`exec` surface is the intended
   `qtty::Application` API, so example code ports to the real library unchanged.
+  *2026-11-02: that bet paid and is now the settled shape* — §5.6's class is struck,
+  the library ships these three as free functions, and the example calls the real ones.
+  The names are `snake_case` in the library, which is this workspace's rule for its own
+  identifiers; nothing else about the surface moved.
 
 Verified: all three variants build and exit clean; the TUI, fed a scripted session,
 accepts typed text into the `QLineEdit` (synthetic events through the F4 focus rule),

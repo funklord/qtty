@@ -424,11 +424,9 @@ status note at the top.
     VERSION           the one place the version number is stated
     project.md        design and intent; code-style.md, .style-gate.toml
 
-**One caution about `doc/design.md`.** Its API chapter (section 5.6)
-describes a `qtty::Application` class that was never built: the shipped
-surface is the free functions in `include/qtty/application.h`, in namespace
-`Qtty`. Read design.md for the reasoning and the headers for the API.
-`project.md` section 8.2 records the disagreement and whose decision it is.
+**The headers are the API; `doc/design.md` is the design.** Where you want
+a signature, read `include/qtty/`; where you want to know why something has
+the shape it does, read design.md.
 
 ## Naming
 
