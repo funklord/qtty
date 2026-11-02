@@ -54485,16 +54485,23 @@ is Qt's: `QTableView::sizeHintForColumn` adds a pixel for the grid line when
 `showGrid()` is on. Confirmed by turning the grid off, which gives 20, 70
 and 170 and nothing off the grid.
 
-**IT ACCUMULATES, AND THAT IS WHERE THE DAMAGE IS.** One pixel per column
-means the tenth column is a whole cell out. Measured over twelve
-one-character columns, the drift ran 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 px -- and
-the render lost four of the twelve column separators:
+**IT ACCUMULATES.** One pixel per column means the tenth column is a whole
+cell out. Measured over twelve one-character columns, the drift ran 0, 1, 2,
+3, 4, 5, 6, 7, 8, 9 px -- and the render lost four of the twelve column
+separators:
 
     | x|x|x|x|x| x x x x x| x| x|
 
-Five columns separated, five not, five again. A reader cannot see where the
-middle columns end. That is not a pixel-accounting curiosity; it is a table
-that does not say what its columns are.
+Five columns separated, five not, five again.
+
+**~~A reader cannot see where the middle columns end; this is a table that
+does not say what its columns are.~~ THAT READING WAS WRONG, and §8.653 has
+the correction.** The missing separators are this tree's own rule working as
+designed -- *"a rule that meets content is not drawn at all"*, asserted by
+`a table's grid leaves its labels' own spaces alone` with the reason in its
+comment -- and under `ResizeToContents` every column is sized exactly to its
+content, so every column meets it. What stands from this entry is the drift
+itself, below; what does not is the damage attributed to it.
 
 **THE SMALL FIX WORKS AND IS WRONG.** `CT_ItemViewItem` can see the view, so
 it can ask for one pixel less when `showGrid()` is on and let Qt's addition
@@ -54536,3 +54543,72 @@ exercised drawing path here, and two successive ideas in this same area have
 already been wrong -- Qt's `frameWidth` formula in §8.650, and the pixel
 give-back above. A central path deserves a fresh attempt rather than a tenth
 iteration, and the specification above is what makes that attempt cheap.
+
+### 8.653 Five attempts, and the project had already decided it (2026-11-02)
+
+§8.652 specified a Channel A column separator as the next piece of work and
+priced it cheaply. **It was attempted five ways, and the fifth was stopped
+by a check whose comment states a rule this tree had already settled -- which
+means §8.652's finding was half wrong and is corrected below.**
+
+**ATTEMPT 1, give Qt's pixel back.** `CT_ItemViewItem` asks for one cell less
+when `showGrid()` is on. The drift goes to zero for all twelve columns and
+every separator disappears, because a one-pixel line on a cell boundary
+belongs to no cell.
+
+**ATTEMPT 2, draw it in Channel A at the item's last cell**, Qt's grid off.
+All twelve separators appear and **nine of twelve labels are gone** -- an
+item's text sits one cell in, so in a two-cell section the text IS the last
+cell, and a separator drawn after it overwrites it.
+
+**ATTEMPT 3, the same but only into a blank cell.** Labels survive. But the
+three-column table came out off the grid AND bare, because `take_grid()` runs
+at Show and the header has already sized its sections with the grid on.
+Polish is too early -- a header is polished before the application can touch
+it (§8.651) -- and Show is too late.
+
+**ATTEMPT 4, switch the grid off at Show and re-size the sections.** The
+drift is fixed: `20 +0, 70 +20, 170 +90`, none off the grid. And no
+separators, because `ResizeToContents` sizes every column exactly to its
+content, so the last cell is always the label and "data wins" blocks it
+every time.
+
+**ATTEMPT 5, give the separator its own cell.** It works, on both fixtures:
+`| a| medium| quite a long one|` with the columns on the grid, and twelve
+one-character columns each with a divider where five had one before. Adding
+the same cell to `CT_HeaderSection` was needed too, and *"a heading shares
+an edge with its data"* caught that within a minute.
+
+**AND THEN A CHECK CALLED `a table's grid leaves its labels' own spaces
+alone` WENT RED, WHICH ENDS THE MATTER.** Its comment: *"A rule that meets
+content is not drawn at all now, which is this tree's answer for chrome a
+cell grid cannot represent."* It asserts the label's cells are **identical
+with the grid on and off** -- so the grid may not change anything about the
+text, and a column one cell wider when the grid is on does exactly that.
+That is a decision this project took deliberately and recorded with its
+reason. It outranks my judgement, and attempt 5 is reverted with the rest.
+
+**SO §8.652 WAS HALF WRONG, AND THIS IS THE CORRECTION.** Its headline was
+that `ResizeToContents` "loses four of twelve separators" and that this is a
+table that does not say what its columns are. **The missing separators are
+not a defect**: they are the rule above, working as designed, on columns
+sized exactly to their content -- which under that mode is every column. The
+part that stands is narrower: **the one-pixel drift is real**, it accumulates
+to a whole cell by the tenth column, and the only thing that removes it
+(turning Qt's grid off) removes the grid with it.
+
+**What this cost and what it is worth.** Five attempts to learn that the
+question was already answered -- and
+`working-practice.md` says to look for exactly that *before* treating
+anything as open: "look for where the project has settled it under another
+name -- a decision record, a section of the description, or a sibling in the
+tree doing the same job whose comment says why." A single
+`grep -n "grid" test/suite_widgets.cpp` would have found it at the start. The
+lesson is not about tables; it is that the search for a prior decision has to
+happen before the first attempt, not after the fifth.
+
+**What remains genuinely open** is the drift alone, and it is the holder's
+call rather than a defect to fix: a terminal table under `ResizeToContents`
+has columns whose pixel positions drift by one per column, visible only as
+the odd separator appearing or not. Removing it means not drawing Qt's grid,
+and this tree has chosen to draw it. Suite green at 2480, nothing changed.
