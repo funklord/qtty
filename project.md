@@ -53904,3 +53904,98 @@ recorded because "we did it that way" is the answer that gets relitigated:
 `qtty/theme.h`, where it was already, because a theme is process-wide state
 a program may replace at any point rather than a property of one run --
 which is also the reason it was never going to be a method on this class.
+
+### 8.645 The consumers' own comments are a requirements document (2026-11-02)
+
+**Set by the holder: the four terminal implementations were never a central
+requirement and this record kept treating them as one.** What decides
+whether qtty is complete is **the consumers** -- that the programs using it
+can render and drive their real screens, and that what they will plausibly
+reach for next is there. So this reads what they build rather than what §2
+says about them.
+
+**THE CONSUMER THAT MATTERS MOST IS NOT A PRODUCT.** `fuzznet/gui/` is
+**24 views** with their own `make qtty` target and a `qtty_render_test.cpp`,
+and it is vendored into netcfgd, raidcfgd **and** fuzzypickles -- so one
+consumer serves three trees, and a gap there is a gap in all of them.
+Beside it: netcfgd's `gui/src/main.cpp`, fuzzypickles'
+`gui/src/main_window.cpp`.
+
+**And five of those files carry qtty findings in the consumer's own words,
+none of which ever reached this tree.** That is the method worth keeping
+from this entry: a consumer's source comments are a requirements document
+nobody had thought to read, written by somebody holding a real screen.
+Three findings, and the measurements settle them differently.
+
+**B1 -- "a left edge and nothing else" is FIXED, and what is left is
+narrower.** `gui/log_view.cpp` records a framed editor rendering as
+box-drawing down one column with no top run and no right side, and removes
+the frame to be rid of it. Measured today at 24x5, inked edge cells of a
+whole box being 54:
+
+    QTextEdit, default frame        54    a clean box
+    QPlainTextEdit, default         54
+    QListWidget, default            54
+    plain QFrame, Box               54
+    QTextEdit, QFrame::Box           3    nothing but the text
+    QPlainTextEdit, QFrame::Box      3
+
+So the default frame draws all four sides and their symptom is gone. What
+remains is that an application asking for `QFrame::Box` **explicitly** on a
+scroll-area widget gets no frame at all.
+
+**The cause is geometry, not drawing, and the experiment is what named it.**
+With a theme that NAMES its surfaces, or with the viewport's
+`autoFillBackground` off, the same Box frame comes out at **46** instead of
+3. Both arms agree, so the frame reaches the cells and an erase removes it:
+`QFrame::frameWidth()` asks the style only for `StyledPanel`, and for Box it
+is `lineWidth + midLineWidth` -- 2 px measured -- where this style draws a
+border one CELL wide. Border and viewport then share cell 0, and the
+viewport's `Base` fill erases (§8.639's rule, met from a third direction).
+
+**Two fixes were written, measured, and REVERTED, which is the part worth
+recording.** Routing `CE_ShapedFrame` through Channel A for every box-like
+shape: traced as reached, and changed nothing. Snapping a sub-cell frame
+inset out to whole cells in `SE_ShapedFrameContents`: also changed nothing,
+and tracing said why -- every `SE_ShapedFrameContents` query arrives at the
+widget's **unlaid-out 100x30**, so a guard needing three cell rows rejects
+it, and `QAbstractScrollArea` lays its viewport out from `frameWidth()`
+rather than from that rect anyway. **98 lines that passed the style gate,
+compiled, and did nothing**; keeping them would have been churn wearing a
+fix's clothes. The remedy that would work reaches a widget property from
+the library -- raising `lineWidth` so Qt's own inset is a whole cell, which
+`GridSnap` is the existing precedent for -- and that is a decision about
+touching an application's widgets, so it is recorded rather than taken.
+
+**B2 -- NOT a defect, and two of the three measurements that said otherwise
+were mine.** `gui/trust_view.cpp` reports a fingerprint label that "neither
+fitted nor wrapped: it CLIPPED ... The widget held all 79 characters and the
+screen showed 78". A label clipping text too wide for it is Qt's own
+behaviour, so the only thing that would be a qtty defect is a
+**disagreement**: a width where the window has room and the cells lose a
+character. Swept 28 to 84 columns: at every width the cells carry exactly
+`min(79, cols)` characters. No disagreement.
+
+The two faults were instruments, and both are this file's recurring class:
+a first version counted **non-space glyphs**, which drops the fingerprint's
+fifteen spaces and reported 64 of 79 lost at a width where nothing was lost;
+a second trimmed trailing spaces and so read 39 of 40 at exactly 40 columns,
+where the 40th character IS a space. The consumer's own note attributes that
+40-column shortfall to "the layout's own margin"; it is a space.
+
+**B3 -- met by design, and both of the header's claims hold.**
+`gui/qr_view.h` calls square modules "the whole of the qtty question": a
+cell is not square, so a module painted one cell by one cell reaches a
+scanner stretched two to one. Their answer is to paint PIXELS and let the
+backend map them, which is what `Qtty::cells(image_px, cell_px)` is for.
+Verified rather than read:
+
+    cells(100x100, invalid cell) = -1x-1, empty -- it refuses to guess
+    40x40 px   -> 4x3 cells   =  40x57 px box
+    100x100    -> 10x6        = 100x114
+    190x190    -> 19x10       = 190x190
+    200x200    -> 20x11       = 200x209
+
+Every box CONTAINS the square, so the picture keeps its proportions inside a
+margin rather than being stretched to fill, and a caller with no cell size
+gets nothing back rather than a plausible wrong answer.
