@@ -53344,3 +53344,50 @@ Those runs merged stderr into stdout, so off-grid warnings spliced into
 rather than four. Re-measured with the streams separated. **A suite that
 prints warnings cannot be counted through a merged stream**, and the
 temptation is strongest exactly when the warnings are what you are reading.
+
+### 8.637 Every wrong claim in the README's comparison was about the neighbour (2026-11-02)
+
+`claude-guidelines` `e6a00c0` signalled this from raidcfgd on the same day:
+of seven bullets naming neighbours, four carried a wrong claim and **every
+one was an invented weakness of the neighbour** rather than an overstated
+strength of the project -- and three of the four were disprovable from that
+tree's own documents. Offered as a caution for the pass every tree is now
+making. **It held here, and the count is worse.**
+
+The README written an hour earlier (46f695c) carried **four** wrong claims,
+and all four were about the other side of the comparison:
+
+| claim | what was wrong |
+|---|---|
+| a `TuiLabel` class, contrasted with `QLabel` | Tui Widgets does not spell it that way; the name was invented to make the contrast concrete |
+| Tui Widgets "runs on Qt's event loop" | plausible and never measured here |
+| "the alternatives are exercised through their own renderers against a pty" | `notcurses` appears twice in this tree and nothing in it measures how any neighbour is tested |
+| "a terminal toolkit exposes kitty or sixel as its own drawing calls" | same: no measurement, and stated as the thing qtty is better than |
+
+**Not one wrong claim was about qtty.** The five bullets describing what
+this library does were each sourced -- to §5.2 for the view-versus-model
+sentence, to the `probe-style` gate for inertness, to the suite for the
+driven snapshot. The direction is the whole finding: a writer checks the
+claims their own tree can falsify and does not think to check the others,
+because there is no reflex and no gate on the other side of a comparison.
+
+**And the operational form of the rule is a question, not a feeling.** Not
+*do I believe this* -- all four were believable, which is why they were
+written -- but **where in this tree is the sentence that would contradict
+me.** Asked of each, two were answered by `grep` in under a minute: the
+tree has no sentence about how neighbours are tested, which is itself the
+answer, because a claim with no backing anywhere is not one to publish.
+
+**A fifth claim was wrong in a different direction and is worth separating**
+from the four, because it was not about a neighbour. The README said the
+terminal build "targets Linux" -- which §5.1 records as a decision that
+*must be made and has not been*, and which §0b lists among the holder's.
+Stating it settled a reserved question in the one document an adopter reads
+first. It now gives the constraint Qt documents, the X11 limitation, and
+says the scope is unsettled.
+
+**So a README comparison needs two sweeps rather than one.** The claims
+about the neighbours, each put to "what in this tree contradicts this" --
+and the claims about this project, each put to "is this ours to state yet".
+The first catches invention and the second catches decisions taken in
+passing. Four and one, in forty lines of prose.

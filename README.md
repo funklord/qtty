@@ -36,9 +36,13 @@ layer instead of the view layer", its terminal connection being pluggable
 enough that qtty's backends would still fit. That sentence is the
 difference, item by item:
 
-- **qtty shares the view.** The others share the model at best. With them a
-  GUI program's terminal mode is a second screen implementation; with qtty
-  it is a link-time decision.
+- **qtty shares the view.** With the others a GUI program's terminal mode
+  is a second screen implementation; with qtty it is the same binary
+  deciding at startup -- the shipped example picks its target from a `--tui`
+  flag, from the name it was invoked under, or from the environment, and the
+  widgets neither know nor care. That qtty shares the view where the
+  fallback plan would have shared the model is this project's own phrasing,
+  quoted above.
 - **qtty ships no widgets.** There is no widget class of its own to learn,
   because the widgets are Qt's: `QLabel` is the label. What an application
   already knows about Qt is the whole API, and what it already owns is
@@ -47,14 +51,17 @@ difference, item by item:
   `GridStyle` is installed, no paint device is current, and a GUI build
   behaves as though the library were absent. A terminal mode that degrades
   the desktop one is not a trade this makes.
-- **A screen is testable without a terminal.** The alternatives are
-  exercised through their own renderers against a pty; here the artifact
-  under test is a block of text, which a snapshot can compare character by
-  character -- including after keys have been pressed into it.
-- **The application never names a graphics protocol.** Where a terminal
-  toolkit exposes kitty or sixel as its own drawing calls, qtty picks the
-  tier from what the terminal answered and leaves ordinary Qt painting as
-  the only thing an application writes.
+- **A screen is testable without a terminal.** The artifact under test is a
+  block of text, which a snapshot compares character by character --
+  including after keys have been pressed into it, so a regression in a
+  dialog's layout fails a test rather than being noticed. Whether the
+  alternatives can be driven this way is not something this project has
+  measured, so it claims nothing about them here.
+- **The application never names a graphics protocol.** qtty asks the
+  terminal what it supports, picks the tier, and leaves ordinary Qt
+  painting as the only thing an application writes -- a `drawPixmap` is a
+  `drawPixmap` whether it ends up as a kitty upload, a sixel, or half
+  blocks.
 
 Where a team has no close neighbour to compare against, the honest
 comparison is with what they do instead: keep two view layers by hand, or
@@ -64,8 +71,10 @@ qtty exists so that neither is the price of running in a terminal.
 **What is not there yet**, said once rather than in every paragraph: the
 library is pre-alpha and its API will still move; widget coverage is a
 declared support matrix rather than every third-party widget ever written;
-and the terminal build targets Linux, the platform plugin it rests on being
-fully supported only on X11.
+and the terminal build rests on a Qt platform plugin that Qt documents as
+fully supported only on X11, so which platforms it is supported on is not
+settled yet -- that constraint bounds where a terminal build runs, never
+where the GUI does.
 
 ## What an application gets
 
