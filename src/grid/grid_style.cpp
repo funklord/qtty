@@ -46,6 +46,7 @@
 #include <QSplitter>
 #include <QSplitterHandle>
 #include <QFrame>
+#include <QHeaderView>
 // For polish(), which takes Qt's size grip out of a status bar.
 #include <QStatusBar>
 
@@ -4834,6 +4835,44 @@ static void raise_frame_line(QWidget *w) {
 	}
 }
 
+// A SECTION SIZE THE APPLICATION CHOSE IN PIXELS, ROUNDED UP TO WHOLE CELLS.
+// The same accommodation as raise_frame_line() above and found by the lens it
+// handed over: a widget on GridGuard's exemption list, positioned by a
+// measurement the application can override.
+//
+// QHeaderView is exempt -- its geometry is not snapped -- and
+// `setDefaultSectionSize()` is the application's to call. The style's own
+// PM_HeaderDefaultSectionSize is already a whole number of cells, so a header
+// nobody has touched is untouched here; what this catches is an explicit
+// pixel width that is not a multiple of one.
+//
+// Measured on a three-column QTableWidget: at `setDefaultSectionSize(35)`,
+// three and a half cells, ALL THREE columns came out off the grid and the
+// table's separators broke up -- cells elided to "r..." with a rule after
+// some columns and not others, where the default's are clean. A size of 7 px
+// is already caught, by the minimum-section clamp; a fractional one is not,
+// because it is above the minimum and nothing rounded it.
+//
+// ROUNDED UP, not to the nearest, for the reason Qtty::cells() rounds up: a
+// column given less than it asked for clips its content, and a column given
+// more leaves a margin. The same direction the rest of this library takes.
+//
+// Only the DEFAULT size. A header whose sections were set one at a time with
+// `resizeSection()`, or that is on ResizeToContents, is not covered -- those
+// change after Polish and on every content change, which is a different
+// mechanism and a bigger one. Said here so the gap is known rather than
+// assumed closed.
+static void snap_sections(QWidget *w) {
+	auto *h = qobject_cast<QHeaderView *>(w);
+	if (!h) return;
+	const int unit = h->orientation() == Qt::Horizontal
+	               ? GridMetrics::cw() : GridMetrics::ch();
+	if (unit <= 0) return;
+	const int size = h->defaultSectionSize();
+	if (size <= 0 || size % unit == 0) return;
+	h->setDefaultSectionSize(((size + unit - 1) / unit) * unit);
+}
+
 static void apply_cells(QWidget *w) {
 	const QVariant v = w->property("qtty.cells");
 	if (!v.isValid()) return;
@@ -4872,6 +4911,17 @@ bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
 			apply_cells(pw);
 			raise_frame_line(pw);
 		}
+		return false;
+	}
+	// SECTIONS ARE SNAPPED ON SHOW, NOT ON POLISH, and the difference is
+	// measured rather than chosen. A view's header is constructed with the
+	// view, so it is POLISHED before the application has had a chance to call
+	// setDefaultSectionSize() -- the probe set 35 px between construction and
+	// show(), and a Polish-time snap left all three columns off the grid.
+	// Show fires after the application has finished configuring, which is
+	// where this has to read the size.
+	if (event->type() == QEvent::Show) {
+		if (QWidget *pw = qobject_cast<QWidget *>(obj)) snap_sections(pw);
 		return false;
 	}
 	if (event->type() != QEvent::Resize && event->type() != QEvent::Move)

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2479 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2480 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -54391,3 +54391,75 @@ positioned by a measurement the application can override.** Not the 55
 metrics this style overrides, and not insets in general. A third instance
 would be found by crossing those two lists, which is a search somebody can
 actually finish.
+
+### 8.651 The third instance, found by crossing two lists (2026-11-02)
+
+**§8.650's lens named a vulnerable set and said it was a search somebody
+could finish.** Finished: a widget on `GridGuard`'s exemption list,
+positioned by a measurement the application can override. The exemption list
+is short -- `qt_*` objectNames, `*Private*` classes, `QHeaderView`,
+`QScrollBar`, `QTableCornerButton` -- and **`QHeaderView` is on it while
+`setDefaultSectionSize()` is the application's to call.**
+
+**Measured on a three-column `QTableWidget`:**
+
+    setDefaultSectionSize   section   columns off the grid
+    (not called)            100 px    0 of 3
+    7                        10 px    0 of 3   clamped by the minimum
+    35                       35 px    3 of 3
+
+At 35 px -- three and a half cells -- every column was off the grid and the
+table's separators broke up: a rule after some columns and not others,
+`r...| r... r...|` where the default's are clean. A size of 7 px is already
+caught by the minimum-section clamp; a fractional one is not, because it is
+above the minimum and nothing rounded it.
+
+`snap_sections()` rounds an explicit section size up to whole cells, for the
+reason `Qtty::cells()` rounds up: a column given less than it asked for
+clips, one given more leaves a margin. 35 px becomes 40, the columns land on
+the grid, and the render is uniform.
+
+**SNAPPED ON SHOW, NOT ON POLISH, and the first version got that wrong.** A
+view's header is constructed with the view, so it is **polished before the
+application can call anything on it** -- the measurement sets 35 px between
+construction and `show()`, which is where an application sets it, and a
+Polish-time snap left all three columns off the grid exactly as before.
+Polish is a one-shot that has already passed by the time the application
+configures a child Qt made for it. Show fires after. That is worth more than
+this instance: `raise_frame_line()` above runs at Polish and is right to,
+because a frame shape is set on the widget the application constructed --
+but anything reading a property of a widget **Qt** constructed has to wait
+longer.
+
+**What is not covered, said rather than assumed.** Only the default size. A
+header whose sections were set one at a time with `resizeSection()`, or that
+is on `ResizeToContents`, changes after Show and on every content change --
+a different and larger mechanism. The check asserts the ordering as much as
+the rounding, since the ordering is the whole of why it works, and sabotaged
+it reports `35 px, 3 of 3 columns off the grid`.
+
+**AND THE CROSSING IS NOW FINISHED RATHER THAN SAMPLED**, which is the thing
+a bounded search buys. Every member of the exemption list, against whether
+an application can move it and whether that breaks anything:
+
+    qt_scrollarea_viewport   vulnerable   the frame case, fixed in 8.650
+    QHeaderView              vulnerable   this entry
+    QScrollBar               IMMUNE       measured below
+    QTableCornerButton       n/a          nothing positions it from outside
+    *Private* classes        n/a          not reachable by an application
+
+**`QScrollBar` is the interesting negative.** It is exempt, and
+`setFixedWidth()` bypasses `PM_ScrollBarExtent` exactly as
+`setDefaultSectionSize()` bypassed the header metric -- so it should have
+been the fourth instance. Measured at 4 px and at 15 px, both off the grid
+by the widget's own geometry, **the render is identical to the default's in
+all three cases**: the bar still draws its arrows, thumb and trough in its
+own column. Channel A paints into the cells the bar occupies and does not
+consult the sub-cell width, so an off-grid scrollbar is off-grid in a way
+nothing can see.
+
+That is worth keeping as the distinction the class actually turns on: being
+exempt and application-movable makes a widget a CANDIDATE, and whether it
+matters depends on whether anything downstream reads the pixel size. A
+viewport's inset positions a border, and a section's size positions every
+column after it; a scrollbar's width positions nothing but itself.

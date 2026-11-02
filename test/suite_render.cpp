@@ -5081,5 +5081,61 @@ int suite_render(bool record) {
 		else { printf("FAIL: %s\n", b3); ++r; }
 	}
 
+	// ---- a header section the application sized in pixels ----------------
+	//
+	// THE THIRD INSTANCE OF THE SAME CLASS, found by crossing the two lists
+	// the frame's lens named: a widget on GridGuard's exemption list,
+	// positioned by a measurement the application can override. QHeaderView
+	// is exempt, so its sections are not snapped, and
+	// `setDefaultSectionSize()` is the application's to call.
+	//
+	// Measured before the fix: at 35 px, three and a half cells, all three
+	// columns were off the grid and the separators broke up -- a rule after
+	// some columns and not others. The style's own default is already a
+	// whole number of cells, so an untouched header is untouched here; this
+	// is only for an explicit pixel width that is not a multiple.
+	//
+	// SNAPPED ON SHOW RATHER THAN POLISH, which the first version got wrong:
+	// a view's header is constructed with the view and polished before the
+	// application can call anything on it, so a Polish-time snap left the 35
+	// px in place. Asserted here because the ordering is the whole of why
+	// this works.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(Qtty::GridMetrics::cells(30, 5));
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *t = new QTableWidget(2, 3, &win);
+		t->setFrameShape(QFrame::NoFrame);
+		t->verticalHeader()->hide();
+		for (int row = 0; row < 2; ++row)
+			for (int col = 0; col < 3; ++col)
+				t->setItem(row, col, new QTableWidgetItem(
+				    QStringLiteral("r%1c%2").arg(row).arg(col)));
+		// Set between construction and show, which is where an application
+		// sets it and where Polish has already been and gone.
+		t->horizontalHeader()->setDefaultSectionSize(35);
+		v->addWidget(t);
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b(30, 5);
+		Qtty::render_once(win, b);
+		const int cw = Qtty::GridMetrics::cw();
+		int off = 0;
+		for (int col = 0; col < 3; ++col) {
+			const int x = t->horizontalHeader()->sectionViewportPosition(col);
+			const int wd = t->horizontalHeader()->sectionSize(col);
+			if (x % cw || wd % cw) ++off;
+		}
+		printf("info: a 35px section became %d px, %d of 3 columns off the"
+		       " grid\n", t->horizontalHeader()->defaultSectionSize(), off);
+		const char *hs = "a header section the application sized in pixels is"
+		    " rounded up to whole cells, so no column lands off the grid";
+		if (off == 0 && t->horizontalHeader()->defaultSectionSize() % cw == 0)
+			printf("PASS: %s\n", hs);
+		else { printf("FAIL: %s\n", hs); ++r; }
+	}
+
 	return r;
 }
