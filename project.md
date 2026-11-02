@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2484 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2485 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -55055,3 +55055,65 @@ colour with no palette role and says why.
 one cell wide or tall still applies. An explicit `Clear` over a caret-sized
 region is indistinguishable from the accident §8.639's guard exists for, and
 the guard is the older rule. 2483 checks to 2484.
+
+### 8.661 The painter-state census, and a detector that invented a finding (2026-11-03)
+
+**Two lenses spent for one check, which is the honest yield and is recorded
+as such.** §8.660 was a painter-STATE axis the engine never read, so the
+derived lens was: which of the others does it not read either? And §8.646's
+widget census had a sibling nobody had run -- which of `QPaintEngine`'s
+operations does the engine not implement?
+
+**The state axis is complete, and the one gap was not a gap.**
+`updateState()` reads six dirty flags -- pen, brush, font, transform,
+opacity, composition mode -- and `opacity_` is honoured rather than merely
+stored, applied to the alpha at two sites. Three flags are absent, and
+`DirtyBackground` is the one that matters: an opaque text background is the
+single piece of painter state a cell grid represents natively, because every
+cell already carries a background colour, so a consumer drawing a legend or
+a highlighted run will reach for it. `BackgroundMode` appeared nowhere in
+`src/` or `test/`.
+
+**It works, by a route this tree never chose.** Measured: `HELLO` drawn
+under `Qt::OpaqueMode` backs 5 cells and under the default backs 0, with the
+same glyphs. QPainter fills the glyph rectangle with the background brush
+ITSELF before the engine is called, so the fill arrives as an ordinary fill
+and the engine needs to know nothing. **The first reading was that an unread
+dirty flag must mean an ignored one**, which is reasoning where a probe costs
+four minutes. It is pinned now -- the route is Qt's choice and not ours, the
+assertion is the relationship rather than either count, and it was seen to
+fail by running the opaque case with the mode off: `opaque 0` and a red line
+naming the condition. 2484 checks to 2485.
+
+**The operations census was already done, which is worth knowing before
+somebody runs it a third time.** `suite_render` carries a block headed *two
+routes into the engine that nothing had ever taken*, covering `drawPoints`,
+`drawImage`, `drawRoundedRect` and `drawChord` -- the four operations the
+engine does not override -- and establishing that each funnels into one it
+does. Of the ten `QPaintEngine` virtuals, nine are overridden and the rest
+reach the cells through `drawPath` or `drawPixmap`.
+
+**AND THE DETECTOR INVENTED A FINDING, which is the transferable half.** The
+probe for `drawPoints` reported **raster inks 12 cells, qtty inks 0** --
+total content loss, the most serious class there is, and a sentence away from
+being written up. The instrument counted a cell as marked when its glyph was
+not a space. **A fill marks a cell's BACKGROUND and leaves the glyph a
+space**, so the detector could not see a fill at all: re-run on a full-cell
+`fillRect`, the control that should obviously ink one cell, it reported 0.
+With `bg.kind() != Color::Default` added, `drawPoints` is exact at 12 of 12
+at pen widths 1 and 3.
+
+The suite had already paid for this lesson and said so in a comment thirty
+lines from where I was working -- *"the first attempt at this counted a space
+as an inked glyph and reported all 24 cells of a 24-cell buffer -- an
+instrument that cannot fail, over code that was right."* That is the same
+trap in the same file, met from the opposite side: theirs could not fail,
+mine could not pass.
+
+**So the rule is not "beware this detector" but: run the control that must
+obviously succeed, before believing a measurement that says something is
+broken.** A full-cell fill inking zero cells is absurd on its face and takes
+one line to ask. `evidence.md`'s *a count inherits its detector* is the
+principle -- a count is a claim about the instrument until the instrument has
+been shown to move -- and a false POSITIVE is the dangerous direction here,
+because a finding is written up while a non-finding is merely dropped.

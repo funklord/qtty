@@ -3843,6 +3843,73 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// THE STATE AXIS NOBODY HAD TAKEN. The engine reads six of
+			// QPainter's dirty flags; `setBackgroundMode` is not one of
+			// them, and `BackgroundMode` appeared nowhere in src/ or
+			// test/. An opaque text background is the one piece of
+			// painter state a cell grid represents natively -- every cell
+			// already has a background colour -- so a consumer drawing a
+			// legend or a highlighted run will reach for it.
+			//
+			// It works, and it works by a route this tree never chose:
+			// QPainter fills the glyph rectangle with the background
+			// brush ITSELF, before the engine is called at all, so the
+			// fill arrives as an ordinary fill and the engine needs to
+			// know nothing. Measured rather than reasoned -- the first
+			// reading of it was that an unread dirty flag must mean an
+			// ignored one.
+			//
+			// Pinned because the route is Qt's choice and not ours: it
+			// costs nothing to assert and it is the only thing that would
+			// notice if a later Qt pushed the background down to the
+			// engine instead.
+			{
+				const auto run = [](bool opaque) {
+					Qtty::CellBuffer b(12, 2);
+					{
+						Qtty::CellPaintDevice dev(b);
+						QPainter p(&dev);
+						if (opaque) {
+							p.setBackgroundMode(Qt::OpaqueMode);
+							p.setBackground(QBrush(QColor(0, 0, 255)));
+						}
+						p.setPen(QColor(255, 0, 0));
+						p.drawText(QPoint(0, QFontMetricsF(p.font()).ascent()),
+						           QStringLiteral("HELLO"));
+					}
+					return b;
+				};
+				const Qtty::CellBuffer trans = run(false), opaq = run(true);
+				const auto backed = [](const Qtty::CellBuffer &g) {
+					int n = 0;
+					for (int y = 0; y < g.rows(); ++y)
+						for (int x = 0; x < g.cols(); ++x)
+							if (g.at(x, y).bg.kind() != Qtty::Color::Default)
+								++n;
+					return n;
+				};
+				const int b_trans = backed(trans), b_opaq = backed(opaq);
+				printf("info: HELLO drawn transparent backs %d cells,"
+				       " opaque %d\n", b_trans, b_opaq);
+				// The RELATIONSHIP: the same glyphs either way, and a
+				// background only where one was asked for. Asserting the
+				// opaque count alone would pass if both modes painted one.
+				const char *bmsg = "an opaque background mode reaches the"
+				    " cells behind the text, and a transparent one leaves"
+				    " them at the ground, with the glyphs unchanged";
+				if (trans.to_text() == opaq.to_text()
+				    && b_trans == 0 && b_opaq == 5)
+					printf("PASS: %s\n", bmsg);
+				else {
+					printf("FAIL: %s\n      condition: text %s, backed"
+					       " transparent %d, opaque %d\n", bmsg,
+					       trans.to_text() == opaq.to_text() ? "same"
+					                                         : "DIFFERS",
+					       b_trans, b_opaq);
+					++r;
+				}
+			}
+
 			const int slant_q = slanted(6), slant_r = slanted_raster(6);
 			printf("info: a slanted band marks %d cells, raster %d\n",
 			       slant_q, slant_r);
