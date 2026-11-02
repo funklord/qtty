@@ -54463,3 +54463,62 @@ exempt and application-movable makes a widget a CANDIDATE, and whether it
 matters depends on whether anything downstream reads the pixel size. A
 viewport's inset positions a border, and a section's size positions every
 column after it; a scrollbar's width positions nothing but itself.
+
+### 8.652 Every column drifts a pixel, and fixing it is worse (2026-11-02)
+
+**§8.651 left a gap and named it: only the DEFAULT section size is snapped,
+so `ResizeToContents` and `Stretch` are not covered.** Those are the common
+modes in a real table, so the gap was measured rather than left as a
+sentence. It is a real defect, the cause is exact, and **the obvious fix
+makes the rendering worse -- which is what proves what the real fix has to
+be.**
+
+**THE MEASUREMENT.** A three-column table, section positions and widths in
+pixels, with the cell 10 wide:
+
+    Interactive (default)   100 +0, 100 +100, 100 +200   0 of 3 off the grid
+    ResizeToContents         21 +0,  71 +21,  171 +92    3 of 3
+    Stretch                 114 +0, 113 +114, 113 +227   3 of 3
+
+**Every `ResizeToContents` width is a cell multiple PLUS ONE**, and the one
+is Qt's: `QTableView::sizeHintForColumn` adds a pixel for the grid line when
+`showGrid()` is on. Confirmed by turning the grid off, which gives 20, 70
+and 170 and nothing off the grid.
+
+**IT ACCUMULATES, AND THAT IS WHERE THE DAMAGE IS.** One pixel per column
+means the tenth column is a whole cell out. Measured over twelve
+one-character columns, the drift ran 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 px -- and
+the render lost four of the twelve column separators:
+
+    | x|x|x|x|x| x x x x x| x| x|
+
+Five columns separated, five not, five again. A reader cannot see where the
+middle columns end. That is not a pixel-accounting curiosity; it is a table
+that does not say what its columns are.
+
+**THE SMALL FIX WORKS AND IS WRONG.** `CT_ItemViewItem` can see the view, so
+it can ask for one pixel less when `showGrid()` is on and let Qt's addition
+land back on the boundary. Tried: **the drift went to 0 for all twelve
+columns** -- and the render became
+
+    | x x x x x x x x x x| x| x|
+
+**Ten separators gone instead of four.** A one-pixel line sitting exactly on
+a cell boundary belongs to no cell, so making the arithmetic right made the
+appearance worse. Reverted.
+
+**So the two available states are both wrong, and that is the finding.**
+With the grid line inside a cell the separators appear for some columns and
+drift; with it on the boundary they appear for none. Neither is a rendering
+anybody wants, and no amount of arithmetic on Qt's pixel produces one --
+**which proves the separators cannot come from Qt's grid at all.** They have
+to be drawn by Channel A, from the section boundaries in CELLS, the way
+every other piece of furniture in this library is drawn.
+
+**That is the next piece of work and it is feature-sized**, so what it needs
+is named rather than guessed: a Channel A element drawing a separator at
+each section's cell boundary, Qt's own grid turned off so its pixel stops
+being counted, and the committed table snapshots re-recorded because every
+one of them changes. The last is why this is not a quiet fix -- re-recording
+reference fixtures is a deliberate act, and the entry says so rather than
+having a session discover it half way through.
