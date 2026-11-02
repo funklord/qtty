@@ -14842,6 +14842,14 @@ and cursor readout all vanish, in an application whose every widget
 otherwise works. It is also fuzzypickles' compass, whose cardinal letters
 survive and whose needle does not.
 
+**~~That single gap.~~ CLOSED THE SAME DAY, and this paragraph is the one a
+reader lands on, so it says so here rather than only in the entry that did
+it.** §8.13 hosted bbq-predictor's real `bbq_forecast_graph` hours later
+and recorded the curve rendering as diagonals; §8.638 re-took this whole
+table on 2026-11-02 and found the diagonal a clean staircase and the
+polyline a recognisable sine. What remains of the row below is narrower
+than it reads: a non-rectangular FILL, outline drawn and interior blank.
+
 **`PixelSurface` is the escape hatch and it works** -- measured, a sine
 curve harvested as one placement at 300x95 px, full resolution -- but it
 is opt-in per widget and yields PIXELS, so it needs a graphics tier and
@@ -53468,3 +53476,49 @@ about the neighbours, each put to "what in this tree contradicts this" --
 and the claims about this project, each put to "is this ours to state yet".
 The first catches invention and the second catches decisions taken in
 passing. Four and one, in forty lines of prose.
+
+### 8.638 8.11's drawing table, re-taken two months on (2026-11-02)
+
+§8.11 is where this tree records the boundary of what a custom `paintEvent`
+can render, and it is the entry a reader consults to ask whether a product
+can host. Its table was measured 2026-09-06. **Re-taken today against the
+same five cases**, each rendered through `render_once()` into a 30x10
+buffer and the cells read back:
+
+    case              2026-09-06      2026-11-02
+    horizontal line   a rule          30 cells, a rule
+    vertical line     a rule          10 cells, a rule
+    diagonal line     NOTHING         30 cells, a clean staircase
+    polyline, curve   NOTHING         30 cells, a recognisable sine
+    filled ellipse    NOTHING         68 cells, the OUTLINE only
+
+**Two of the three gaps are closed, and the tree already knew**: §8.13, the
+entry immediately after the survey, hosted bbq-predictor's real
+`bbq_forecast_graph` the same day and recorded the curve rendering "as
+diagonals". So this measurement confirms rather than discovers -- which is
+worth having two months and several hundred commits later, independently of
+the harness that first showed it.
+
+**§8.11 still states the gap in the present tense, and that is the thing to
+fix.** It says *"a chart is not degraded, it is replaced by its own
+bounding box"* and *"that single gap is the whole of bbq-predictor ... all
+vanish"*, with no pointer to the entry that closed it. A reader landing
+there -- and it is the natural landing place, being the survey -- reads
+that a named product's whole chart disappears. The correction sits 5,600
+lines away in a differently-titled entry. **Closing a finding updates the
+entry and not the pointers**, and here the pointer that was missing is the
+one from the original to its own correction.
+
+**ONE CASE IS STILL OPEN AND IS NARROWER THAN 8.11'S.** A filled ellipse
+draws its outline and leaves its interior blank -- 68 glyph cells tracing
+the curve, and **zero cells carrying a non-default background**. That
+second count is the one that makes the claim safe: a fill painted as colour
+with no glyph would be invisible to a glyph count, which is the instrument
+fault this entry would otherwise have committed while reporting a missing
+fill. The colour plane was asked separately and is empty.
+
+So the open case is **a non-rectangular fill**, not "a filled shape renders
+nothing" -- it affects a pie, a gauge, and fuzzypickles' compass, which
+8.11 named for the needle rather than the disc. Whether Channel A should
+walk a shape's interior at all is adjacent to the fill question §0b already
+holds open, so this records the measurement and takes no view.
