@@ -54025,20 +54025,31 @@ header explains is dead on the Qt 5 arm unless it runs before
 `suite_router`. 2473 checks to 2476.
 
 **AND PROVING THE CHECKS CAN FAIL IS WHERE THE REAL FINDING WAS.** Sabotage
-the keystrokes away and the three checks did not go red -- **the suite
-hung**. The dialog never got its Return, `getText()` never returned, and the
-test binary sat there until it was killed.
+the keystrokes away and the three checks did not go red: the dialog never
+got its Return, `getText()` never returned, and the run did not finish.
 
-That is worse than a failing check in every way that matters: nothing says
-which check was running, a sweep that kills the run reports no result at
-all, and `running-code.md`'s rule applies in full -- the bound has to live
-inside the program, because whoever is debugging runs the binary directly
-and a `timeout` in the recipe does not cover them. So the fixture carries a
-**watchdog**: a timer that closes any visible dialog a beat after the keys,
-unconditionally. When the keys work it fires after the loop has returned,
-finds nothing to close, and costs one timer. When they do not, the three
-checks go red with their conditions printed. Re-sabotaged with it in place:
-three `FAIL:` lines and a non-zero exit, in seconds.
+**~~The test binary sat there until it was killed.~~ THAT SENTENCE WAS
+WRONG, AND THE CORRECTION IS WORTH MORE THAN THE CLAIM.** `test/main.cpp`
+has carried a 300-second `SIGALRM` watchdog since long before this, written
+for this exact hazard and citing the precedent in its own comment -- "a
+suite that called `exec()` waited on an event loop that never started, and
+running it by hand to find out why hung until it was killed from another
+terminal". It would have fired and printed *"FAILED: the suite exceeded its
+own time limit"*. What actually stopped my run at two minutes was the tool
+call's own timeout, which I then reported as the binary being unbounded. **A
+bound I did not wait for reads exactly like a bound that is not there** --
+and this file's own rule is to suspect the instrument first, which I did not
+do until the next item asked whether the suite bounded itself at all.
+
+**The fixture's watchdog is still right, for a smaller and clearer reason.**
+The global bound says *something in this suite hung* after five minutes; the
+fixture's timer says *these three checks failed* in seconds, with their
+conditions printed. One is a diagnosis and the other is a smoke alarm, and
+the five minutes are paid on every wedged run. So: a timer that closes any
+visible dialog a beat after the keys, unconditionally. When the keys work it
+fires after the loop has returned, finds nothing to close, and costs one
+timer. Re-sabotaged with it in place: three `FAIL:` lines and a non-zero
+exit, in seconds.
 
 **The transferable rule is about the shape rather than this widget.** A
 fixture that drives a nested loop from a timer has its exit condition in the
@@ -54047,6 +54058,84 @@ exit as well -- the fixture's own failure mode takes out the mechanism that
 would have reported it. Every such fixture wants a bound that does not
 depend on the thing under test. This suite has four more of that shape --
 the `exec()` menu, the two drag fixtures and the file dialog -- and they are
-left alone deliberately, because each is currently green and adding a
+left alone deliberately: each is green, the 300-second bound above means a
+wedge in any of them is reported rather than unbounded, and adding a
 watchdog to a passing fixture is a change with nothing measured behind it.
 Recorded so that the next one written starts with the bound.
+
+### 8.647 Two more consumers read, and one of them lost a build (2026-11-02)
+
+§8.645 mined `fuzznet/gui`. The other two qtty consumers carry one finding
+each, and they are different in kind: one is a rendering claim that has
+since been fixed, the other is a trap in **qtty's own naming** that cost a
+consumer a build and would cost the next one the same.
+
+**FINDING 4, fuzzypickles: a wrapped label "LOST ITS MIDDLE". Not
+reproducible -- fixed.** `gui/src/main_window.cpp` records a 99-column
+sentence measured "at 80x24 through the qtty spike" wrapping and losing an
+interior run: *"it read '...default.sock: No' then 'directory', with 'such
+file or' gone"*. That is content loss rather than the honest clipping of
+§8.645's B2, so it was the most serious of the five. Re-measured today on
+the consumer's own sentence:
+
+    width   non-space characters wanted / shown
+    80x24   127 / 127   identical, nothing lost
+    60x24   127 / 127   identical, nothing lost
+
+**And the instrument had to be changed to get that answer**, which is the
+same lesson as B2's twice over. A word-level test -- is every
+space-separated token present in the cells -- reported **two** losses at 60
+columns. Both were the same path, broken ACROSS a row boundary because the
+token is wider than the line, which is a legitimate wrap and not a loss.
+The question "was anything lost" is about the non-space characters in
+reading order, and asked that way the answer is no at both widths.
+
+**FINDING 5, netcfgd: `QTTY_NO_GUI` produced a byte-identical binary.** Its
+`gui/src/main.cpp` says so plainly -- a `DEFINES+=QTTY_NO_GUI` build was
+*"byte-for-byte identical to a plain one: the variant existed in the
+compiler's arguments and nowhere else"* -- and it had to add the
+conditionals itself. Its comment attributes the macros to us: "qtty defines
+them and netcfgd did not read them."
+
+**Measured: qtty defines neither, and that is the whole finding.**
+`QTTY_NO_TUI` and `QTTY_NO_GUI` appear in `example/chat/` and in design.md
+§16.4 and **nowhere in `include/` or `src/`**. So netcfgd's comment is
+wrong about whose they are -- and the mistake is ours to answer for, because
+**the `QTTY_` prefix reads as a promise that something in the library
+enforces them.** A consumer sets one, nothing happens, and nothing says
+why. Any next consumer makes the same mistake for the same reason.
+
+It is documented now in `qtty/application.h`, beside `setup()`, where
+somebody wiring a frontend is standing: the macros are the application's
+own, the library neither defines nor reads them, there is nothing here to
+switch off because the terminal frontend IS these QWidgets with QtWidgets
+linked either way, and the check that yours is doing anything is a grep of
+your own sources. The incident is named in the header rather than left as a
+rule, because a rule without it is a preference.
+
+**Why not enforce them instead, which is the obvious alternative.** A
+header can only see macros the application compiles it with, so the most a
+guard could do is refuse a translation unit that defines both -- and
+defining both is not the mistake anybody made. Making `setup()` or `exec()`
+refuse under `QTTY_NO_TUI` would be a behaviour change to a public contract
+for the sake of a naming confusion, which is the wrong trade. Naming the
+trap where it is met costs nothing and covers every consumer.
+
+**THE LENS FINDING 5 HANDS OVER WAS RUN AND IS CLEAN, which is worth two
+sentences because this tree has paid for the class twice.** If a prefix can
+promise enforcement that is not there, what else in the public surface
+promises what it does not do? The declared-but-inert API is exactly §8.248's
+`accent` -- a field `from_palette()` filled and neither resolver had a case
+for -- and §8.256's `alternate_base` and `tool_tip_base`. Swept today: all
+29 public `set_*` functions have a definition in `src/`, and the four whose
+stored members looked unread from outside their own file (`Overlay`'s image,
+rect, opacity and z) are each read through that class's accessors, with
+`set_z`'s GUI-build no-op already carried as a §0b row.
+
+**And the setter census could not have seen either known instance**, which
+is why the hole was closed rather than the result trusted: both were
+FIELDS, not setters. So every one of `CellTheme`'s fifteen `Color` fields
+was checked against `src/core/theme.cpp` as well, and each is mentioned by
+both its capture and its resolver. No third instance. The class is closed
+until something new is added, and the thing to re-run when a field is
+added is the second sweep rather than the first.

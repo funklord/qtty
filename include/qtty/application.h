@@ -39,6 +39,27 @@ void prepare_environment();
 // measuring the grid.
 void setup(QApplication &app);
 
+// QTTY_NO_TUI AND QTTY_NO_GUI ARE YOURS, NOT OURS, AND THE PREFIX IS WHY
+// THIS PARAGRAPH EXISTS.
+//
+// The example builds three binaries from one source set by stripping code
+// paths with `-DQTTY_NO_TUI` and `-DQTTY_NO_GUI`, and design.md section 16.4
+// recommends the pattern. **This library neither defines nor reads either
+// one.** They are ordinary conditionals in the application's own `main()`,
+// around its own calls -- there is nothing here to switch off, because the
+// terminal frontend IS these QWidgets and QtWidgets is linked either way.
+//
+// Said out loud because a consumer lost a build to it. netcfgd set
+// `DEFINES+=QTTY_NO_GUI` and got a binary byte-for-byte identical to a plain
+// one -- in its own words, "the variant existed in the compiler's arguments
+// and nowhere else" -- and it had to add the conditionals itself. The macro
+// carries the `QTTY_` prefix, which reads as a promise that something in
+// here enforces it, and nothing does.
+//
+// So: if you want a one-frontend build, write the `#ifdef`s in your `main()`
+// around `prepare_environment()`, `setup()` and `exec()`. A grep of your own
+// sources for the macro is the check that it is doing anything at all.
+
 // Write out any diagnostics that were held back while qtty owned the terminal,
 // and stop holding them. setup() installs a message handler that buffers
 // instead of writing when stderr is a terminal, because that terminal is the
