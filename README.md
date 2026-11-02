@@ -1,18 +1,73 @@
 # qtty
 
-Render an **unmodified Qt Widgets application** on a character-cell terminal.
-One `QWidget` codebase produces both the desktop GUI and the TUI — no parallel
-view layer, no Qt fork, no custom QPA plugin. Built on four public seams:
-`QStyle` metrics on a cell grid, `Qt::WA_DontShowOnScreen` widget lifecycle,
-a custom `QPaintDevice`/`QPaintEngine`, and a terminal-backend interface that
-existing TUI codebases adapt to.
+A program that has a desktop GUI and also needs to run in a terminal is
+normally written twice. The model and the logic are shared; the screen is
+not. Somebody builds the Qt Widgets window, and then somebody builds a
+second view against ncurses or a TUI toolkit -- a second set of layouts, a
+second set of key handlers, a second place for every bug to live, and two
+things to keep in step for as long as the program exists. Every change to a
+dialog becomes two changes, and the terminal one is the one that gets
+forgotten.
 
-**Status: pre-alpha.** The architecture is spike-validated (see
-`doc/design.md` §16: rendering, popups, input, focus, resize, placements,
-graphics compositing — all measured, not assumed); the library itself is the
-Phase-2 build-out of those spikes. Expect API movement.
+**qtty renders the Qt Widgets tree you already have onto a character
+grid.** The same `QWidget` subclasses, the same layouts, the same signal
+connections, the same `QTextDocument` -- compiled once, running as the
+desktop GUI and as the TUI. A `QComboBox` opens its popup, a `QTableView`
+scrolls to keep the selection visible, `Tab` walks the focus chain Qt
+computed, a `QDialog` runs modal through `exec()`. There is no second view
+codebase to keep in step because there is no second view codebase.
 
-## Highlights
+It does that without forking Qt and without a QPA plugin of its own, through
+four public seams: `QStyle` metrics resolved on a cell grid, widget
+lifecycle through `Qt::WA_DontShowOnScreen`, a `QPaintDevice` and
+`QPaintEngine` that write cells instead of pixels, and a terminal-backend
+interface an existing TUI codebase can be adapted to.
+
+## How it differs from the alternatives
+
+The terminal toolkits are libraries you write a TUI **against**.
+**notcurses**, **Tui Widgets**, **termpaint** and **ncurses** itself each
+give you a widget set or a cell-drawing API, and the screen you build with
+one of them is a second implementation of a screen you have already built.
+**Tui Widgets** is the closest neighbour and the instructive one. This
+project's own design evaluated it as the fallback plan -- adopt it as the
+terminal view engine behind a thin facade, "sharing at the model/controller
+layer instead of the view layer", its terminal connection being pluggable
+enough that qtty's backends would still fit. That sentence is the
+difference, item by item:
+
+- **qtty shares the view.** The others share the model at best. With them a
+  GUI program's terminal mode is a second screen implementation; with qtty
+  it is a link-time decision.
+- **qtty ships no widgets.** There is no widget class of its own to learn,
+  because the widgets are Qt's: `QLabel` is the label. What an application
+  already knows about Qt is the whole API, and what it already owns is
+  already the screen.
+- **The GUI stays primary.** qtty is inert when it is not active: no
+  `GridStyle` is installed, no paint device is current, and a GUI build
+  behaves as though the library were absent. A terminal mode that degrades
+  the desktop one is not a trade this makes.
+- **A screen is testable without a terminal.** The alternatives are
+  exercised through their own renderers against a pty; here the artifact
+  under test is a block of text, which a snapshot can compare character by
+  character -- including after keys have been pressed into it.
+- **The application never names a graphics protocol.** Where a terminal
+  toolkit exposes kitty or sixel as its own drawing calls, qtty picks the
+  tier from what the terminal answered and leaves ordinary Qt painting as
+  the only thing an application writes.
+
+Where a team has no close neighbour to compare against, the honest
+comparison is with what they do instead: keep two view layers by hand, or
+give the terminal a cut-down interface that does less than the window does.
+qtty exists so that neither is the price of running in a terminal.
+
+**What is not there yet**, said once rather than in every paragraph: the
+library is pre-alpha and its API will still move; widget coverage is a
+declared support matrix rather than every third-party widget ever written;
+and the terminal build targets Linux, the platform plugin it rests on being
+fully supported only on X11.
+
+## What an application gets
 
 - Vanilla Qt code is the API: `drawPixmap` in a delegate becomes a
   cell-anchored image placement; `QTextDocument`, item views, menus, and
@@ -35,7 +90,8 @@ Phase-2 build-out of those spikes. Expect API movement.
 
 The `Makefile` at the root is the entry point:
 
-    make                # build the library, the tools and the example
+    make                # build the library, and nothing else
+    make tools          # the four tools; `make example` for the chat
     make test           # build and run the test suite
     make check          # style + test — what must pass before committing
     make style          # the shared source gate

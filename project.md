@@ -2847,7 +2847,36 @@ Recorded because the wrong answer is the one a later reader would otherwise
 find first: §9.6 still documents `make` as "build the library, the tools
 and the example", which is accurate today and is what has to change.
 
-**The README has to be rewritten.** `e1b41e1`, with `a57a385`, `7b5b5ee`
+**~~The README has to be rewritten.~~ DONE 2026-11-02.** Its opening is now
+the problem a reader has -- a GUI program that also runs in a terminal is
+written twice, and the terminal half is the half that gets forgotten --
+then what qtty does about it, then `## How it differs from the
+alternatives`, naming notcurses, Tui Widgets, termpaint and ncurses and
+comparing item by item. **The closest neighbour's difference came from this
+tree's own documents rather than from reading theirs**: §5.2 records Tui
+Widgets as the fallback, "sharing at the model/controller layer instead of
+the view layer", which is the one-sentence statement of what qtty does
+differently. The `Status: pre-alpha` banner is gone; what is not there yet
+is one sentence at the end of the opening, which is what the rule asks.
+
+**Two claims about the neighbour were cut before committing, having been
+written and then not verified.** A `TuiLabel` class invented to contrast
+with `QLabel` -- Tui Widgets does not spell it that way -- and "runs on Qt's
+event loop", which this tree has never measured. §5.2's recorded sentence
+is what the comparison rests on now. **A README comparing itself to
+neighbours is a document full of claims about other people's software**,
+and `evidence.md`'s rule that a claim about another tree is a measurement
+you did not take applies to every one of them.
+
+**And `Highlights` was renamed rather than absorbed**, which `c7f5d2a` is
+the warning for: the new comparison covered the same ground as three of its
+bullets, and folding them in would have dropped the README's only mentions
+of `Capabilities`, `NullBackend` and the three keyboard symbols. The
+comparison bullets state the CONTRAST and the list below states the
+feature, so nothing is said twice and `guide-check` still reaches 79
+symbols.
+
+The rules this answers: `e1b41e1`, with `a57a385`, `7b5b5ee`
 and `c7f5d2a`: it opens with paragraphs stating the software's value to its
 reader -- the problem first, then the neighbours named and compared item by
 item -- describes the software it is MEANT to be rather than today's
