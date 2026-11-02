@@ -57,6 +57,25 @@ mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
   > names qtty in its notes but uses none of its API. So the goal is part
   > met: two production consumers, one spike, one old implementation still
   > shipping, one product unidentified. project.md 8.614 has the method.
+
+  > **Re-measured from the other direction 2026-11-02, and it moves the gap.**
+  > 8.614 asked which trees CONSUME qtty; this asks which trees have a terminal UI of
+  > their own, since a goal about consolidating four implementations needs the four to
+  > exist. Searching nineteen private trees for ncurses, curses, termpaint, `initscr(`,
+  > a `tui`, `curses` or `term` directory, and raw-ANSI screen control, across six
+  > languages: **two exist** — fuzzypickles' `tui/` in C, shipped as `fzptui`, and
+  > netcfgd's `crates/netcfgd-sys/src/curses.rs`. Two near misses are not one:
+  > `beerssh/src/term/` embeds libvterm for an SSH client, the opposite relationship,
+  > and openmlx4's only ANSI hit is a comment on why a firmware image carrying
+  > `ESC [2J` must not reach a raw terminal. **raidcfgd has none**, although 8.614
+  > counts it among the confirmed consumers — so it is a consumer of this goal's
+  > answer rather than one of its four problems, and the sentence above does not
+  > separate those roles. This does not say the goal is wrong: the count of four is
+  > the copyright holder's, who may be counting products rather than implementations,
+  > or a tree not on this machine. It moves what is unknown from "which product is the
+  > fourth consumer" to "what are the other two implementations". The search cannot see
+  > a TUI whose escapes are assembled from variables rather than written as literals,
+  > which is its one real hole. project.md 8.641.
 - **G4.** Deterministic, snapshot-testable rendering in CI with no tty attached.
 - **G5.** No dependency on Qt private headers or a patched Qt. (One documented exception:
   `WA_DontShowOnScreen`'s lifecycle behaviour is public API but undocumented behaviour —
@@ -325,11 +344,21 @@ them. Inheritance is therefore reserved for two cases only: our own composite wi
 and widgets whose painting must be replaced wholesale (§8.4).
 
 **Per-widget extension without subclassing.** The style receives the `QWidget*`, so
-attached state is read there:
+attached state can be read there:
 
 ```cpp
 w->setProperty("qtty.cells", QSize(20, 1));   // works on any widget, ours or Qt's
 ```
+
+*Corrected 2026-11-02: that property is not read in the style, and could not be.*
+`QStyle::ContentsType` has twenty-four values and not one of them is a label, a text
+edit, a view, or an application's own `QWidget` subclass — there is no `CT_Label`. A
+style-side reader would therefore do nothing, silently, for most of a tree including
+this document's own example line, which is worse than not offering the property: an
+application would set it, see no effect, and have no way to tell a wrong spelling from
+an unread hint. `qtty.cells` is read in `GridSnap`'s event filter, which sees every
+widget rather than only the ones Qt asks the style about. The general point above
+stands for state the style *is* consulted for; the hint mechanism is the filter's.
 
 For behaviour that genuinely needs a vtable, use a non-QObject mixin — Qt requires the
 QObject-derived base to come first, and two QObject bases are illegal, so the interface
@@ -509,11 +538,23 @@ backend escape decoding → KeyEvent/MouseEvent
 **Focus: use `window->focusWidget()`, never `qApp->focusWidget()`.** Measured (§16, F4):
 under offscreen + `WA_DontShowOnScreen` no window ever becomes active, so
 `QApplication::focusWidget()` is permanently null and `QWidget::hasFocus()` permanently
-false. But `QWidget::focusWidget()` on the top-level returns the right widget, and
-`focusNextPrevChild()` walks the focus chain correctly — so **Tab order, focus policies
-and the focus chain all still work**, and delivering events directly to that widget
-works (a synthetic keystroke reaches a `QLineEdit` and edits its text). Qtty keeps Qt's
-focus *model*; it only replaces Qt's notion of which window is active.
+false. But `QWidget::focusWidget()` on the top-level returns the right widget, and the
+focus chain is intact — so **Tab order, focus policies and the focus chain all still
+work**, and delivering events directly to that widget works (a synthetic keystroke
+reaches a `QLineEdit` and edits its text). Qtty keeps Qt's focus *model*; it only
+replaces Qt's notion of which window is active.
+
+*Corrected 2026-11-02: the library cannot call `focusNextPrevChild()`, and this
+section used to recommend it.* The spike measured it working because a spike subclasses
+the widget it tests; `focusNextPrevChild()` is **protected**, and reaching it from
+outside means declaring a fake derived class and casting a widget that is not one —
+undefined behaviour, which UndefinedBehaviorSanitizer named as a vptr that is not the
+type the cast claimed. It went unseen while nothing reached that path and became live
+the moment the arrow conventions called it on every press. The library walks
+`nextInFocusChain()` instead, which is public and defined: the chain is circular, so
+returning to the start is the termination condition, and the stop filter is shared with
+the function that lists every stop so a test can assert on them. The spike's finding
+holds and the recommendation did not.
 
 Terminals lose information the Qt event model expects: no key-release events, no
 reliable modifier state on their own, no autorepeat distinction. `InputRouter` fabricates
@@ -610,6 +651,19 @@ public:
 };
 }
 ```
+
+*Corrected 2026-11-02: no such class exists, and the block above is a proposal rather
+than a description.* `qtty/application.h` ships free functions in namespace `Qtty` --
+`prepare_environment()`, `setup(QApplication &)`, `exec(app, win, backend)` and
+`exec(app, win)`, with the theme set through `set_theme()` in `qtty/theme.h` -- which is
+the shape §16.4 calls "the intended `qtty::Application` API", spelled in this
+workspace's `snake_case`. So a reader who writes `qtty::Application tty(app,
+makeBackend())` from the block above gets a compile error. **Whether the class is still
+wanted is a live question and is the copyright holder's**: §11's roadmap item 5 lists
+it, §16.4 treats the free functions as the destination rather than a stand-in, and
+choosing between them is choosing the shape of a public interface. Only the factual
+half is corrected here -- what exists today -- and the block is kept because it is what
+the question is about.
 
 `main()` becomes:
 
@@ -920,16 +974,35 @@ whole approach is in question and we fall back (§13.2).
 position glyphs in sub-cell pixels. Channel B snaps them to cells, which produces
 collisions and overlaps in dense text.
 
-*Mitigation:* `QLabel` with plain text is fine (Channel A). Rich text is not supported.
+*Mitigation:* `QLabel` with plain text is fine (Channel A). ~~Rich text is not
+supported.~~ **Corrected 2026-11-02: rich text is supported, as cell attributes.**
+Markup is the only way an application asks for an attribute without setting one, and
+`QTextBrowser` rendering HTML was measured arriving as `bold`, `italic`, `underline`
+and `strikeOut` on the cells — the last two needed fixes, `<s>` having reached the
+cells as ordinary characters and `<u>` having arrived twice, once as the font's
+attribute and once as the separate line primitive Qt draws below the baseline. A
+table's borders arrive as coloured blocks. What remains true is the sentence below:
+sub-cell positioning is flattened, so dense mixed-size text loses its size variation
+rather than its legibility.
 
 *Revised after Phase 0.5 (§16.1, F8):* this problem is smaller than predicted. When the
 document font's line height equals CH, `QTextLayout` positions every line on a cell row
 and plain-text `QTextEdit` renders **perfectly** through Channel B with no assistance;
 mixed-size rich text flattens to the base row but stays legible. Display is therefore
-solved by construction (force the document font). What remains unverified is the
-*editing* surface — cursor drawing, selection highlight, partial-line scrolling — so
+solved by construction (force the document font). ~~What remains unverified is the
+*editing* surface — cursor drawing, selection highlight, partial-line scrolling~~ — so
 `QTextEdit` moves from "replace wholesale" to "replace the interaction layer if editing
 proves bad"; a read-only log/text view needs nothing at all.
+
+*Corrected 2026-11-02: all three of those are verified, and the interaction layer was
+never written.* What was missing was not a replacement surface but keys reaching the
+widget, which the input routing supplied: `QTextEdit` and `QPlainTextEdit` both take
+typing, Return and wide clusters, and what is typed reaches the cells. Selecting with
+the mouse works and needed no text-widget code, only motion events carrying the held
+button. Partial-line scrolling was tested 2026-09-03 and is right — content moves in
+whole cells. §17.2's nought-to-four-day estimate was for the case where display had
+not come free; the estimates there are left as written, being a plan's own arithmetic
+rather than a claim measurement can falsify.
 
 ### 8.3 Focus and activation without a window manager
 
@@ -1176,13 +1249,27 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
 - ~~**OQ-2.** Does the offscreen plugin create backingstores for `WA_DontShowOnScreen`
   top-levels?~~ **Closed:** yes — it is the mechanism that keeps paint events flowing.
   ≈6 MB per top-level at 200×60, and widgets are painted twice per frame. See §5.6, §11.
-- **OQ-3.** Qt 5.15 and Qt 6 in one codebase, or Qt 6 only with the two laggard products
-  upgrading first? Affects Phase 3 sequencing.
+- **OQ-3.** ~~Qt 5.15 and Qt 6 in one codebase, or Qt 6 only with the two laggard
+  products upgrading first?~~ **Answered by the copyright holder 2026-10-19: both.**
+  Affects Phase 3 sequencing. *Recorded here 2026-11-02, the answer having lived only
+  in the project record until now.* The technical half is not merely decided but
+  continuously demonstrated: the library, the tools, the example and the whole suite
+  build and run against Qt 5.15.15 and Qt 6.8.2, with the differences centralised in
+  `src/qt_compat.h` and one alias in `include/qtty/application.h`, and `make
+  test-versions` asserts that the two arms agree check for check. The pre-port
+  estimate of "three usages in two files" was out by four — thirteen `QT_VERSION`
+  conditionals, twelve of them in the compat header, which is a better shape than
+  three scattered through the sources. **What remains open is the half this tree
+  cannot answer**: which products upgrade when.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets cannot be linked
   (embedded, serial console)? If yes, that product goes to 13.2 permanently and the
   answer changes Phase 4's scope. **Still open, but addressable since 2026-10-27**:
   three of the four are named under G3, so the question can now be put to them
-  instead of being unanswerable for want of knowing who they are.
+  instead of being unanswerable for want of knowing who they are. *Narrowed
+  2026-11-02: two of those three are the ones it has to be put to.* raidcfgd reaches
+  qtty from production and never had a terminal UI of its own, so it has nothing to
+  keep in the case this question is about — see G3, where the same measurement moves
+  the count.
 - **OQ-5.** Accessibility: is a `QAccessible` bridge worth it, given the terminal already
   exposes text to screen readers when the cursor is placed correctly (§5.5)?
 
@@ -1250,7 +1337,7 @@ the residual risk is tooltips, nested submenus, and off-screen clamping.
 | **F1** | `p->device()` is the **QWidget**, not our paint device, during a `paintEvent` | Channel A must detect via `p->paintEngine()`. Silent failure mode — it just never fires. §5.4 |
 | **F2** | Neither `transform()` nor `combinedTransform()` carries `render()`'s redirection offset | Style-level coords must come from `w->mapTo(w->window(), …)`. §5.4 |
 | **F3** | Synthetic `QKeyEvent`s never reach `QShortcutMap` — 0 hits across Widget/Window/Application contexts and both targets | `InputRouter` owns a shortcut table. §5.5 |
-| **F4** | No window ever activates ⇒ `qApp->focusWidget()` null and `hasFocus()` false **forever** — but `window->focusWidget()` and `focusNextPrevChild()` work perfectly | Keep Qt's focus chain, replace only "active window". `State_HasFocus` must be injected. §5.5 |
+| **F4** | No window ever activates ⇒ `qApp->focusWidget()` null and `hasFocus()` false **forever** — but `window->focusWidget()` works perfectly, and so does the focus chain (`focusNextPrevChild()` in the spike, which subclasses; `nextInFocusChain()` in the library, which cannot — see §5.5) | Keep Qt's focus chain, replace only "active window". `State_HasFocus` must be injected. §5.5 |
 | **F5** | `QHeaderView`/`QScrollBar` ignore some style metrics and self-size | A small set of widgets needs `ICellPainted` or fixed sizing; not a systemic problem |
 
 ### Confirmed as designed

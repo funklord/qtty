@@ -1092,9 +1092,20 @@ faith looks like rendered.
 
 An index, because these are recorded where they were found -- scattered
 through a document that has long outgrown reading end to end -- and a
-question nobody can locate is one nobody answers. **None is a defect and none blocks anything**; each is a decision
-that was deliberately not taken while working on something else. The
-sections named carry the measurement and the options.
+question nobody can locate is one nobody answers. **None is a defect and
+none blocks anything**; each is a decision that was deliberately not taken
+while working on something else. The sections named carry the measurement
+and the options.
+
+**`doc/design.md` MAY NOW BE CORRECTED WHERE MEASUREMENT FALSIFIES IT.**
+A standing permission from the copyright holder, 2026-11-02. It is narrow
+by its own terms and the narrowness is the point: a **factual claim** the
+tree has measured false may be corrected in place, citing the measurement;
+a **decision** may not be taken, reversed or invented, however plainly the
+code implies one. So a sentence saying the style reads a property it cannot
+read is corrected, and a reserved question such as the platform scope stays
+reserved. Where the two are hard to tell apart, the row stays here and the
+document stands. §8.643 is the first pass under it and lists what changed.
 
 **Four of the rows below are ONE decision, and reading them apart is what
 makes the list look longer than it is.** The message box's severity icon,
@@ -1144,7 +1155,7 @@ Owned by the copyright holder:
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. ~~Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows.~~ **SETTLED 2026-10-28: the holder's answer is that the twin should honour z, and 8.623 implements it** -- `set_z()` syncs, the registry sort is stable so equal z keeps creation order, and a static restack raises every visible twin in ascending z. Defended by `make test-overlay-z` under Xvfb, seen to fail without the restack. ~~And it cannot be verified headlessly here~~ -- **it can, measured 2026-10-28: `test-platforms` already runs the suite under xcb on Xvfb, where `raise()` works, and there the two targets stack the same two overlays in OPPOSITE orders.** So the cost argument is gone from both sides of the decision and only the scope question is left. 8.622 | 8.47, 8.622 |
-| **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
+| **~~`design.md` recommends a function the library cannot call.~~ CORRECTED IN THE DOCUMENT 2026-11-02**, the holder having granted a standing permission to correct design.md where measurement falsifies it. Its focus section said `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side was wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation was a trap for the next reader. §5.5 and the F4 census row now name both functions and which caller each is for. §8.643 has the pass | 8.71, F4, 8.643 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
 | **Platform scope: is the terminal build Linux-only?** design.md's R2 rates this **H/H -- the highest in its risk table -- with a trigger to act of "Now"**, and 5.1 says it must be decided BEFORE Phase 2. The library is the Phase-2 build-out, so the trigger fired at the start of the work now finished. Qt documents the offscreen plugin as *"only fully supported on X11"*, and that plugin is this design's foundation. Two answers are written out: declare Linux the supported target for the TERMINAL build, which costs nothing if the TUI is a server feature and is the likely case; or accept that a Windows or macOS terminal build needs the fallback or a per-platform spike. **It bounds where the TUI runs and never where the GUI runs.** Nothing records an answer, and 0b did not carry the question at all until now | 5.1, design.md 13.3 |
@@ -44012,11 +44023,15 @@ that divergence, which it does. **The habit is consistent and the
 `focusNextPrevChild` recommendation is the exception**, unrecorded until
 now, which is the only reason it was worth raising.
 
-This is recorded rather than fixed: design.md is the holder's, this tree
-keeps its lag as a note (README carries the same caution about the API
-chapter), and **an open question that reality has closed is not the same
-as one somebody must decide** -- it wants striking through by its owner,
-not answering by me.
+~~This is recorded rather than fixed: design.md is the holder's, this tree
+keeps its lag as a note.~~ **FIXED IN THE DOCUMENT 2026-11-02** under the
+standing permission in §0b, and this paragraph's reasoning was right for
+as long as it stood: **an open question that reality has closed is not the
+same as one somebody must decide** -- it wanted striking through by its
+owner, and the owner has now delegated exactly that. What has not changed
+is the other half: a question somebody must *decide* is still not mine.
+(README carries the same caution about the API chapter and is this tree's
+own file, so it was never the one waiting.)
 
 **Two other triggers in that table are worth knowing about and are not
 being raised as findings.** R3's is *"assert fires"* and the assert
@@ -48184,9 +48199,13 @@ the fix would live.
 
 **What remains of OQ-3 is not technical and is not mine.** The question's
 other half is product sequencing -- which products upgrade when -- and
-nothing in this tree can answer it. The document is not edited here: a
-design question is closed by whoever owns it, and what this entry supplies
-is the measurement it was waiting on.
+nothing in this tree can answer it. ~~The document is not edited here~~ --
+**it is, since 2026-11-02 (§0b), and §14's OQ-3 now carries the answer and
+this measurement.** The principle the sentence was defending survives
+intact and decided the shape of that edit: a design question is closed by
+whoever owns it, so what went into the document is the holder's 2026-10-19
+answer and the measurement behind it, with the sequencing half left open
+in as many words.
 
 **OQ-5 is genuinely open, measured the same way.** `QAccessible` appears
 **nowhere** in `src/` or `include/`; the ten mentions of accessibility are
@@ -53740,3 +53759,88 @@ A one-off reading rather than a gate, deliberately: the risk is that a
 name was typed wrong once, which a single check retires, and the names do
 not drift. Re-run the loop above after a Qt major bump, where a class could
 genuinely move or be renamed.
+
+### 8.643 design.md may be corrected now, and eight claims were (2026-11-02)
+
+**The copyright holder granted a standing permission: `doc/design.md` may
+be corrected where measurement falsifies it.** The rule and its limits are
+in §0b, where a reader asking who owns a question will be. The limit
+matters more than the permission: a **factual claim** measured false is
+corrected in place, citing the measurement; a **decision** is still not
+mine to take, reverse or invent. The platform-scope row in §0b is the
+worked example of what stays reserved -- design.md's R2 says to decide
+before Phase 2 and nothing records an answer, so nothing here supplies one.
+
+**Why it was worth asking for.** The tree's habit had been to record the
+document's lag as a note, which splits the record in two and leaves the
+stale half where a reader lands: somebody consulting §5.5 about focus read
+a recommendation that has been undefined behaviour since 8.71, and the
+correction sat 1,100 lines away in a `project.md` row. Every falsified
+claim below had its measurement on file, some for two months.
+
+**EIGHT CLAIMS, each with the measurement that falsified it:**
+
+    section  claim as it stood               measurement
+    5.3      the style reads qtty.cells      24 ContentsType values, no
+                                             CT_Label; read in GridSnap's
+                                             filter instead
+    5.5      focusNextPrevChild() walks      protected; the cast to reach
+             the focus chain                 it is UB and UBSan named it
+                                             (8.71). Library walks
+                                             nextInFocusChain()
+    16 F4    the same, in the census table   the same
+    8.2      rich text is not supported      bold, italic, underline and
+                                             strikeOut all reach cells as
+                                             attributes (8.63, 8.280)
+    8.2      the editing surface is          typing, mouse selection and
+             unverified -- cursor,           partial-line scrolling all
+             selection, partial scroll       measured; no layer written
+    14 OQ-3  listed open                     answered "both" by the holder
+                                             2026-10-19; both arms build
+                                             and run the whole suite
+    2 G3     one product unidentified        two implementations findable,
+                                             raidcfgd has none (8.641)
+    5.6      a qtty::Application class,      no such class exists; the
+             constructed with a backend      runtime is free functions,
+                                             prepare_environment/setup/exec
+
+**THE EIGHTH WAS THE HOLDER'S QUESTION, ASKED BACK AND ANSWERED IN PART.**
+§5.6's class is the one §0b and §11 item 5 have been holding for the holder,
+and it is a three-way disagreement rather than a two-way one: §5.6 declares
+a class with a backend-taking constructor and `setTheme()`; §16.4 says the
+example's `prepareEnvironment`/`setup`/`exec` surface IS "the intended
+`qtty::Application` API", naming a function §5.6's class does not have; and
+the code shipped §16.4's shape, free in namespace `Qtty` and spelled
+`snake_case`. So a reader following §5.6 writes code that does not compile,
+and a reader following §16.4 is right without the document saying the other
+was superseded.
+
+**Only the factual half was corrected, and the proposal block was kept.**
+What exists today is now stated beside it. Whether the class is still wanted
+stays the holder's, because §16.4 treats the free functions as the
+destination while §11 item 5 lists the class as work, and choosing between
+them is choosing the shape of a public interface. The block stays because it
+is what the question is about -- deleting it would answer the question by
+removing the alternative.
+
+**Two of the seven were corrected by NARROWING rather than striking**,
+which is the shape the limit forces. OQ-3's technical half is answered and
+its product-sequencing half is not, so the entry says both -- striking the
+whole question would have claimed a decision nobody took. G3's count is the
+holder's, so the note moves what is unknown rather than restating the goal.
+
+**And one was left deliberately.** §17's day estimates list work that is
+now done -- the `QTextEdit` interaction layer at nought to four days, which
+was never written because display came free. An estimate is a plan's own
+arithmetic rather than a claim measurement can falsify, and rewriting the
+table's totals would be editing the roadmap's framing under cover of a
+correction. §8.2 says so where the reader meets it, and the numbers stand.
+
+**What the permission does not fix.** A claim can only be corrected once
+somebody has measured it, so the document's lag is now bounded by this
+record's coverage rather than by anybody's willingness to edit. The sweep
+that found these seven read design.md for present-tense claims of absence
+-- `unverified`, `untested`, `not supported` and their neighbours -- which
+is a good detector for the class and blind to a claim that is wrong while
+sounding positive. §5.3's and §5.5's were both of that second kind and came
+from §0b rather than from the sweep.
