@@ -1587,10 +1587,35 @@ static QColor brush_colour(const QBrush &b) {
 	// transparent texture does not report the colour of the parts nobody
 	// sees. Sampled on a bounded grid rather than read whole: this runs per
 	// fill, and a texture is an image of any size.
-	if (b.style() == Qt::TexturePattern) {
-		const QImage img = b.textureImage().isNull()
-		                       ? b.texture().toImage()
-		                       : b.textureImage();
+	// AND A HATCH IS A TEXTURE WITH A NAME, so it is resolved the same way.
+	//
+	// The rule above names gradients and textures. A Dense or Cross pattern
+	// is neither: its `color()` IS meaningful, so the colour was believed --
+	// and the pattern, which is the other half of what the brush says, was
+	// dropped. Measured 2026-11-02: Dense1 at about 94 per cent coverage and
+	// Dense7 at about 6 rendered as the SAME fully tinted cells, so a chart
+	// distinguishing filled regions by hatch had that distinction removed.
+	// Section 6.1's own reasoning covers it -- "the colour the area actually
+	// is" -- and a six-per-cent hatch is mostly ground.
+	//
+	// Rasterised and sampled rather than looked up in a table of coverages,
+	// because Qt owns those bitmaps and a table of mine would be one more
+	// thing to be wrong about. The sampling below yields the coverage as the
+	// alpha, and 6.1's partial-alpha rule blends it against what the cell
+	// already holds.
+	QImage hatch;
+	if (b.style() >= Qt::Dense1Pattern && b.style() <= Qt::DiagCrossPattern) {
+		hatch = QImage(8, 8, QImage::Format_ARGB32);
+		hatch.fill(Qt::transparent);
+		QPainter hp(&hatch);
+		hp.fillRect(hatch.rect(), b);
+	}
+	if (b.style() == Qt::TexturePattern || !hatch.isNull()) {
+		const QImage img = !hatch.isNull()
+		                       ? hatch
+		                       : (b.textureImage().isNull()
+		                              ? b.texture().toImage()
+		                              : b.textureImage());
 		if (img.isNull() || img.width() < 1 || img.height() < 1)
 			return b.color();
 		const int steps = 16;

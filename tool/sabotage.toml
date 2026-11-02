@@ -407,7 +407,7 @@ check = "and a transparent pen draws no diagonal"
 [[sabotage]]
 name = "a texture brush answers with its meaningless colour"
 file = "src/render/cell_paint.cpp"
-find = "\tif (b.style() == Qt::TexturePattern) {"
+find = "\tif (b.style() == Qt::TexturePattern || !hatch.isNull()) {"
 into = "\tif (false) {"
 count = 1
 check = "a texture fill takes its colour from the texture"
@@ -8883,4 +8883,12 @@ find = "\t\tif (pen_.widthF() > 1.0) cell.attrs |= Attr::Bold;"
 into = "\t\tif (false) cell.attrs |= Attr::Bold;"
 count = 1
 check = "a pen wider than a pixel reaches the cells as weight, on a rule and a diagonal alike, and a hairline carries none"
+
+[[sabotage]]
+name = "a hatch is believed rather than resolved again"
+file = "src/render/cell_paint.cpp"
+find = "\tif (b.style() >= Qt::Dense1Pattern && b.style() <= Qt::DiagCrossPattern) {"
+into = "\tif (false) {"
+count = 1
+check = "a hatched brush resolves to the colour the area actually is, so a denser pattern lands nearer the brush and a sparser one nearer the ground"
 

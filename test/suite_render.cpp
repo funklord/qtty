@@ -3732,6 +3732,63 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// A HATCH RESOLVES TO THE COLOUR THE AREA ACTUALLY IS.
+			//
+			// Section 6.1's fourth rule resolves a brush whose colour is
+			// meaningless -- a gradient, a texture. A Dense or Cross
+			// pattern is neither: its colour is meaningful and was
+			// believed, while the pattern was dropped. Measured, Dense1 at
+			// about 94 per cent coverage and Dense7 at about 6 produced
+			// identical cells, so a chart telling filled regions apart by
+			// hatch had that removed.
+			//
+			// OVER A CONCRETE GROUND, because 6.1's third rule lays paint
+			// down opaque where the ground is the terminal's own -- over a
+			// Default background the coverage cannot show at all, and the
+			// first version of this fixture asked the question where the
+			// answer is fixed.
+			//
+			// Asserted as an ORDER rather than as six numbers: denser
+			// covers more, so it must land nearer the brush and further
+			// from the ground. That survives Qt changing a bitmap by a
+			// pixel, which six constants would not.
+			const auto hatched = [&](Qt::BrushStyle st) {
+				Qtty::CellBuffer hb(6, 2);
+				{
+					Qtty::CellPaintDevice dev(hb);
+					QPainter p(&dev);
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(20, 20, 120));
+					p.drawRect(QRectF(0, 0, 6.0 * cw, 2.0 * ch));
+					QBrush br(QColor(240, 240, 240));
+					br.setStyle(st);
+					p.setBrush(br);
+					p.drawRect(QRectF(0, 0, 6.0 * cw, 2.0 * ch));
+				}
+				const Qtty::Color bg = hb.at(2, 1).bg;
+				if (bg.kind() != Qtty::Color::Rgb) return -1;
+				const QRgb v = bg.value();
+				return (qRed(v) + qGreen(v) + qBlue(v)) / 3;
+			};
+			const int h_solid = hatched(Qt::SolidPattern);
+			const int h_d1 = hatched(Qt::Dense1Pattern);
+			const int h_d4 = hatched(Qt::Dense4Pattern);
+			const int h_d7 = hatched(Qt::Dense7Pattern);
+			printf("info: a white hatch over a dark ground resolves to"
+			       " solid %d, Dense1 %d, Dense4 %d, Dense7 %d\n",
+			       h_solid, h_d1, h_d4, h_d7);
+			const char *hmsg = "a hatched brush resolves to the colour the"
+			    " area actually is, so a denser pattern lands nearer the"
+			    " brush and a sparser one nearer the ground";
+			if (h_solid > 0 && h_d1 > 0 && h_d4 > 0 && h_d7 > 0
+			    && h_solid >= h_d1 && h_d1 > h_d4 && h_d4 > h_d7)
+				printf("PASS: %s\n", hmsg);
+			else {
+				printf("FAIL: %s\n      condition: solid %d, d1 %d, d4 %d,"
+				       " d7 %d\n", hmsg, h_solid, h_d1, h_d4, h_d7);
+				++r;
+			}
+
 			const int slant_q = slanted(6), slant_r = slanted_raster(6);
 			printf("info: a slanted band marks %d cells, raster %d\n",
 			       slant_q, slant_r);

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2482 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2483 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -54940,3 +54940,72 @@ convention this tree decides rather than a fault to fix -- the more so since
 §8.657 took one such decision in the same hour, and taking a second one the
 same way on weaker ground is how a convention gets set by accumulation. It
 is in §0b.
+
+### 8.659 A hatch is a texture with a name (2026-11-02)
+
+**Fourth instance of §8.657's lens, and unlike §8.658's it is a defect
+rather than a decision.** Colour, pen weight and pen style were the first
+three; a brush's PATTERN is the fourth, and it is the one design.md already
+had a rule for.
+
+**Measured, one filled rectangle at each brush style, over a concrete
+ground, reading the cell's resolved background:**
+
+    SolidPattern    0x56
+    Dense1Pattern   0x56      identical to solid
+    Dense7Pattern   0x56      identical to solid
+    HorPattern      0x56      identical
+    CrossPattern    0x56      identical
+
+Dense1 covers about 94 per cent of its area and Dense7 about 6, and they
+produced the same fully tinted cell. A chart distinguishing filled regions
+by hatch -- the standard way to do it where colour is scarce -- had that
+distinction removed.
+
+**§6.1's fourth rule covers it, which is what makes this a defect.** The
+rule resolves "a brush whose `color()` is meaningless" and names gradients
+and textures. A Dense or Cross pattern is neither: its colour IS meaningful,
+so the colour was believed and the pattern -- the other half of what the
+brush says -- was dropped. The rule's own reasoning reaches further than its
+list: *"the colour the area actually is beats the black that accessor hands
+over"*, and a six-per-cent hatch is mostly ground.
+
+**Rasterised and sampled rather than tabulated.** Qt owns those bitmaps, so
+a table of coverages written here would be one more thing to be wrong about
+-- and this run has already been wrong twice by doing arithmetic Qt could
+have been asked for. The pattern is drawn into an 8x8 image and handed to
+the texture sampler that §6.1 already uses, which yields the coverage as the
+alpha; §6.1's partial-alpha rule then blends it against what the cell holds.
+Nine lines, and no new path. After it:
+
+    solid 0x56, Dense1 0x54, Dense4 0x45, Dense7 0x37
+
+against a bare ground of 0x35 -- the gradation the coverages describe.
+
+**AND THE FIXTURE HAD TO MOVE TO A CONCRETE GROUND TO SEE ANY OF IT.**
+§6.1's third rule lays paint down opaque where the ground is the terminal's
+own, so over a `Default` background a hatch's coverage cannot show at all.
+The first probe asked the question where the answer is fixed and reported
+every pattern identical -- which was true, and not about hatching. The check
+fills a ground first.
+
+**Asserted as an ORDER, not as six numbers**: denser covers more, so it
+lands nearer the brush and further from the ground. That survives Qt
+changing a bitmap by a pixel, where constants would not -- and a constant
+asserted on a rendering is what §8.655 had just finished removing from
+another check. 2482 checks to 2483.
+
+**AND THE GATE CAUGHT THE SECOND-ORDER COST, AGAIN.** Widening the
+texture branch's condition to take the hatch moved the line an existing
+sabotage was anchored to, so *"a texture brush answers with its
+meaningless colour"* could no longer be applied and the check it defends --
+a different check, about textures -- was left undefended while the suite
+stayed green. Re-anchored and re-run.
+
+That is the same shape §8.654 met: **a sabotage entry is anchored to a line
+of code, so editing that line can silently disarm a guard for something
+else entirely.** It is the cost of anchoring to source text rather than to
+behaviour, it is paid by whoever edits a guarded line, and `make check` is
+what collects it. Worth knowing before touching a line that an entry
+names -- `grep` of `tool/sabotage.toml` for the line answers it in a
+second.
