@@ -14847,8 +14847,12 @@ reader lands on, so it says so here rather than only in the entry that did
 it.** §8.13 hosted bbq-predictor's real `bbq_forecast_graph` hours later
 and recorded the curve rendering as diagonals; §8.638 re-took this whole
 table on 2026-11-02 and found the diagonal a clean staircase and the
-polyline a recognisable sine. What remains of the row below is narrower
-than it reads: a non-rectangular FILL, outline drawn and interior blank.
+polyline a recognisable sine. **And nothing remains of the row below**:
+the third gap closed too. The re-take's own ellipse looked hollow because
+it was painted `Qt::white`, which Fusion spells `Base` -- a surface role,
+which the default theme leaves at the terminal's own background and which
+therefore erases. A fill in a colour with no palette role behind it draws
+the disc.
 
 **`PixelSurface` is the escape hatch and it works** -- measured, a sine
 curve harvested as one placement at 300x95 px, full resolution -- but it
@@ -53509,16 +53513,58 @@ lines away in a differently-titled entry. **Closing a finding updates the
 entry and not the pointers**, and here the pointer that was missing is the
 one from the original to its own correction.
 
-**ONE CASE IS STILL OPEN AND IS NARROWER THAN 8.11'S.** A filled ellipse
-draws its outline and leaves its interior blank -- 68 glyph cells tracing
-the curve, and **zero cells carrying a non-default background**. That
-second count is the one that makes the claim safe: a fill painted as colour
-with no glyph would be invisible to a glyph count, which is the instrument
-fault this entry would otherwise have committed while reporting a missing
-fill. The colour plane was asked separately and is empty.
+**~~ONE CASE IS STILL OPEN AND IS NARROWER THAN 8.11'S.~~ IT WAS NOT OPEN,
+AND THE FAULT WAS THE PROBE'S COLOUR.** The ellipse above drew 68 glyph
+cells tracing its curve and **zero cells carrying a non-default
+background**, and this entry read that as a missing non-rectangular fill.
+It guarded the wrong axis while doing so. It asked the colour plane
+separately -- a fill painted as colour with no glyph is invisible to a
+glyph count -- and that guard is right and fired correctly. What the entry
+did not have is a control able to fail the way the thing it controlled for
+fails.
 
-So the open case is **a non-rectangular fill**, not "a filled shape renders
-nothing" -- it affects a pie, a gauge, and fuzzypickles' compass, which
-8.11 named for the needle rather than the disc. Whether Channel A should
-walk a shape's interior at all is adjacent to the fill question §0b already
-holds open, so this records the measurement and takes no view.
+**The control is a RECTANGLE, and it renders nothing either.** `drawRect`
+with a brush and no pen is the one fill this engine has always had, so no
+shape-specific gap can explain it. Measured 2026-11-02 in the same 30x10
+buffer, painted straight at a `CellPaintDevice` so that the widget and
+`render_once()` are out of the picture:
+
+    fill, no pen             glyph  tinted
+    rectangle, white             0       0
+    rectangle, green             0     300
+    ellipse, green               0     232   a clean disc
+    ellipse, green, with pen    68     232
+
+**So a non-rectangular fill works, and what the probe met was
+`brush_cell()`'s erase rule doing exactly what it says it does.** The probe
+painted `Qt::white`. `role_of()` searches Window, Base, Button,
+AlternateBase, Highlight and ToolTipBase in that order and returns the
+first match; printed from the live palette, Window and Button are
+`#efefef`, AlternateBase `#f7f7f7`, Base `#ffffff` -- so `Qt::white`
+matches a SURFACE role, the default theme leaves every role at
+`Color::Default`, and a surface the theme has not coloured is the
+terminal's own background. It erases rather than paints, and the stroke
+survived because a pen is a glyph.
+
+**All three of 8.11's gaps are closed**, and the survey row now says so
+rather than passing one on.
+
+**And the suite had already said so, which is the check this entry skipped
+and the cheapest one available.** `suite_render` fills an ellipse with
+`QColor(200, 40, 40)` and asserts the cells against an independent raster
+render, exactly; the erase half is asserted too, at `suite_render`'s
+`autoFillBackground` cases. Both have been green throughout. A finding that
+contradicts a passing assertion in the same tree puts the finding under
+suspicion first, and asking `git grep drawEllipse test/` would have cost
+nothing.
+
+The shape is worth more than the correction. **The guard this entry was
+proud of sat on the axis somebody had already thought about** -- the colour
+plane, because a previous reader had warned about colour-only fills --
+while the colour CHOICE was nobody's warning and had no control at all. One
+line of rectangle would have caught it before the commit. That this engine
+reads a literal colour back as the palette role whose RGB it equals is not
+news here either: §8.248 and §8.515 record the same mechanism for
+ToolTipText against WindowText, and the rule is stated in `brush_cell()`'s
+own comment. So this is a known class met from the fill side, reached
+because a probe chose the one colour that triggers it.
