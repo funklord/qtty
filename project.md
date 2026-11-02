@@ -54202,3 +54202,69 @@ off." So the single most valuable consumer test of this library does not run
 by default, and the reason is this library's API stability. Nothing in this
 entry changes that; it is recorded because it is the clearest statement
 anybody has made of what adoption actually waits on.
+
+### 8.649 0b's fill under-coverage, measured and attempted (2026-11-02)
+
+**§0b holds a row saying Channel A's fill under-covers a slanted shape, and
+calls closing it "a rasteriser rather than a guard -- a cost nobody has
+asked for".** That is a judgement rather than a measurement, and a large
+item deferred is still an item, so it was measured and attempted. The row
+survives, but on evidence now instead of estimate.
+
+**HOW BAD IT IS.** A filled band 20 cells wide, against an independent
+raster render of the same path:
+
+    thickness   slope      qtty   raster
+     3 px        0 px       20      20
+     3 px       10 px        6      20
+     3 px       40 px        6      24
+     8 px       40 px        9      29
+    19 px       10 px       20      39
+
+A flat band is perfect; a slanted one loses half to two thirds of its
+cells. **That is an area chart's body**, which matters because
+bbq-predictor's forecast graph and fuzzypickles' compass are exactly that
+shape -- so this is a consumer-facing gap and not a curiosity. §8.11's
+staircase diagonal and recognisable sine go through `stroke_polyline` and
+are unaffected: it is FILLS that lose cells.
+
+**THE ATTEMPT, AND IT NEARLY WORKED.** `fill_polygon` already contains the
+machinery: a row-band pass, added by §8.384, that asks what each EDGE passes
+through over the whole row rather than at one sample line -- and it runs
+`if (crossings.isEmpty())` only. Made unconditional, with the band
+augmenting the scanline instead of replacing it, **every one of the twelve
+cases above matched raster exactly but one**.
+
+The restructuring is worth recording because it was proved rather than
+eyeballed: the band body moved into a lambda, two row-level `continue`s
+became `return`s, and a diff of the two files with comments stripped showed
+exactly four changes and no others. Two inner `continue`s had been swept
+into `return`s by the same blanket replacement -- in the edge loop and in
+the range merge -- and the audit is what caught them, not the compiler.
+
+**WHY IT WAS REVERTED: IT MARKS ONE CELL RASTER LEAVES BLANK.** At a band
+exactly one row tall and a shallow slope, qtty marked 40 cells where raster
+marks 39, and the cell is empty in raster at an alpha threshold of 1, so it
+is not an antialiasing artifact. §8.386's rule is explicit that this is the
+forbidden direction -- the fill may mark fewer cells than raster and must
+never invent one, "because a reader cannot tell which half is which".
+
+**The suite caught it before the probe did**, which is the part worth
+keeping: the first attempt turned three checks red, including *"and no fill
+marks a cell raster leaves blank"*, within a minute of the edit. Making the
+augmenting pass mark by cell CENTRE -- the scanline's own question -- rather
+than by any touched cell satisfied both raster comparisons, and the residue
+above survived only because no fixture has that shape.
+
+**So the remaining fault is the rasteriser after all.** The over-coverage is
+an edge passing through a row whose share of the shape rounds away, and
+removing it means intersecting each edge's range with the shape's actual
+coverage in that row -- which is per-pixel work, which is what §0b said.
+The row stands, with a number attached.
+
+**And one check in `suite_render` pins the limit on purpose**, asserting
+`slanted(6) < 20` with a comment saying the under-coverage "is a design
+question rather than a defect". It went red under the fix, correctly: a
+gate that disagrees with a change is the first thing to read, and this one
+was right about what it asserts. It is left exactly as it is, because the
+limit it pins is still the behaviour.
