@@ -1,7 +1,14 @@
 # qtty -- top-level project file. test/ is deliberately NOT a SUBDIR here:
-# the default build produces the library, the tools and the example, and
+# this project makes the library, the four tools and the example, and
 # `make test` drives test/test.pro into its own build directory. See the
 # Makefile's TEST section for why that is not merely tidiness.
+#
+# A BARE `make` DOES NOT BUILD ALL OF THESE. The Makefile beside this file
+# asks for `sub-src` alone, because a default builds the software and the
+# tools and the example are helpers around it -- see its $(LIB) rule, and
+# project.md 0f. Running `make` inside a build directory of your own, with
+# no target, does build all six: that is this file's own default and it is
+# the one place the distinction shows.
 #
 # The entry point is the hand-written Makefile beside this file, not this
 # file: `make` drives qmake into BUILD_DIR, so a build never writes into the

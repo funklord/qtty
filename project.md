@@ -2844,8 +2844,12 @@ against `80de73f`, before the refinement landed, this tree was reported as
 already complying -- on the reading that the tools and the example are "the
 software". `79e8d6f` says they are the helpers, and says so naming qtty.
 Recorded because the wrong answer is the one a later reader would otherwise
-find first: §9.6 still documents `make` as "build the library, the tools
-and the example", which is accurate today and is what has to change.
+find first. §9.6 documented `make` as "build the library, the tools and the
+example" when this was written, which was accurate then; it says the
+library alone now, and so do `qtty.pro`'s header, the Makefile's own
+TARGETS list and the README. **Four copies of one sentence**, which is why
+the fix was not finished when the Makefile changed -- the sweep for them
+came later in the same session and found two still standing.
 
 **~~The README has to be rewritten.~~ DONE 2026-11-02.** Its opening is now
 the problem a reader has -- a GUI program that also runs in a terminal is
@@ -14994,7 +14998,8 @@ the same reason `-Og` exists.
 ### 9.4 Tests are built by the test target, and only by it
 
 `test/` is deliberately not a `SUBDIRS` entry in `qtty.pro`. A plain
-`make` builds the library, the three tools and the example; `make test`
+`make` builds the library alone -- the four tools and the example are
+helpers with targets of their own since 0f -- and `make test`
 runs qmake on `test/test.pro` into `$(BUILD_DIR)-test` and builds the
 suite there. That is `build-and-commit.md`'s rule, and it was paid for
 here within an hour of the Makefile being written.

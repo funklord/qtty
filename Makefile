@@ -1002,7 +1002,7 @@ probe-install:
 		"$(BUILD_DIR)/install-probe.err"; \
 	exit $$rc
 
-# The three tools and the example, run rather than merely built. Until this
+# The four tools and the example, run rather than merely built. Until this
 # target the only thing holding them to anything was the compiler: a tool that
 # aborted at startup would have shipped, and the example -- which exists to
 # show one view codebase serving both targets -- was never once seen to draw.
