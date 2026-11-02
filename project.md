@@ -53614,3 +53614,30 @@ entry itself calls the library's fault rather than a documentation gap, and
 `ansi_backend.cpp`'s one-shot quit on a gone terminal, which is internal.
 So the fill rule looks like an outlier rather than a class, and the sweep
 is recorded so nobody runs it twice.
+
+### 8.640 The matrices stay out of the gate, and `fuzz` had decided it (2026-11-02)
+
+§8.631 and §8.632 added `make test-versions` and `make test-compilers` and
+left one question behind for the holder: should either join `make check`?
+It was parked as a convention change. **The project had already settled the
+rule under another name**, which is the answer `working-practice.md` asks
+to look for before deferring anything.
+
+§8.605 states it of `make fuzz`: *"Two reasons keep it out of the gate,
+either disqualifying alone: it needs clang, libFuzzer being a clang runtime
+where the gate builds with g++"*. A target that needs a toolchain the gate
+cannot assume stays out of the gate. That is a rule about inputs, not about
+fuzzing.
+
+Both matrices need exactly that, and in a sharper form: each **fails rather
+than skips** when its second input is absent -- one Qt major, or one front
+end -- because a sweep over nothing reads like a real one, which is the
+guard §8.633 exists for. Deliberately invoked, failing is right. In the
+gate it would be wrong: `make check` would go red on any machine with a
+single Qt or a single compiler, for no fault in the tree, and a gate that
+is red for the machine rather than the code is how a red gate stops meaning
+anything.
+
+So the answer is **no**, and it is not a judgement anybody has to make. The
+question is retired rather than parked, and the out-of-gate list is where
+both belong.
