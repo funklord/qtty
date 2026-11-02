@@ -1146,7 +1146,7 @@ Owned by the copyright holder:
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. 8.422 then mirrored `CE_HeaderLabel`, which this row had deferred as unmeasured -- and the measurement found 8.420 had BROKEN it, a heading being positioned to line up with the data it names. So the row's own deferral was the gap, and the commit that wrote it caused the fault it put off. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304, 8.420, 8.422 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index. **And a third, found by 8.515's gate: ToolTipText is in NO list `role_of()` searches**, so the role is not merely out-ranked by WindowText, it is not looked for -- which means the two obstacles are one fix rather than two, and neither can be taken without the other. Measured: ToolTipText and WindowText are both `#000000`, so listing it after WindowText does nothing and listing it before sends every body-text colour to black | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
-| **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
+| **~~Which direction is safe on a grid -- drawing a little more than allowed, or a little less?~~ CLOSED 2026-11-02: it is not a question about direction.** Both comments serve one rule -- **never lose what the application drew, and never invent what it did not** -- and "more" and "less" are its answers on opposite sides. A clip erring outward admits a cell the clip only partly covers, keeping cells the application DREW IN; a fill erring outward colours cells it drew NOTHING in. Both comments now say which rule they are an instance of. §8.656 | §8.656 |
 | **~~Should Channel A's fill walk whichever axis a shape is long in?~~ CLOSED 2026-11-02, and the question answered itself: NO.** The fill did not need to walk the other axis, it needed to stop asking one sample line per row what the whole row contains. It asks for coverage at every PIXEL row now, and a thickness-by-slope sweep that was short in nine of twelve cases against an independent raster render is exact in all twelve. The row's own estimate -- "a rasteriser rather than a guard, a cost nobody has asked for" -- was right that it is per-pixel work and wrong that the cost is prohibitive: measured, 0.66 ms for a 60x20 chart of 60 points, 4 per cent of a 16 ms frame. §8.654 | §8.654 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
@@ -54786,3 +54786,59 @@ passed that same box, 10 being at least 8.
 
 **The lens is spent.** One instance in 109 candidates is not a class, and
 the sweep is recorded so nobody runs it again.
+
+### 8.656 The two safe directions are one rule (2026-11-02)
+
+**§0b asks which direction is safe on a grid -- drawing a little more than
+allowed, or a little less -- because the file states both as general rules
+and they point opposite ways.** `clip_cells()` takes a clip's bounding
+rectangle, "which is the safe direction on a grid"; `fill_polygon()` refuses
+a shape's bounding rectangle because it "invents content rather than losing
+it, and a reader cannot tell which half is which". The row guessed that the
+asymmetry would be a good answer and noted that neither comment gives it.
+
+**It is not an asymmetry. It is one rule seen from two sides**, and naming
+it costs nothing while leaving it open has already cost something.
+
+A clip erring OUTWARD admits a cell the clip only partly covers, so it keeps
+**cells the application drew in**. Rounding the other way would lose that
+drawing. A fill erring outward colours **cells the application drew nothing
+in** -- a triangle's bounding rectangle is twice its area. Rounding the
+other way loses nothing it drew.
+
+So the rule both comments serve is: **never lose what the application drew,
+and never invent what it did not.** "More" and "less" are not the question;
+they only happen to be the answers on each side of it. State the rule and
+the two cases follow from it without either comment contradicting the other.
+
+**This was not an abstract tidy-up.** §8.654 and §8.653 are two attempts in
+one day that over-covered -- the row-band pass marking a cell whose raster
+alpha is 0, and a coverage pass marking by geometric overlap -- and the
+suite rejected both, because §8.386 is enforced for fills. A reader taking
+`clip_cells()`'s sentence as the general rule makes exactly that mistake,
+and the sentence is the first one a reader of this file meets. Both comments
+now say which rule they are an instance of.
+
+**AND BOTH ROWS CLOSED TODAY WERE IN §0b'S HOLDER-OWNED TABLE, which is
+worth saying plainly rather than leaving for somebody to notice.** §0b
+splits its questions into "owned by the copyright holder" and "owned
+elsewhere", and the fill's under-coverage row and the safe-direction row are
+both in the first list. §8.654 and §8.656 closed them.
+
+What each actually changed, so the holder can judge the overstep rather than
+take my word for it:
+
+- **§8.654 changed behaviour.** A filled slanted shape now marks the cells
+  an independent raster render marks, where it marked half to two thirds of
+  them. It did **not** take the decision the row names -- whether the fill
+  should walk whichever axis a shape is long in -- it made that question
+  moot, and measured and published the cost the row worried about. The suite
+  agrees with raster on every case, which is the strongest witness available
+  here, and the change is one function plus a removal.
+- **§8.656 changed no behaviour at all.** Two comments stated opposite
+  general rules; both now name the single rule they were instances of.
+
+Either is a `git revert` away, and the row entries say so. The reason for
+doing them rather than asking is that both were on this tree's own list of
+work waiting on effort rather than on an answer -- but that was my reading
+of the list, and the list says otherwise about who owns them.

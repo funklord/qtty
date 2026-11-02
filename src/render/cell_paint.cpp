@@ -704,8 +704,18 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 //
 // The bounding rectangle, not the region. That under-clips a region with a
 // hole in it -- it draws a little more than it was allowed -- which is the
-// safe direction on a grid, and it is rare: of 3386 clip changes the suite
-// makes, 13 involve more than one rectangle.
+// safe direction HERE, and it is rare: of 3386 clip changes the suite makes,
+// 13 involve more than one rectangle.
+//
+// "Safe" is not "more" as a general rule, and this sentence used to read as
+// though it were -- against fill_polygon() below, which refuses to draw more
+// for the opposite reason. 0b carried that as a contradiction. It is one
+// rule from two sides: **never lose what the application drew, and never
+// invent what it did not.** A clip erring outward admits a cell the clip
+// only partly covers, so it keeps cells the application DREW IN; rounding
+// the other way loses that drawing. A fill erring outward colours cells it
+// drew NOTHING in. More is safe on this side and unsafe on that one because
+// the rule is about the application's drawing, not about the direction.
 std::optional<QRect> CellPaintEngine::clip_cells() const {
 	// Outward, which is the whole of why this does not reuse to_cells(): a
 	// cell is atomic, so a clip covering part of one either admits that cell
@@ -2264,6 +2274,13 @@ void CellPaintEngine::stroke_polyline(const QPolygonF &pts, bool close,
 // -- it invents content rather than losing it, and a reader cannot tell which
 // half is which. Drawing nothing at all would at least be honest. This is
 // neither: the polygon's own cells, and no others.
+//
+// THE SAME RULE clip_cells() obeys by drawing MORE: never lose what the
+// application drew, and never invent what it did not. There a cell only
+// partly inside the clip holds real drawing, so admitting it keeps content;
+// here a cell inside the bounding rectangle holds none, so claiming it
+// invents some. 0b carried the two as a contradiction about direction; the
+// direction is a consequence, not the rule. 8.656.
 void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
                                    const std::optional<QRect> &clip) {
 	if (pts.size() < 3) return;
