@@ -8075,15 +8075,41 @@ int suite_widgets() {
 		QCoreApplication::processEvents();
 		CellBuffer tall(cols, rows);
 		render_once(host, tall);
-		int frame_seen = 0;
+		// COUNTED AND BOUNDED, because `frame_seen >= 8` was a literal that
+		// could not see a frame with holes in it. A 6x3 group box draws its
+		// frame 6 wide and 2 tall below the title row -- a perimeter of
+		// exactly 12 -- so a bound of 8 passes a box missing four of its
+		// cells, which is the "border that draws one of its four sides"
+		// class 8.645 and 8.650 spent a day on.
+		//
+		// Asserted against the perimeter of the rectangle the glyphs
+		// THEMSELVES span, rather than against 12. That needs no arithmetic
+		// about where a group box puts its frame, it stays true if the
+		// geometry moves, and it is the property actually wanted: the box is
+		// closed. A frame with a gap spans the same rectangle and has fewer
+		// glyphs in it, so the equality fails.
+		int frame_seen = 0, lo_x = cols, hi_x = -1, lo_y = rows, hi_y = -1;
 		for (int y = 0; y < rows; ++y)
 			for (int x = 0; x < cols; ++x) {
 				const QString &g = tall.at(x, y).ch;
 				if (g.isEmpty()) continue;
 				const char32_t u = g.at(0).unicode();
-				if (u >= 0x2500 && u <= 0x257f) ++frame_seen;
+				if (u < 0x2500 || u > 0x257f) continue;
+				++frame_seen;
+				lo_x = qMin(lo_x, x);
+				hi_x = qMax(hi_x, x);
+				lo_y = qMin(lo_y, y);
+				hi_y = qMax(hi_y, y);
 			}
-		CHECK(frame_seen >= 8, "while one with room for a frame draws one");
+		const int bw = hi_x - lo_x + 1, bh = hi_y - lo_y + 1;
+		const int perimeter = (bw >= 2 && bh >= 2)
+		                    ? 2 * bw + 2 * bh - 4 : 0;
+		printf("info: a 6x3 group box draws %d box glyph(s) spanning %dx%d,"
+		       " a complete perimeter being %d\n", frame_seen, bw, bh,
+		       perimeter);
+		CHECK(bw >= 2 && bh >= 2 && frame_seen == perimeter,
+		      "while one with room for a frame draws a CLOSED one, every"
+		      " cell of the rectangle its own glyphs span");
 	}
 
 

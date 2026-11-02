@@ -54748,3 +54748,41 @@ guard defended by nothing, and `--validate` -- which is what `make check`
 runs -- cannot tell the two apart, because it compares anchors. Running the
 entry is what found that the rule had no check, and the fixture exists
 because the sabotage demanded it rather than the other way round.
+
+### 8.655 A bound of eight on a twelve-cell frame (2026-11-02)
+
+**The lens §8.654 handed over: a check that asserts a hand-computed CONSTANT
+where a relationship is available can hide the opposite defect underneath.**
+That is not a general suspicion -- it is what had just happened. `slanted(6)
+< 20` pinned the fill's under-coverage, and the under-coverage it pinned was
+hiding an over-coverage that the same fixture's raster comparison would have
+caught.
+
+**Swept, and the suite is mostly innocent.** 306 comparisons against a
+literal, narrowed to 109 inequalities; nearly all are already relational --
+`k_part * 10 < k_full` is a ratio, `drawn * cw >= th.left()` ties a count to
+a widget's own geometry, `render_ms < 160.0` is a budget, and the common
+`found > 0 && bad.isEmpty()` shape is exactly right. The tree's habit is
+sound, which is why one instance stands out rather than a class.
+
+**THE INSTANCE: `CHECK(frame_seen >= 8, "while one with room for a frame
+draws one")`.** The fixture is a group box six cells wide and three tall; it
+draws its frame six wide and two tall below the title row, a perimeter of
+**twelve**. So a bound of eight passes a box missing **four** of its cells --
+which is the "border that draws one of its four sides" class §8.645 and
+§8.650 spent a day on, in a check whose job is to say the frame is there.
+
+**Replaced with the property rather than a better number.** The count is
+asserted against the perimeter of the rectangle the glyphs THEMSELVES span,
+so the check needs no arithmetic about where a group box puts its frame, it
+stays true if the geometry moves, and it says what is actually wanted: the
+box is closed. A frame with a gap spans the same rectangle with fewer glyphs
+in it, so the equality fails.
+
+**Proved by sabotage**, which is what distinguishes this from a tidier
+assertion: starting the top run one cell late gives 10 glyphs spanning 6x2
+against a complete perimeter of 12, and the check goes red. The old bound
+passed that same box, 10 being at least 8.
+
+**The lens is spent.** One instance in 109 candidates is not a class, and
+the sweep is recorded so nobody runs it again.
