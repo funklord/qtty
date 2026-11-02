@@ -15,7 +15,8 @@
 #   $$shadowed(), and this file gives qmake somewhere to shadow into.
 #
 # TARGETS
-#   make              -- build the library, the tools and the example
+#   make              -- build the library, and nothing else
+#   make tools        -- the four tools; make example -- the chat example
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-versions -- the suite under every Qt version installed
@@ -111,12 +112,13 @@ ifdef SANITIZE
                     QMAKE_LFLAGS+=-fsanitize=address,undefined
 endif
 
-# The library, the two tools and the example, at the paths qmake's subdirs
+# The library, the four tools and the example, at the paths qmake's subdirs
 # template puts them under a shadow build.
 LIB      = $(BUILD_DIR)/lib/libqtty.a
 INSPECT  = $(BUILD_DIR)/tool/inspect/qtty-inspect
 REPLAY   = $(BUILD_DIR)/tool/replay/qtty-replay
 NEGOTIATE = $(BUILD_DIR)/tool/negotiate/qtty-negotiate
+TRAY_CHECK = $(BUILD_DIR)/tool/tray/qtty-tray-check
 EXAMPLE  = $(BUILD_DIR)/example/chat/chat
 TEST_BIN = $(TEST_BUILD_DIR)/qtty-tests
 
@@ -196,8 +198,47 @@ $(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS) $(TOOL_HEADERS) \
 .PHONY: FORCE
 FORCE:
 
+# ONE SUBDIR, NOT ALL OF THEM. `make` builds the library and stops, which
+# is build-and-commit.md's rule and names this tree in it: the default
+# builds the main program binaries with the libraries they link, and **not
+# the helpers around them** -- "an inspection tool, an example application
+# ... qtty's tools and example chat". qtty is purely a library, so the
+# library is the whole of it.
+#
+# Until 2026-11-02 this recipe was a bare `$(MAKE) -C $(BUILD_DIR)`, which
+# is qmake's subdirs build and made all six: the library, four tools and
+# the chat example. Nothing asked for the other five, and every target that
+# wanted one got it by leaning on a default broad enough to include it.
+#
+# `sub-src` rather than a path, because that is the name qmake's subdirs
+# template generates -- and it carries the dependency the .pro file
+# declares, so a named subdir still builds what it depends on. Measured in
+# the generated Makefile: `sub-tool-inspect: sub-src FORCE`.
 $(LIB): $(BUILD_DIR)/Makefile FORCE
-	$(MAKE) -C $(BUILD_DIR)
+	$(MAKE) -C $(BUILD_DIR) sub-src
+
+# THE HELPERS, each on demand. A target per artifact rather than one
+# `helpers` phony, because the targets that need them name the one they
+# need -- `test-negotiate` wants the negotiator and nothing else -- and a
+# rule per path is what lets them say so.
+$(INSPECT): $(BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(BUILD_DIR) sub-tool-inspect
+
+$(REPLAY): $(BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(BUILD_DIR) sub-tool-replay
+
+$(NEGOTIATE): $(BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(BUILD_DIR) sub-tool-negotiate
+
+$(TRAY_CHECK): $(BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(BUILD_DIR) sub-tool-tray
+
+$(EXAMPLE): $(BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(BUILD_DIR) sub-example-chat
+
+# And two names for the groups, for a person who wants them all.
+tools: $(INSPECT) $(REPLAY) $(NEGOTIATE) $(TRAY_CHECK)
+example: $(EXAMPLE)
 
 # -----------------------------------------------------------------------------
 # Test
@@ -465,13 +506,12 @@ test-pty: tests-build
 # stands in for the desktop's StatusNotifierWatcher, publishes an icon
 # against it, reads the properties back over the bus the way a panel would,
 # calls Activate the way a click does, and hides it again.
-TRAY_CHECK = $(BUILD_DIR)/tool/tray/qtty-tray-check
 # Named rather than spelled inline so the "absent" arm of the tray gate can
 # be exercised: `make test-tools DBUS_RUN_SESSION=no-such-tool` takes the
 # skip. A gate arm that can only be reached by shadowing a system binary is
 # one nobody checks.
 DBUS_RUN_SESSION = dbus-run-session
-test-tray: all
+test-tray: $(TRAY_CHECK)
 	@command -v $(DBUS_RUN_SESSION) >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- $(DBUS_RUN_SESSION) is not installed"; exit 0; }
 	@DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-qtty-tray \
 		$(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
@@ -1072,7 +1112,7 @@ probe-install:
 # The tally is derived rather than written: it said "3 of 4" as a literal,
 # which cannot be wrong about a tool set that has changed and cannot be
 # right about one that has.
-test-tools: all
+test-tools: tools example
 	@fail=0; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) < /dev/null 2>/dev/null); \
 	case "$$out" in \
@@ -1827,7 +1867,7 @@ version-check:
 # Run and install
 # -----------------------------------------------------------------------------
 
-run: $(LIB)
+run: $(EXAMPLE)
 	$(EXAMPLE) --tui
 
 # What this lays down is asserted by `make test-install`, which names every
@@ -1874,7 +1914,7 @@ $(BUILD_DIR)/qtty.pc: VERSION Makefile FORCE
 	    'Libs: -L$${libdir} -lqtty' \
 	    > $@
 
-install: $(LIB) $(BUILD_DIR)/qtty.pc
+install: $(LIB) tools example $(BUILD_DIR)/qtty.pc
 	install -d $(DESTDIR)$(PREFIX)/include/qtty
 	install -m 0644 include/qtty/*.h $(DESTDIR)$(PREFIX)/include/qtty/
 	install -d $(DESTDIR)$(PREFIX)/lib
@@ -1938,4 +1978,4 @@ help:
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         test-overlay-z test-versions test-compilers \
-        tools-check sabotage-check FORCE
+        tools example tools-check sabotage-check FORCE

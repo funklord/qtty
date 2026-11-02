@@ -2797,8 +2797,9 @@ Written at a halt rather than after the work, so it is short. Weekly usage
 reached 98 per cent with the window resetting 2026-11-01T16:00Z, which is
 CLAUDE.md's stop figure and far outside its three-hour exemption.
 
-**A bare `make` must build the library and nothing else.**
-`claude-guidelines` `79e8d6f` names this project in the rule: the default
+**~~A bare `make` must build the library and nothing else.~~ DONE, and the
+measurements are below.** `claude-guidelines` `79e8d6f` names this project
+in the rule: the default
 builds the main program binaries and the libraries they link, **"not the
 helpers around them ... an inspection tool, an example application ...
 qtty's tools and example chat"**. qtty is purely a library, so `all` should
@@ -2810,6 +2811,33 @@ build and makes all six. The handle is already there -- qmake generates
 `sub-tool-tray` and `sub-example-chat`. Whatever moves out of the default
 must stay reachable for `test-tools`, `test-install` and `install`, which
 run and install the tools and the example.
+
+**WHAT IT TOOK, and the shape is a rule per artifact rather than one
+`helpers` phony.** `$(LIB)` now runs `$(MAKE) -C $(BUILD_DIR) sub-src`, and
+each of the five helpers has a rule naming its own subdir target, with
+`tools` and `example` as group names for a person who wants them all. A
+rule per path is what lets a target say which one it needs -- and four of
+them already did, `test-negotiate: $(NEGOTIATE)` and `test-install: $(LIB)
+$(INSPECT) $(REPLAY)` having named their artifacts all along while relying
+on a default broad enough to have built them. Three leaned on the breadth
+and now name what they want: `test-tray` the tray check, `test-tools` the
+groups, `run` the example. `test-screen` needed no change -- `tool/screen-
+check` compiles its own probe against `lib/libqtty.a` and wants nothing
+else.
+
+**Measured from clean rather than read.** A bare `make` into an empty
+directory produced `lib/libqtty.a` and **none** of the five helpers. Asking
+for one helper alone -- the negotiator -- produced the library and the
+negotiator and nothing else, which is qmake's `depends = src` carrying the
+library in; `sub-tool-inspect: sub-src FORCE` is the generated line that
+does it. `make tools example` produced all six.
+
+**`TRAY_CHECK` moved up into the artifact block** with its siblings, which
+it had been defined 340 lines below. A prerequisite is expanded when the
+rule is read, so `tools: ... $(TRAY_CHECK)` would otherwise have expanded
+to nothing and the group would have built three tools of four silently.
+The long comment that sat under it stays where it is: it explains
+`DBUS_RUN_SESSION`, not `TRAY_CHECK`.
 
 **AND AN EARLIER VERDICT OF MINE WAS WRONG.** Asked the same morning
 against `80de73f`, before the refinement landed, this tree was reported as
@@ -15052,7 +15080,8 @@ wrapper that makes the two look like one thing.
 
 | Target | What it does |
 |---|---|
-| `make` | build the library, the tools and the example |
+| `make` | build the library, and nothing else |
+| `make tools` / `make example` | the four tools; the chat example |
 | `make test` | build and run the suite |
 | `make check` | style plus test -- what must pass before committing |
 | `make style` | the shared source gate, and the project.md checks |
