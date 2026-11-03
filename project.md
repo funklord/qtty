@@ -1176,6 +1176,20 @@ Owned elsewhere, and signalled rather than fixed here:
   line. Signalled as `claude-guidelines` `a36828d`, which carries the loop
   that did it and why the remedy is a sentence in that document rather
   than a change in any tree.
+- **And a THIRD member of that same family: `pgrep -x make` cannot say
+  whose make it found.** `running-code.md`'s watcher entry offers `-x` over
+  `-f` as the first of three answers to the self-match hazard, and against
+  that hazard it is sound. Measured here 2026-11-03: a `make check` had
+  finished -- receipt written, `probe-style` printed, which is the last of
+  the thirteen parts -- and `pgrep -x make` went on answering true for
+  about six minutes, because two other sessions were building in `hydra`
+  and in `fmake`, one under the other account. I waited on a passed gate
+  and was close to reporting it wedged. The intersecting form that file
+  prescribes for the process table two sections later --
+  `ps -eo pid=,ppid=,user=,args=` filtered on the tree -- showed that none
+  of the matches was mine. Signalled as `claude-guidelines` `88b0257`.
+  Same shape as the bullet above and the same document: a remedy for one
+  hazard read as a remedy for the family.
 - **The braced-initialiser lexer fault in `style_gate.py`** is
   `claude-guidelines`', signalled with three fixtures and the paren case
   that must not change. It is larger than it looked: a braced continuation
