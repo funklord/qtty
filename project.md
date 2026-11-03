@@ -56800,6 +56800,24 @@ receipts' content identity and an edit mid-run would have staled the
 verdicts they were about to write -- 8.681's method fault, not worth
 repeating in one evening.
 
+**AND THE OBVIOUS ESCAPE FROM 7.8 HOURS WAS MEASURED AND IS NOT THERE.**
+The tool has `--only TEXT` and `--from N`, so the reflex is to aim a
+sample at the entries most likely to have decayed -- those whose target
+file has changed since the last full sweep on 2026-10-13, which is when 8
+of 618 entries were found no longer reddening anything. Counted: **774 of
+the 805 entries are in files changed since that date**, across 24 files.
+The heuristic selects nothing because the library has moved everywhere,
+with 167 entries in `grid_style.cpp` alone and 163 in `input_router.cpp`,
+both touched within the fortnight.
+
+Nor can a sample be aimed at a file through the flags as they stand:
+`--only` matches an entry's NAME, and `--from N` runs from N to the end,
+so the expressible slices are "the last K" and nothing else. **So it is
+the full run or nothing**, and the full run is an eight-hour exclusive
+hold on a tree other sessions work in, under a rule -- no build of any
+kind anywhere -- that nothing enforces. That is not a session's call to
+make quietly, and it is question 10 rather than a thing to start.
+
 ### 8.685 Valgrind's first recorded verdict, and a suppression that has grown five-fold (2026-11-03)
 
 **`make test-valgrind` is CLEAN, and this is the first time that arm has
