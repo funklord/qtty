@@ -56189,6 +56189,31 @@ child summaries, each `ERROR SUMMARY: 0 errors` and each
 it evidence about this one. The count dropping from 17 to 0 the moment
 the `rm` fired is what exposed it.
 
+**`test-versions` WAS ALSO TAKEN AND ALSO STOPPED, and it was taken for a
+reason rather than because it was next.** The park was on load, which had
+fallen from 60-plus to 44.8, and of the four remaining arms this one had
+the sharpest aim: **`src/qt_compat.h` changed four times since the arms
+last ran**, and that file is precisely what makes the Qt 5 build work. One
+of the four is behavioural rather than prose -- *"compat: combine the Qt 5
+size and rect hashes rather than xor them"* -- and a fault in a Qt 5-only
+hash is invisible to every other arm and to `make check`, which builds
+Qt 6.
+
+It needs two full builds and two suite runs, and six minutes bought most
+of the first build with the machine at load 44 and twenty-two other build
+processes on it. Stopped the same way and for the same measured reason;
+`build-qt6` and `build-qt6-test` are left in place, 16 MB, so the next
+attempt resumes. No receipt was written, so `make arms` still reports it
+never run -- correctly.
+
+**So two arms were attempted and stopped in one run, and that is the
+honest shape of this machine rather than a failure of the method.** Both
+stops left their builds, both left no process behind -- checked, and the
+two compilers still running afterwards were building `hydra`, another
+session's work -- and neither wrote a receipt it had not earned. The arms
+that fit in the gaps between other sessions' builds have all run; the four
+that need minutes of exclusive machine have not.
+
 **A last confirmation of this morning's signal.** After the stop, a count
 of `valgrind` processes read **4**, which looked like orphans surviving a
 task-kill. They were not: memcheck and the test binary were both gone, and
