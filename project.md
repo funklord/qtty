@@ -56072,3 +56072,80 @@ is indistinguishable from one that has never existed**, and this tree spent
 a week quoting a sanitizer verdict from 2026-10-27 as though it described
 today's code. It no longer can: the receipt carries the content id, and the
 report prints `no` beside any verdict taken against different code.
+
+### 8.674 The park lifts, and the detectors answer about today's code (2026-11-03)
+
+**§8.671 parked the rebuild-heavy detectors on machine load and wrote the
+precondition down as one command.** That is the whole value of parking on
+a measurable condition rather than on a feeling: the next run checks it in
+a second. Load was 72 when the sanitizer was stopped, 50 an hour later and
+**13.27** when this began, so four arms that had been blocked on the
+machine were blocked on nothing.
+
+**`test-sanitize` -- PASS, 0 complaints over 2493 checks.** No
+`AddressSanitizer`, `UndefinedBehaviorSanitizer`, `LeakSanitizer`,
+`runtime error:` or `SUMMARY` line, with `detect_leaks=1`.
+
+**And the instrument is proven present, which is the half §8.604 says not
+to skip** -- a sanitizer that was never linked produces exactly the same
+log as one that found nothing:
+
+    nm -D build-san-test/qtty-tests | grep -cE '__asan|__ubsan'   64
+    ... | grep -cE '__asan_report|__asan_init'                    13
+    ... | grep -c '__ubsan_handle'                                12
+    size                                        47M, against 3.4M ordinary
+
+**Identical to 2026-10-27's figures**, so this is a like-for-like
+comparison rather than a fresh number read on its own. The 28 commits
+since -- six of them to `cell_paint.cpp`, the paint engine doing index
+arithmetic over cell buffers -- introduced nothing those three detectors
+can see.
+
+**`fuzz` -- PASS.** libFuzzer over the capability-reply parser, the one
+byte stream somebody else's terminal chooses: 356 new corpus units, no
+crash, peak RSS 546 MB.
+
+**`fuzz-input` -- PASS.** The live-input decoder: **272,555 executions**,
+coverage 897 edges, 1,120 new corpus units, no crash, peak RSS 534 MB.
+
+**The restart cost almost nothing because the partial build was kept.**
+§8.671 left `build-san` and `build-san-test` in place deliberately; this
+run resumed at **8 of 13** suite objects rather than from zero. A stopped
+arm that leaves its build behind is a deferral; one that cleans up after
+itself is a repeat.
+
+**AND THE TWO FUZZ RUNS WENT ALONGSIDE THE SANITIZER ON PURPOSE**, which
+is worth separating from the rule it looks like it breaks. This tree
+records that a concurrent build in a shared tree produces faults that look
+exactly like memory bugs -- but that hazard is two MAKES writing the same
+directories. The fuzz targets compile two sources directly with clang into
+their own `build-fuzz`, with no `$(MAKE)` recursion and no directory in
+common with `build-san`, so they are not that case. **The rule names a
+mechanism, not a prohibition on doing two things**, and the distinction
+was checked rather than assumed.
+
+**`test-valgrind` is in flight as this is written** -- the one instrument
+here that sees uninitialised-memory reads, a class ASan does not implement
+at all -- and its verdict is recorded separately rather than guessed,
+which is the same discipline §8.671 used and the reason that entry could
+be trusted about what it had not done.
+
+**Three of the eight arms §8.673 left owed have now run**, all passing:
+`test-sanitize`, `fuzz` and `fuzz-input`. With §8.673's five that makes
+**nine of the fourteen recorded and five still owed** -- `sabotage`,
+`test-compilers`, `test-versions`, `test-platforms` and `test-valgrind`,
+the last of them in flight.
+
+**The counts above were wrong in the first draft and `make arms` caught
+it**, which is the point of having the report rather than arithmetic: the
+draft said "six of the eight have now run" by conflating this run's three
+with §8.673's five, which belong to a different and larger never-run set.
+The summary line states the figure, so the figure is read rather than
+derived.
+
+**What was NOT assumed, measured instead:** whether `test-platforms` could
+also run alongside. It looked free -- the suite binary already exists --
+and `make -q tests-build` says it would rebuild, so it must not. That
+check also tripped the documented hazard it was checking around: `make -q`
+on a recursive target executes the sub-make and printed `make -C build
+sub-src`, which is why a dry run of one is not a dry run.
