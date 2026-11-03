@@ -55951,3 +55951,69 @@ then carry, which `working-practice.md` says is a convention change and
 its own piece of work rather than something to adjust in passing.
 
 So: the option, its cost, and whose it is -- the copyright holder's.
+
+### 8.672 A receipt per arm, and the bug the end-to-end run found in it (2026-11-03)
+
+**§8.671 named the option and left it with the holder; the answer was
+yes.** The fourteen verification arms outside `make check` now each write a
+receipt, and `make arms` reports them.
+
+**What a receipt says, and why the date is the lesser half.**
+`.git/qtty-arm-<name>` carries a verdict, a **content id** and a UTC
+timestamp. The id is computed exactly as `make check`'s own stamp computes
+its own -- HEAD plus every uncommitted change to a tracked file -- so the
+two mean the same thing and neither can drift from the other. A date says
+*six days ago*; the id says **against different code**, which is the
+question staleness is actually asking. `make arms` prints a column for it.
+
+**SKIP is a third verdict, not a pass.** Several arms stand down when their
+environment is absent: `test-tray` needs a session bus, `test-overlay-z`
+needs Xvfb, `test-pty` needs util-linux `script`, and `test-screen` stands
+down above load 40 because a timed capture on a busy machine measures the
+scheduler. Each exits 0 having checked nothing, so recording that as a pass
+would be this tree's vacuous pass with a receipt attached.
+
+**`arms-check` is what makes the set impossible to wire PARTLY**, which is
+the trap §8.671 named before any of this existed: a missing receipt reads
+as *never run* rather than *not wired*, and nothing distinguishes them by
+eye. It is in `CHECK_PARTS` and asserts three things, each seen to fail
+against a deliberate break:
+
+- every name in `ARMS` is recorded somewhere -- it was red for all fourteen
+  before the wiring, which is how it was first seen to speak;
+- nothing records under a name `ARMS` does not carry, proved with a bogus
+  arm in the Makefile and again with one in a script, since the two
+  spellings differ;
+- and **every explicit `exit 0` in an arm script is matched by a skip
+  receipt**. Those scripts use `set -e` and fall off the end on success, so
+  an explicit `exit 0` in them is a skip by construction; the counts are
+  3/3, 1/1, 1/1, 1/1 today.
+
+**AND THE DESIGN HAD THE EXACT BUG IT WAS BUILT TO PREVENT, which only
+running it found.** The first wiring put the recording line in the
+Makefile, after the arm:
+
+    test-screen: $(LIB)
+    	@./tool/screen-check $(BUILD_DIR)
+    	@./tool/arm-receipt pass test-screen
+
+`screen-check` skipped -- the machine was above load 40 -- wrote its SKIP
+receipt, and exited 0. make then ran the next line and **overwrote the skip
+with a pass**. The log said SKIPPED and the receipt said PASS, which is
+worse than no receipt at all: it is a confident wrong answer where there
+had merely been silence.
+
+**The fix is a rule about ownership rather than a patch.** Only the script
+knows which of the two happened, so **the script owns the receipt** for
+every arm that can skip -- `test-screen`, `test-negotiate`, `test-consume`
+and `test-overlay-z` record both their own skip and their own pass, and the
+Makefile records only for arms whose recipe cannot skip. `arms-check`
+accepts a recorder in either place, which is why it greps `tool/` as well
+as the Makefile.
+
+**What it cost to find was one run of one arm**, and nothing else would
+have found it: both halves were individually correct, the gate was green,
+and the fault lived in the order they ran in. That is the shape this
+document keeps recording -- a wrapper that reports on work it did not
+watch -- and it is the third time this session that running the thing
+beat reading it.

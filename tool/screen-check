@@ -46,16 +46,22 @@ if [ "$(echo "$load $max" | awk '{print ($1 > $2) ? 1 : 0}')" = 1 ]; then
 	echo "screen-check: SKIPPED -- load average $load is above $max, so a"
 	echo "              timed capture would measure the scheduler. Set"
 	echo "              QTTY_SCREEN_MAX_LOAD to run it anyway."
+	# A skip is not a pass, and this one is the likeliest of the lot to
+	# fire: it stands down on a loaded machine, which is exactly when
+	# somebody is most likely to assume the arm ran. project.md 8.672.
+	"$(dirname "$0")/arm-receipt" skip test-screen || true
 	exit 0
 fi
 for need in xvfb-run kitty import python3; do
 	command -v "$need" >/dev/null 2>&1 || {
 		echo "screen-check: $need is absent, so nothing was drawn or read" >&2
+		"$(dirname "$0")/arm-receipt" skip test-screen || true
 		exit 0
 	}
 done
 python3 -c "import PIL" 2>/dev/null || {
 	echo "screen-check: python3-pil is absent, so the capture cannot be read" >&2
+	"$(dirname "$0")/arm-receipt" skip test-screen || true
 	exit 0
 }
 
@@ -438,3 +444,11 @@ print("screen-check: FAILED -- %d px of the test colour, wanted %d (%dx%d)"
 	% (n, w * h, w, h), file=sys.stderr)
 sys.exit(1)
 PY
+
+# Reached only on success: these scripts use set -e, and every skip
+# path above exits before here having recorded a skip. The RECEIPT IS
+# THE SCRIPT'S rather than the Makefile's because only the script
+# knows which of the two happened -- a wrapper that recorded a pass
+# after the fact overwrote the skip this one had just written, which
+# is the bug project.md 8.672 records.
+"$(dirname "$0")/arm-receipt" pass test-screen

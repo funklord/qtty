@@ -33,6 +33,8 @@
 #   make sabotage-check -- every sabotage anchor still matches its source
 #   make fuzz-check   -- the fuzz harnesses still compile (syntax only)
 #   make header-check -- every public header compiles on its own
+#   make arms         -- when each arm outside `check` last passed, and on what
+#   make arms-check   -- every arm in ARMS records a receipt, and vice versa
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
@@ -75,6 +77,21 @@ DEB_DIR        ?= $(BUILD_DIR)/deb
 
 PREFIX  ?= /usr/local
 DESTDIR ?=
+
+# THE VERIFICATION ARMS, and this list is load-bearing in three directions.
+# `make arms` reports against it, `arms-check` asserts that every name here
+# wires a receipt and that nothing wires one without being here, and the two
+# together are what stop the set being PARTLY wired -- which is worse than
+# not wiring it at all, because a missing receipt would read as "never run"
+# rather than "not wired" (project.md 8.671 named that trap before this
+# existed).
+#
+# `coverage` is deliberately absent: it is a measurement, not a pass or a
+# fail, so it has no verdict to record. Everything else outside CHECK_PARTS
+# that can pass or fail is here.
+ARMS = test-screen test-pty test-tray test-negotiate sabotage test-consume \
+       test-overlay-z test-compilers test-versions test-platforms \
+       test-sanitize fuzz fuzz-input test-valgrind
 
 SOURCES = $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 # src/*.h too: an internal header at the top of src/ was invisible to this
@@ -492,8 +509,9 @@ test-screen: $(LIB)
 # in doubt (script -e propagates the child's, and the second run supplies
 # it); what was blind is the half a person reads.
 test-pty: tests-build
-	@command -v script >/dev/null 2>&1 || { 		echo "    pty: SKIPPED -- util-linux script is not installed"; exit 0; }
+	@command -v script >/dev/null 2>&1 || { 		echo "    pty: SKIPPED -- util-linux script is not installed"; 		./tool/arm-receipt skip test-pty; exit 0; }
 	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null 		| grep -aoE "(FAIL|SKIP): .*|(OK|FAILED) \([0-9]+ failures?\)" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null >/dev/null 2>&1
+	@./tool/arm-receipt pass test-pty
 
 # The system tray, which needs a SESSION BUS and therefore cannot live in the
 # suite: `make check` has to pass on a machine that has none -- a build
@@ -512,13 +530,14 @@ test-pty: tests-build
 # one nobody checks.
 DBUS_RUN_SESSION = dbus-run-session
 test-tray: $(TRAY_CHECK)
-	@command -v $(DBUS_RUN_SESSION) >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- $(DBUS_RUN_SESSION) is not installed"; exit 0; }
+	@command -v $(DBUS_RUN_SESSION) >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- $(DBUS_RUN_SESSION) is not installed"; 		./tool/arm-receipt skip test-tray; exit 0; }
 	@DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-qtty-tray \
 		$(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
 	if [ $$? -eq 0 ]; then \
 		echo "    tray: the no-bus control PASSED, so this gate cannot"; \
 		echo "          refuse a run that measured nothing"; exit 1; fi
 	@$(DBUS_RUN_SESSION) -- $(TRAY_CHECK) --require-bus
+	@./tool/arm-receipt pass test-tray
 
 # The negotiation the screen check depends on, asked of a second terminal.
 # Out of `check` for the same reason test-screen is: it starts terminals
@@ -549,6 +568,7 @@ test-negotiate: $(NEGOTIATE)
 # progress. --dirty-ok is there for the case where every line is yours.
 sabotage:
 	@python3 tool/sabotage.py $(SABOTAGE_ARGS)
+	@./tool/arm-receipt pass sabotage
 
 # The adoption path: a program built against the INSTALLED library, with
 # nothing from this tree. Out of `check` because it installs into a temporary
@@ -571,6 +591,7 @@ test-overlay-z:
 # builds the library, the tools and the suite once per front end.
 test-compilers:
 	@./tool/compiler-matrix
+	@./tool/arm-receipt pass test-compilers
 
 # The suite under every Qt version installed, which is risk R2b's "CI
 # matrix" in the only form this workspace buys one -- see tool/version-matrix
@@ -580,6 +601,7 @@ test-compilers:
 # `make check` is what runs before every commit.
 test-versions:
 	@./tool/version-matrix
+	@./tool/arm-receipt pass test-versions
 
 # WHAT A FAILING ARM LEAVES BEHIND is the reason `keep` exists, and it was
 # paid for. Every arm below ran with `2>/dev/null` and its stdout in one
@@ -698,6 +720,7 @@ test-platforms: tests-build
 		exit 1; \
 	fi; \
 	[ "$$failed" -eq 0 ]
+	@./tool/arm-receipt pass test-platforms
 
 # The suite under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 # detector, in its own build directory so the ordinary one is not disturbed.
@@ -728,6 +751,7 @@ soak: tests-build
 test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
+	@./tool/arm-receipt pass test-sanitize
 
 # THE ONE PARSER OF BYTES SOMEBODY ELSE CHOSE, fuzzed. scan_caps() reads
 # whatever the terminal answered, and a terminal may answer anything;
@@ -773,6 +797,7 @@ fuzz:
 		$(FUZZ_BUILD_DIR)/corpus -max_total_time=$(FUZZ_SECONDS) \
 		-rss_limit_mb=2048 -max_len=4096 -print_final_stats=1 \
 		-artifact_prefix=$(FUZZ_BUILD_DIR)/artifacts/
+	@./tool/arm-receipt pass fuzz
 
 # THE OTHER TRUST BOUNDARY, and the larger one: everything a terminal sends
 # while the program runs rather than the probe replies it sends at startup.
@@ -815,6 +840,7 @@ fuzz-input:
 		$(FUZZ_BUILD_DIR)/corpus-input -max_total_time=$(FUZZ_SECONDS) \
 		-rss_limit_mb=2048 -max_len=4096 -print_final_stats=1 \
 		-artifact_prefix=$(FUZZ_BUILD_DIR)/artifacts/
+	@./tool/arm-receipt pass fuzz-input
 
 # What `make install` actually lays down, and what `make uninstall` takes back.
 # Neither had ever been run by anything: a packaging target is exactly the kind
@@ -1460,6 +1486,7 @@ test-valgrind:
 		echo "test-valgrind: exit $$rc; see $$log" >&2; exit 1; \
 	}; \
 	echo "test-valgrind: clean"
+	@./tool/arm-receipt pass test-valgrind
 
 # Line coverage for one source, measured rather than asserted -- and measured
 # for THAT SOURCE, which is not what gcov's summary reports.
@@ -1557,7 +1584,8 @@ record: tests-build
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              fuzz-check header-check sabotage-check test test-tools test-install probe-style
+              arms-check fuzz-check header-check sabotage-check test test-tools \
+              test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:
@@ -1609,6 +1637,57 @@ LAYOUT_SRC = $(wildcard example/*/*.h example/*/*.cpp tool/*/*.h tool/*/*.cpp)
 # and a `make style` that checked nothing looks exactly like one that passed.
 # So the list is required to be non-empty here, and the gate reports how many
 # files and call sites it actually judged.
+# WHEN EACH ARM LAST PASSED, AND AGAINST WHAT CODE. The arms are out of
+# `make check` on purpose -- each for a reason written at its own target --
+# so this does not run them and does not fail when one is stale. It answers
+# the question that used to need archaeology through project.md: which arms
+# are owed a run against the tree as it stands.
+arms:
+	@./tool/arm-receipt report $(ARMS)
+
+# AND THE LIST IS HELD TO THE WIRING, BOTH WAYS, which is what makes the set
+# impossible to wire PARTLY. An arm named in ARMS whose recipe records
+# nothing would be reported "never run" for ever, which reads as a finding
+# about the tree rather than about the Makefile; a recipe that records under
+# a name ARMS does not carry would write a receipt nothing ever reports.
+# Neither is detectable by reading, and both are one grep.
+arms-check:
+	@miss=; for a in $(ARMS); do \
+		grep -qr "arm-receipt.\{0,1\} pass $$a\b" Makefile tool/ \
+			|| miss="$$miss $$a"; \
+	done; \
+	if [ -n "$$miss" ]; then \
+		echo "arms-check: in ARMS but recording nothing:$$miss" >&2; \
+		echo "            each would report \"never run\" for ever, which" >&2; \
+		echo "            reads as a finding about the tree." >&2; \
+		exit 1; \
+	fi; \
+	extra=; for a in $$(grep -hro 'arm-receipt.\{0,1\} pass [a-z0-9-]*' Makefile \
+	                    tool/ | awk '{print $$3}' | sort -u); do \
+		case " $(ARMS) " in *" $$a "*) ;; *) extra="$$extra $$a";; esac; \
+	done; \
+	if [ -n "$$extra" ]; then \
+		echo "arms-check: recording but not in ARMS:$$extra" >&2; \
+		echo "            each writes a receipt nothing reports." >&2; \
+		exit 1; \
+	fi; \
+	bad=; for f in tool/screen-check tool/negotiate-check \
+	               tool/consume-check tool/overlay-z-check; do \
+		e=$$(grep -c '^[[:space:]]*exit 0$$' $$f); \
+		k=$$(grep -c 'arm-receipt. skip' $$f); \
+		[ "$$e" = "$$k" ] || bad="$$bad $$f($$e/$$k)"; \
+	done; \
+	if [ -n "$$bad" ]; then \
+		echo "arms-check: an arm script has a skip path that records" >&2; \
+		echo "            nothing, so a run that checked NOTHING would" >&2; \
+		echo "            write a PASS receipt:$$bad" >&2; \
+		echo "            (counts are explicit-\`exit 0\`/skip-receipts;" >&2; \
+		echo "            these scripts use set -e and fall off the end on" >&2; \
+		echo "            success, so an explicit exit 0 in them is a skip.)" >&2; \
+		exit 1; \
+	fi; \
+	echo "arms-check: $(words $(ARMS)) arm(s) listed, each records a receipt, and every arm script's skip path records a skip"
+
 layout:
 	@test -n "$(strip $(LAYOUT_SRC))" || { \
 		echo "layout: LAYOUT_SRC matched no files, so the gate would read" >&2; \

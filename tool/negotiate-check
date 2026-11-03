@@ -24,6 +24,8 @@ set -e
 for need in xvfb-run xterm script; do
 	command -v "$need" >/dev/null 2>&1 || {
 		echo "negotiate-check: $need is absent, so nothing was asked" >&2
+		# A skip is not a pass -- see tool/consume-check for the argument.
+		"$(dirname "$0")/arm-receipt" skip test-negotiate || true
 		exit 0
 	}
 done
@@ -109,3 +111,11 @@ case "$nocell" in
 esac
 [ "$fail" -eq 0 ] || exit 1
 echo "negotiate-check: xterm agrees with qtty on all four"
+
+# Reached only on success: these scripts use set -e, and every skip
+# path above exits before here having recorded a skip. The RECEIPT IS
+# THE SCRIPT'S rather than the Makefile's because only the script
+# knows which of the two happened -- a wrapper that recorded a pass
+# after the fact overwrote the skip this one had just written, which
+# is the bug project.md 8.672 records.
+"$(dirname "$0")/arm-receipt" pass test-negotiate

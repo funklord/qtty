@@ -12,6 +12,8 @@ set -e
 for need in xvfb-run xwininfo g++ pkg-config; do
 	command -v "$need" >/dev/null 2>&1 || {
 		echo "overlay-z-check: $need is absent, so the stacking was not checked" >&2
+		# A skip is not a pass -- see tool/consume-check for the argument.
+		"$(dirname "$0")/arm-receipt" skip test-overlay-z || true
 		exit 0
 	}
 done
@@ -101,3 +103,11 @@ if [ "$topmost" = "$low_x" ]; then
 fi
 echo "overlay-z-check: the high-z twin is on top although it was shown first,"
 echo "                 so the GUI twin stacks by z and not by show order"
+
+# Reached only on success: these scripts use set -e, and every skip
+# path above exits before here having recorded a skip. The RECEIPT IS
+# THE SCRIPT'S rather than the Makefile's because only the script
+# knows which of the two happened -- a wrapper that recorded a pass
+# after the fact overwrote the skip this one had just written, which
+# is the bug project.md 8.672 records.
+"$(dirname "$0")/arm-receipt" pass test-overlay-z

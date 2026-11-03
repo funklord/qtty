@@ -1,0 +1,99 @@
+#!/bin/sh
+# When each verification arm outside `make check` last passed, and against
+# what code.
+#
+# WHY. `make check` writes a receipt -- `.git/qtty-check-stamp`, a verdict
+# and a content id -- and `tool/hooks/pre-commit` reads it, which is how a
+# commit can be refused over a gate that is known to fail. The fourteen arms
+# outside the gate wrote nothing, so their freshness lived only in prose: to
+# answer "is this tree verified" somebody had to grep project.md for the date
+# beside each verdict, and a date in prose goes stale by construction. That
+# is how a week-old ASan verdict came to be quoted as though it were a
+# property of the code (project.md 8.671).
+#
+# THE CONTENT ID IS THE POINT, not the date. A date says "six days ago"; the
+# id says "against different code", which is the question staleness is really
+# asking. It is computed exactly as the check stamp computes it -- HEAD plus
+# every uncommitted change to tracked files -- so the two are comparable and
+# neither can drift from the other's meaning.
+#
+# SKIP IS A THIRD VERDICT AND NOT A PASS. Several arms stand down when their
+# environment is absent: test-tray needs a session bus, test-overlay-z needs
+# Xvfb, test-pty needs util-linux script. Each exits 0 having checked
+# nothing, so recording that as a pass would be this tree's vacuous pass with
+# a receipt attached. They record `skip` instead and the report says so.
+#
+# TERMINATION. Every verb below is straight-line: `write` does one git call,
+# one sha1sum and one redirect; `report` loops over the arm names it is
+# given, which is a fixed list from the Makefile. Nothing recurses, nothing
+# spawns, nothing waits.
+set -e
+
+dir=$(git rev-parse --git-common-dir 2>/dev/null) || {
+	echo "arm-receipt: not a git tree" >&2
+	exit 2
+}
+
+# The same identity `make check` stamps: HEAD, plus every uncommitted change
+# to a tracked file. A new file is outside it until staged, which is the
+# pre-commit hook's documented behaviour and is kept deliberately so the two
+# receipts mean the same thing.
+content_id() {
+	{ git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
+		| sha1sum | cut -d' ' -f1
+}
+
+case "$1" in
+pass|skip)
+	arm=$2
+	[ -n "$arm" ] || { echo "arm-receipt: $1 needs an arm name" >&2; exit 2; }
+	# Upper case to read like the check stamp's own PASS, and the date in
+	# UTC so two machines' receipts sort against each other.
+	printf '%s %s %s\n' "$(echo "$1" | tr a-z A-Z)" "$(content_id)" \
+		"$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/qtty-arm-$arm"
+	;;
+report)
+	shift
+	[ $# -gt 0 ] || {
+		echo "arm-receipt: report needs the arm list, which the Makefile" >&2
+		echo "             owns -- run \`make arms\` rather than this" >&2
+		exit 2
+	}
+	now=$(content_id)
+	printf 'arm                  verdict  against this tree  when\n'
+	stale=0 never=0
+	for arm in "$@"; do
+		f="$dir/qtty-arm-$arm"
+		if [ ! -f "$f" ]; then
+			printf '%-20s %-8s %-18s %s\n' "$arm" "--" "--" \
+				"never, since the receipt existed"
+			never=$((never + 1))
+			continue
+		fi
+		verdict=$(cut -d' ' -f1 < "$f")
+		id=$(cut -d' ' -f2 < "$f")
+		when=$(cut -d' ' -f3 < "$f")
+		if [ "$id" = "$now" ]; then
+			same=yes
+		else
+			same=no
+			stale=$((stale + 1))
+		fi
+		printf '%-20s %-8s %-18s %s\n' "$arm" "$verdict" "$same" "$when"
+	done
+	# The summary says what to do rather than only what is true, because the
+	# table's own answer -- "no" in a column -- is easy to read past.
+	printf '\narms: %d of %d last ran against DIFFERENT content than this' \
+		"$stale" "$#"
+	printf ' tree,\n      and %d have never run since receipts existed.\n' \
+		"$never"
+	echo "      A verdict against different content is not a verdict about"
+	echo "      this tree. These arms are out of \`make check\` on purpose;"
+	echo "      this says which ones are owed a run, not that anything failed."
+	;;
+*)
+	echo "usage: arm-receipt pass|skip ARM" >&2
+	echo "       arm-receipt report ARM..." >&2
+	exit 2
+	;;
+esac

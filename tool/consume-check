@@ -19,6 +19,9 @@ set -e
 for need in pkg-config g++ script; do
 	command -v "$need" >/dev/null 2>&1 || {
 		echo "consume-check: $need is absent, so nothing was built" >&2
+		# A skip is not a pass, and the receipt must not say it was:
+		# this exits 0 having built nothing. project.md 8.672.
+		"$(dirname "$0")/arm-receipt" skip test-consume || true
 		exit 0
 	}
 done
@@ -263,3 +266,11 @@ print("consume-check: FAILED -- " + where, file=sys.stderr)
 print("               A fatal diagnostic on the alternate screen dies with it.", file=sys.stderr)
 sys.exit(1)
 PY
+
+# Reached only on success: these scripts use set -e, and every skip
+# path above exits before here having recorded a skip. The RECEIPT IS
+# THE SCRIPT'S rather than the Makefile's because only the script
+# knows which of the two happened -- a wrapper that recorded a pass
+# after the fact overwrote the skip this one had just written, which
+# is the bug project.md 8.672 records.
+"$(dirname "$0")/arm-receipt" pass test-consume
