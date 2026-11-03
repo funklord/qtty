@@ -35859,10 +35859,14 @@ not separately named, which is stated rather than left to be inferred: they
 are corroboration for the exact-pixel assertions above them, not independent
 witnesses.
 
-## The ten gates, the sabotage proofs and the fixtures
+## The gates run one at a time on 2026-09-19, the sabotage proofs and the fixtures
 
 Every part of `make check` was run one at a time on 2026-09-19 and all ten
-are green: `style`, `layout`, `version-check`, `count-check` (1707),
+are green -- **ten being what `make check` had then**, where it has
+fourteen since `arms-check` landed on 2026-11-03; the count sat in this
+section's title until that day, which is how a number in a heading goes
+from stale to wrong while the dated figures below it stay right:
+`style`, `layout`, `version-check`, `count-check` (1707),
 `guide-check` (43 symbols), `tools-check`, `sabotage-check` (395 anchors),
 `test` (1707 passes, 0 failures), `test-tools` and `test-install`. Not the
 `check` target itself, which writes a stamp into the shared `.git` that
