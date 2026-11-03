@@ -56887,3 +56887,48 @@ class of genuine errors, while a known warning pair records a decision
 this tree has already made about a named file, and more instances of one
 decision teach a reader nothing. By 8.679's own stopping criterion that
 is where the lens stops.
+
+### 8.687 Thirteen true verdicts turned red by a help string (2026-11-03)
+
+**8.682 asked whether the arm receipts need a fourth state and said the
+trade was the holder's. This is the measurement that decision was missing,
+and it arrived by accident ten minutes later.**
+
+Four arms had just recorded verdicts and nine more were current: thirteen
+rows reading `yes`, every one taken against this evening's tree. The
+commit that followed changed two files -- `project.md`, which the identity
+already excludes, and `tool/sabotage.py`, whose `--help` text now derives
+its own duration. **`make arms` immediately read 13 of 14 against
+DIFFERENT content.**
+
+Nothing about those thirteen verdicts had changed. `tool/sabotage.py` is
+read by exactly one arm, `sabotage`, which is the one row that was already
+`never`. The twelve others cannot see that file, and the thirteenth --
+`test-versions` -- runs a shell script that does not either.
+
+**So the question 8.682 left open is sharper than it looked, and it is not
+about the exclusion list.** 8.680 excluded markdown and declined to go
+further, on the grounds that *"the exclusion list is the part of this
+mechanism that can be wrong in the dangerous direction"* -- which is right,
+and is an argument against a LIST rather than against the aim. The
+principled form is a **per-arm identity**: each arm's receipt keyed on the
+files that arm can actually read, so `test-valgrind` is not invalidated by
+a change to a tool it never runs. That is derivable rather than judged --
+an arm is a Makefile recipe plus the scripts it invokes -- and it removes
+the thing a hand-kept exclusion list gets wrong.
+
+**It is also a bigger change than the receipts have earned in one day**,
+and it would make a receipt's meaning depend on a dependency graph that
+nothing currently computes. A wrong edge there is the dangerous direction
+again, pointed at a different part of the mechanism: an arm whose identity
+misses a file it does read would report `yes` about code it never saw,
+which is strictly worse than reporting `no` about code it did.
+
+**What this run did instead is the cheap half, and it is recorded so the
+expensive half is a decision rather than an impulse:** the thirteen were
+left red. Re-taking them is about sixty-seven minutes of machine by their
+own timings -- `test-compilers` alone is twenty-seven -- and every one
+would re-run over source that has not changed, which this file has
+declined three times today as buying a green row. **A red row that is
+explained in the log is cheaper than an hour of machine, and both are
+cheaper than an identity nobody has thought through.**
