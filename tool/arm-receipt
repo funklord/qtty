@@ -13,9 +13,10 @@
 #
 # THE CONTENT ID IS THE POINT, not the date. A date says "six days ago"; the
 # id says "against different code", which is the question staleness is really
-# asking. It is computed exactly as the check stamp computes it -- HEAD plus
-# every uncommitted change to tracked files -- so the two are comparable and
-# neither can drift from the other's meaning.
+# asking. It is NOT the check stamp's identity, and `content_id` below says
+# at length why the two differ -- that claim stood in this header for an
+# afternoon after it stopped being true, which is the third time in one day
+# a description outlived what it described (project.md 8.680).
 #
 # SKIP IS A THIRD VERDICT AND NOT A PASS. Several arms stand down when their
 # environment is absent: test-tray needs a session bus, test-overlay-z needs

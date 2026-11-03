@@ -55983,11 +55983,17 @@ receipt, and `make arms` reports them.
 
 **What a receipt says, and why the date is the lesser half.**
 `.git/qtty-arm-<name>` carries a verdict, a **content id** and a UTC
-timestamp. The id is computed exactly as `make check`'s own stamp computes
-its own -- HEAD plus every uncommitted change to a tracked file -- so the
-two mean the same thing and neither can drift from the other. A date says
-*six days ago*; the id says **against different code**, which is the
-question staleness is actually asking. `make arms` prints a column for it.
+timestamp. ~~The id is computed exactly as `make check`'s own stamp
+computes its own -- HEAD plus every uncommitted change to a tracked file --
+so the two mean the same thing and neither can drift from the other.~~
+**The two deliberately differ since 8.680, which found that identity
+throwing verdicts away**: it moves when a tree is committed although no
+byte on disk has, so an arm run that verified a change was invalidated by
+the commit it verified. An arm's id hashes the bytes of the tracked
+non-markdown files; the gate's stays strict because the gate reads
+documentation. A date says *six days ago*; the id says **against different
+code**, which is the question staleness is actually asking. `make arms`
+prints a column for it.
 
 **SKIP is a third verdict, not a pass.** Several arms stand down when their
 environment is absent: `test-tray` needs a session bus, `test-overlay-z`
@@ -56373,6 +56379,15 @@ change -- a flag, a Qt version, an edited profile -- that the tray tool
 would not have received, in a tree where `build-qt5` and `build-qt6` are
 reused rather than recreated.
 
+**CONFIRMED END TO END the same evening, which the timestamps alone could
+not do.** With `tool/tray/tray.pro` in `$(PROFILES)`, the next configure
+cleared `build/tool/tray/Makefile` and qmake regenerated it:
+**2026-11-03T18:43, the same minute as `build/tool/inspect/Makefile`**,
+where before the fix it was the one of four that never moved. The evidence
+for the defect was an asymmetry between siblings, and the evidence for the
+fix is that the asymmetry is gone -- same instrument, both directions, which
+is what a measured fix owes.
+
 **A gate part rather than a fix, because the fix is one word and the class
 is not.** `profiles-check` asks git for every tracked `.pro` and `.pri` and
 requires each to appear in `$(PROFILES)` or `$(TEST_PROFILES)`, requires
@@ -56525,8 +56540,29 @@ arm builds: Qt 6.8.2 2493 pass, 0 step over, 0 fail; Qt 5.15.15 2481 pass,
 so 8.677's addition is exercised rather than asserted. And the receipt it
 wrote reads **yes**, against a tree still dirty with this entry.
 
+**WHERE THE LINE IS DRAWN, and why it is not drawn where it could be.**
+`tool/arm-receipt` is inside the identity, so editing the recording tool
+invalidates every receipt -- although that file cannot change what any arm
+finds: it is executed after the work, and it only writes. Excluding it
+would be defensible and is declined, because the exclusion list is the part
+of this mechanism that can be wrong in the dangerous direction. Markdown
+earns its place by a property that was checked -- no arm reads one -- and
+every further entry would be a judgement about what cannot matter, which is
+the judgement a receipt exists to replace. The cost is a transient one paid
+on the days the tool itself changes, which is today and rarely again.
+
 **It does not rescue the receipts already written**, whose ids were computed
 the old way. What it buys starts now.
+
+**AND THE SAME STALENESS BIT THREE TIMES IN ONE AFTERNOON, which is the
+transferable part.** The claim "computed exactly as `make check`'s stamp
+computes its own" lived in three places: `arm-receipt`'s own header, 8.672's
+description of what a receipt means, and this entry's first draft. Changing
+the code corrected none of them. `working-practice.md` says a correction has
+to go where it will next be looked for, and a reader asking *what does a
+receipt mean* arrives at 8.672; a reader asking *how is the id computed*
+opens the tool and reads its header before its function. **The code is the
+copy that gets changed and the header is the copy that gets believed.**
 
 **And a confession about method, because this file's rules are about
 method.** The first run of the two-direction proof appended to the real
@@ -56536,3 +56572,43 @@ not. The tree happened to be clean and nothing was lost, which is luck
 rather than care. The three-direction proof above was run with a copy taken
 first and `cp` back, which is the form that was available all along and is
 no harder to type.
+
+### 8.681 Six arms re-recorded, and the tool edit that undid five of them (2026-11-03)
+
+**Nine of the fourteen arms now carry a verdict about this tree**, up from
+four this afternoon: `test-screen` (SKIP), `test-pty`, `test-tray`,
+`test-negotiate`, `test-consume` and `test-overlay-z` re-taken in about two
+minutes between them, all passing, `test-screen` standing down correctly on
+load 80.52 against its threshold of 40 because a timed capture on a busy
+machine measures the scheduler rather than the terminal.
+
+**They were worth re-taking and the test is not that the receipt was
+stale.** No `src/` or `include/` file changed in any of today's four
+commits, so an arm that only reads the library would have been re-running
+over unchanged code, which is below the bar by the skill's own words --
+and `fuzz`, `fuzz-input` and `test-sanitize` were left stale for exactly
+that reason rather than run to buy a green row. Three of the six were
+aimed: `test-consume` drives `make install`, which the `PROFILES` and
+helper-target change touched; `test-tray` builds the tray tool, whose
+generated Makefile had been stale since 2026-10-22; and `test-pty` and
+`test-negotiate` invoke helper targets that are now named rather than
+inherited from a broad default.
+
+**THE METHOD FAULT, which cost the first five of them.** `tool/arm-receipt`
+was edited while the six were running -- a stale claim in its own header,
+corrected the moment it was noticed -- and that file is inside the content
+identity. So five receipts written minutes earlier stopped matching the
+tree, and the report showed one `yes` out of six: the one arm that happened
+to finish after the edit. They were re-run and all six read `yes` now.
+
+Nothing was wrong with the identity and nothing was wrong with the
+correction. **The rule is simply that the recording instrument is part of
+what it records, so it is not edited while it is recording** -- the same
+shape as a concurrent build deleting a test binary underneath a running
+invocation, which `running-code.md` names, and as this tree's own rule
+about judging a test from a binary the build step did not produce. An
+edit-to-fix made during a run is still an edit made during a run.
+
+**And the cost was paid in the right coin.** Re-running six cheap arms is
+two minutes; the alternative was a report with five rows that were true and
+read as stale, which is the condition 8.680 exists to remove.
