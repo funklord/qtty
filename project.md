@@ -1163,6 +1163,7 @@ Owned by the copyright holder:
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 | **Should a dashed pen render as dashed at all?** Measured 2026-11-02: every `Qt::PenStyle` -- Dash, Dot, DashDot, DashDotDot -- renders cell for cell identically to Solid, so a chart telling series apart by dashing has that removed, which matters most where colour is scarce. **It is a decision rather than a defect, and the direction of the ink is why**: weight and colour ADD to cells drawn anyway, while dashing REMOVES ink, and a twenty-cell line rendered as ten reads as damage rather than style against N2's legible reinterpretation. Both remedies are known -- Unicode's dashed box family, unused here but with no diagonals, so dashing would vanish when a line slopes; or skipping cells, which works at every angle and is about twenty-five lines, threading the dash phase through `stroke_polyline` so it carries across segments. 8.658 | 8.658 |
 | **Should qtty say that the DOCUMENTED surface is the supported one?** Not the parked question, which was whether to promise API stability; measurement narrowed it. 203 names are declared in the public headers and **87 are named in the documentation** -- 80 when this was measured, plus the five of 8.663 and the two the same passage documents beside them, `Qtty::Color` itself and its `Default` kind -- which `make guide-check` compiles against those headers on every `make check` -- so a documented name cannot be removed without failing our own gate. Of the **44** names that were ever public and are not now, **not one was ever documented**, and 33 of the 44 are a single event, the camelCase-to-snake_case migration of 2026-08-27. So the guarantee a consumer wants already exists mechanically; what is missing is the sentence saying so. That sentence is a statement to other projects -- fuzznet keeps its qtty render test out of its own `make check` for want of it -- and committing this tree to a supported subset is the holder's call, not a recording | 8.662, 8.648 |
+| **What does Phase 4's scope become now that the unit is a BINARY rather than a product?** design.md's OQ-4 asks whether any product needs the TUI where QtWidgets cannot be linked, and says a product that does "goes to 13.2 permanently". Its factual half is answered for all three named products (8.664) and the answer does not fit its shape: **netcfgd is both**, deliberately. Its `gui/` links Qt and reaches qtty from production; its `ncfg tui` is in a core whose `NEEDED` list is gated by `make linkage` to libc and the kernel, which no Qt build can meet. So it is not a product to move to the fallback, it is a product with two TUIs on two linkage budgets, one of which qtty can never serve. fuzzypickles states no such constraint and raidcfgd has no TUI. The consolidation goal G3 inherits the same assumption, which is part of why four has been hard to count. What Phase 4 covers, and whether G3's count is of products or of binaries, is the holder's | 8.664, 8.641, design.md 14 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -55254,6 +55255,63 @@ there: a symbol known to be deleted cannot be called by four programs. So
 the cheap check on a census is to look for an impossible member, which is
 `evidence.md`'s sweep for impossibility rather than absence -- and it works
 on a list far too long to read.
+
+### 8.664 OQ-4's factual half, and the question's framing is what was wrong (2026-11-03)
+
+**design.md OQ-4 asks whether any of the four products needs the TUI where
+QtWidgets cannot be linked**, and says that if one does, "that product goes
+to 13.2 permanently and the answer changes Phase 4's scope". It has been
+open since the design was written and §8.641 narrowed it to the two
+products it has to be put to. It turns out not to need putting: both answer
+from their own trees, and the answer does not fit the question's shape.
+
+**netcfgd: yes, and it is a gated promise rather than an environment.**
+Read from that tree 2026-11-03, and stated as theirs rather than mine --
+its `project.md` describes a `make linkage` check holding "the shipped
+binaries' `NEEDED` lists against two allow-lists", where the daemon's is
+its **constraint 3**, "libc and the kernel, one entry as built", and
+records that "Constraint 3 and the README's headline both promise the core
+needs nothing beyond libc and the kernel". It builds and tests under
+**musl** on Alpine with busybox. Its `ncfg tui` is milestone M6, done,
+"four panes over the public socket", and the same document notes that
+`ncfg` "links ncurses only because the TUI is a default feature".
+
+**Corroborated from the build files rather than from that prose**, because
+two sentences by one hand are one witness: no Rust crate manifest in that
+tree names Qt, and `qtty` appears in its build only in `gui/gui.pro` and
+`gui/Makefile` -- plus the vendored `fuzznet`. So the split is structural
+and visible from two directions.
+
+**Which means netcfgd is not a product that "goes to 13.2".** It is a
+product with **two TUIs in two binaries on two linkage budgets**, and it
+already uses qtty in one of them: `gui/` links Qt and reaches qtty from a
+production entry point, while `ncfg` is part of a core that is gated
+against linking anything but libc. qtty can serve the first and can never
+serve the second, and nothing is wrong with either fact.
+
+**So the question's framing is the thing measurement falsifies**, not
+either of its answers. OQ-4 assumes a product either can or cannot link
+QtWidgets, and the consolidation goal inherits that assumption -- which is
+why "four implementations" has been hard to count (§8.641). A product may
+be both, deliberately, in different binaries. **The unit that can or cannot
+link QtWidgets is a BINARY, not a product.**
+
+**fuzzypickles: no stated constraint.** Its `project.md` describes
+`fzptui` as a skeleton that "exists to establish the structure below, not
+the interface", with layout, key bindings and feature set explicitly
+**OPEN** and to be agreed before being built out, while its Qt Widgets
+client is the "full-featured desktop UI". Its C TUI ships beside that Qt
+client in one `make deb`, so nothing there says the TUI must avoid Qt --
+it is a choice with an open design, which is the opposite of netcfgd's
+gated one. **raidcfgd: no TUI at all**, per §8.641.
+
+**What is recorded and what is not.** The factual half is answered for all
+three named products. The decision OQ-4 reserves -- what Phase 4's scope
+becomes once the unit is a binary rather than a product -- is the holder's
+and is untouched, and OQ-4's text is left standing: the standing permission
+of §0b covers a factual claim measured false, and this is a question whose
+framing I am reporting on rather than a claim I may rewrite. §0b carries
+the row.
 
 ### 8.665 Documenting an enumerator made the gate refuse it (2026-11-03)
 
