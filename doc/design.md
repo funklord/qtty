@@ -1029,11 +1029,24 @@ Coverage is declared, not discovered. Each widget is classified:
 |---|---|---|
 | **Native (Channel A)** | `QPushButton`, `QLabel` (plain), `QCheckBox`, `QRadioButton`, `QLineEdit`, `QComboBox`, `QGroupBox`, `QTabWidget`, `QScrollArea`, `QSplitter`, `QProgressBar`, `QSlider`, `QMenu`, `QMenuBar`, `QDialogButtonBox`, `QListView`, `QTreeView`, `QTableView` | Style-drawn, reviewed, snapshot-tested |
 | **Generic (Channel B)** | Custom `paintEvent` widgets, third-party | Renders legibly, no guarantees |
-| **Replaced** | `QTextEdit`, `QPlainTextEdit`, `QCalendarWidget` | Cell-native substitute with matching API subset |
+| **Replaced** | *(empty -- see below)* | No cell-native substitute was needed, or written |
 | **Unsupported** | `QGraphicsView`, OpenGL widgets, `QWebEngineView` | Renders a labelled placeholder box |
 
 Item views work because they paint through `QStyledItemDelegate`; a `CellItemDelegate`
 gives Channel A coverage for the common roles and inherits everything else.
+
+**The three widgets this tier used to name are served by Qt's own**, and nothing was
+substituted for them. `QTextEdit` and `QPlainTextEdit`: display is free wherever the
+document font's line height equals the cell height (§16.1 F8), and what was actually
+missing was keys reaching the widget rather than a replacement surface -- which §5.5's
+routing fixed, as the paragraph above F8 already records. Mouse selection needed no
+text-widget code either, only motion events carrying the held button, and partial-line
+scrolling moves in whole cells. `QCalendarWidget` renders through Qt's own, its month
+arrows named from the widget because Qt draws them as pixmaps that carry no text, tool
+tip or action. project.md 8.668 has the measurements and the dates.
+
+The tier is kept rather than deleted: whether anything should ever be replaced is a
+design question, and this only records that nothing has been.
 
 ### 8.5 Scrollbars and inherently pixel-sized affordances
 
@@ -1106,7 +1119,7 @@ qtty/
   src/render/             CellPaintDevice, CellPaintEngine, Compositor
   src/runtime/            Application, InputRouter, FrameScheduler
   src/graphics/           graphics encoders, placements, Overlay     (§17.3)
-  src/widget/             replaced widgets (editor, calendar)
+  src/widget/             CellItemDelegate (the replacements proved unneeded)
   src/backend/
     ansi/                 the backend (reference since 2026-10-27, §5.1)
     null/                 CI backend

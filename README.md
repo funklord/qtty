@@ -412,7 +412,7 @@ status note at the top.
     include/qtty/     public headers (§10)
     src/core|grid|render|runtime|graphics/
     src/backend/      ansi (the backend), null (CI)
-    src/widget/       replaced widgets (planned)
+    src/widget/       CellItemDelegate
     example/chat/     canonical dual-frontend example (§16.4)
     test/             the suite; text fixtures in test/snapshot/
     tool/             the tools' sources, the style and layout gates,

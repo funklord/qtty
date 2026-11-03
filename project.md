@@ -55580,3 +55580,90 @@ possible behaviour for a failure path. The gain is smaller than O(k log n)
 suggests because an early subset compile costs nearly what the whole set
 does -- Qt's headers dominate, not the 87 `using` lines -- so three times
 faster, and inside the timeout rather than outside it.
+
+### 8.668 The replacement layer that was closed in one place and promised in three (2026-11-03)
+
+**Found by walking the goal gap from the README rather than from the
+roadmap.** The README's rule is to describe the software qtty is MEANT to
+be and to say once what is not there yet, so its "planned" and "not yet"
+lines are a short list of claims about unbuilt work -- a good place to ask
+whether the code has caught up. Three lines: the bundled font (§0b, the
+holder's), the licence (not raised), and `src/widget/ replaced widgets
+(planned)`.
+
+**That last one was closed on 2026-09-03 and the documents never heard.**
+This file's own §7.2 entry records it in as many words -- *"the `QTextEdit`
+interaction layer is absent"* struck through, **"It works, and needed no
+code"** -- and in the same paragraph notes that *"`src/widget/`'s README
+still describes a replacement layer"*. The note was written and the README
+was not changed, so the observation sat in a 55,000-line document while the
+file it was about went on being wrong for two months.
+
+**design.md promised the layer in three places and contradicted itself in
+two others**, which is what makes this worth more than a tidy-up:
+
+- **§8.4's support matrix** classified `QTextEdit`, `QPlainTextEdit` and
+  `QCalendarWidget` as **Replaced**, meaning *"cell-native substitute with
+  matching API subset"*. That is a public claim about how qtty works, and
+  it is the one a consumer reads to decide whether their code needs
+  changing. It said their `QTextEdit` code would meet a substitute's API
+  subset. Qt's own works.
+- **§10's repository layout** called `src/widget/` *"replaced widgets
+  (editor, calendar)"*. It holds `cell_item_delegate.cpp` and a README.
+- **`src/widget/README.md`** described the layer as the directory's purpose
+  and named both widgets as needing substitutes.
+- Against which **§16.1 already said** *"what was missing was not a
+  replacement surface but keys reaching the"* widget, and **§17.4's banked
+  simplifications** already listed *"no cell-native text"*. So the document
+  carried the correction twice and the promise three times.
+
+**Both halves re-measured today rather than taken from the 2026-09-03
+entry**, because a two-month-old claim about the tree's own shape is the
+kind this file says rots. `QTextEdit` and `QPlainTextEdit`: display free
+where the document font's line height equals the cell height, keys and wide
+clusters reaching the cells, mouse selection from motion events carrying
+the held button, partial-line scrolling moving in whole cells.
+`QCalendarWidget`: rendered by Qt's own in `suite_widgets`, 34x12, with its
+month arrows asserted present -- they are named from the widget because Qt
+draws them as pixmaps carrying no text, tool tip or action, and came out as
+two identical `[]` before that.
+
+**The tier is kept with nothing in it, and that is deliberate.** Emptying a
+row is a factual correction and §0b's standing permission covers it;
+deleting a tier is a decision about what qtty may do later, and that is not
+mine. The matrix says the tier is empty and why, and says in one line that
+whether anything should ever be replaced is still a design question.
+
+**The lesson is the one §0e already states and this is its worked
+example.** *"A wrongly-deferred question is caught by nothing"* -- a wrong
+technical claim meets a gate or a test, while a stale promise sits in a
+document looking exactly like diligence. The note that spotted it was
+written by somebody who then did not act on it, which is the failure mode
+to recognise: **noticing a stale claim and recording the notice is not
+correcting it**, and the record of the notice is strictly worse than
+nothing if it persuades the next reader that somebody is on it.
+
+**IT WAS FOUR PLACES, NOT THREE, AND I CORRECTED THREE AND MISSED THE
+MOST-READ ONE.** The root `README.md`'s own layout block said `src/widget/
+replaced widgets (planned)` -- which is where this finding STARTED, since
+sweeping the README's "planned" lines is what turned it up -- and after
+fixing §8.4, §10 and `src/widget/README.md` I went looking for the next
+instance of the shape and found the line I had begun from, still wrong.
+
+That is this file's rule about correcting a claim, met from the inside:
+*the correction has to go where a reader would next look for it*, and a
+reader meets the root README first. Writing down "three places" was itself
+a count that inherited its detector -- I had grepped `doc/design.md` and
+the directory, and not the file the finding came out of. **The habit that
+caught it is cheap and worth the sentence: after correcting a claim, grep
+the whole tree for the claim's own words rather than for the places you
+remember.** `grep -rn 'replaced widget'` returns nothing now, and that is
+the check, not my memory of having edited three files.
+
+**And no gate could have caught this one.** `style_gate.py docs` holds
+`project.md` to the tree -- nothing stated twice, no backticked path naming
+a file that does not exist -- and `src/widget/` exists, so the path was
+real and the claim about its CONTENTS was not checkable. `guide-check`
+reads `README.md` and `doc/keyboard-first.md` for symbols and does not read
+`doc/design.md` at all. A support matrix is prose about behaviour, and the
+only instrument for it is somebody reading it against the code.
