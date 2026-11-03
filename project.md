@@ -1144,6 +1144,7 @@ Owned by the copyright holder:
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | **~~Whether the "too small to be a picture" rule moves to the backend.~~ It has, and the row was right that it was one condition -- and wrong that nothing was left unmeasured.** The tier below read ONE PIXEL per half cell, so a 16x16 tick lost its left cell outright and a status light its right one; the substitution's area sampling moved with the rule, and the sampling change on its own reddened not one check of 2064. 8.383 | §7.2 |
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. 8.422 then mirrored `CE_HeaderLabel`, which this row had deferred as unmeasured -- and the measurement found 8.420 had BROKEN it, a heading being positioned to line up with the data it names. So the row's own deferral was the gap, and the commit that wrote it caused the fault it put off. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304, 8.420, 8.422 |
+| **Should qtty carry bidirectional TEXT, and what order should it send?** The right-to-left row above ends *"what remains undesigned is bidirectional TEXT, which is a different question and is its own row"* -- **and no such row was ever written**, so for **42 days** -- the pointer went in on 2026-09-22 in `86f73b7` -- the index has pointed at a record that does not exist. Measured and pinned in `doc/keyboard-first.md`: a `QLabel` holding four Hebrew letters, a space and `abc` -- eight code points -- reaches the cells as **seven**, the runs reordered and the last letter gone. That is content loss rather than a style question, so an application whose TEXT is bidirectional is not one qtty can carry today; a mirrored LAYOUT with left-to-right text is fine and is the row above. Two things make the answer the holder's rather than mine: qtty would have to take a position on which order to SEND, and a terminal decides for itself whether to reorder what it is sent -- so it needs measurements against real terminals, which §0c's probe matrix is for and which this tree cannot take alone | 8.669, `doc/keyboard-first.md` |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index. **And a third, found by 8.515's gate: ToolTipText is in NO list `role_of()` searches**, so the role is not merely out-ranked by WindowText, it is not looked for -- which means the two obstacles are one fix rather than two, and neither can be taken without the other. Measured: ToolTipText and WindowText are both `#000000`, so listing it after WindowText does nothing and listing it before sends every body-text colour to black | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **~~Which direction is safe on a grid -- drawing a little more than allowed, or a little less?~~ CLOSED 2026-11-02: it is not a question about direction.** Both comments serve one rule -- **never lose what the application drew, and never invent what it did not** -- and "more" and "less" are its answers on opposite sides. A clip erring outward admits a cell the clip only partly covers, keeping cells the application DREW IN; a fill erring outward colours cells it drew NOTHING in. Both comments now say which rule they are an instance of. §8.656 | §8.656 |
@@ -55667,3 +55668,69 @@ real and the claim about its CONTENTS was not checkable. `guide-check`
 reads `README.md` and `doc/keyboard-first.md` for symbols and does not read
 `doc/design.md` at all. A support matrix is prose about behaviour, and the
 only instrument for it is somebody reading it against the code.
+
+### 8.669 A row that pointed at a row nobody wrote (2026-11-03)
+
+**§8.668's lens, pointed one document along, and it found the index
+lying by omission.** That entry corrected a replacement layer promised in
+four places after being closed in one. The same question asked of
+`doc/keyboard-first.md`'s "not yet" lines turned up exactly one -- *"qtty
+does not yet take a position on which order to send"* -- and that claim is
+**true, measured and pinned by a check**, which is the opposite of 8.668's
+problem and was the expected answer.
+
+**The fault was in §0b instead.** Its right-to-left row, struck through as
+answered, ends: *"What remains undesigned is bidirectional TEXT, which is a
+different question and is its own row."* There is no such row. Measured:
+of the lines in §0b, the only one mentioning bidirectional text is that
+pointer itself. **It went in on 2026-09-22 in `86f73b7`, so it dangled for
+42 days** -- dated rather than left as "for some time", because an entry
+arguing for checkable claims should not open with an unmeasured one.
+
+**A pointer at a record that does not exist is worse than silence**, and
+this file already says why in `working-practice.md`'s voice -- a correct
+record with no lookup path produces confidence rather than uncertainty. A
+reader who reaches the end of the right-to-left row is told the question is
+indexed and will stop looking; the honest alternative, saying nothing,
+would at least have left them looking. So the one open capability gap in
+this tree was invisible from the index whose whole purpose is that *"a
+question nobody can locate is one nobody answers"*.
+
+**The row exists now**, and says what the limitation is rather than only
+naming it: eight code points in, seven cells out, the runs reordered and
+the last letter gone -- content loss rather than a style question. Mirrored
+layout with left-to-right text is fine and is the row above; this is the
+other half.
+
+**Why it stays the holder's.** Two reasons, and only the first is obvious.
+qtty would have to take a position on which order to SEND, which is a wire
+behaviour other projects would build on. And **a terminal decides for
+itself whether to reorder what it is sent**, so the right answer cannot be
+derived here at all -- it needs the probe matrix of §0c against real
+terminals, which §0e already lists among the two things this tree cannot
+close alone.
+
+**AND THE TREE'S NUMBERED REFERENCES ARE SOUND, which is what makes this
+one instructive rather than a symptom.** Checked today, and re-taken after this
+entry was written so the figure counts itself: of the **669** entries in
+this file and the **669** distinct `8.N` references to them, **none**
+points at an entry that does not exist. The discipline holds
+perfectly where the pointer carries a NUMBER -- and the single pointer that
+dangled carried none. *"Its own row"* names nothing a reader or a script
+can look up, so nothing did.
+
+So the rule is narrower and more useful than "check your cross-references":
+**point with something checkable.** A number can be swept in one command,
+which is how 668 of them were just cleared; a phrase cannot, and is
+believed instead.
+
+**The shape to carry, because it is the third instance this session.**
+8.663 was `CellBuffer` documented and the `Cell` it holds not; 8.668 was a
+plan closed in one place and promised in four; this is an index entry
+pointing at a sibling that was never written. All three are **a reference
+whose target nobody checked**, and none is reachable by any gate here:
+`style_gate.py docs` checks that a backticked path names a file that
+exists, which catches a dangling PATH and not a dangling claim about a
+document's own contents. The cheap habit that found all three is the same
+one: when a sentence says a thing is recorded elsewhere, go and read the
+elsewhere.
