@@ -245,6 +245,146 @@ int suite_render(bool record) {
 		if (!dr_snap && !record) printf("PASS: driven snapshot matches\n");
 	}
 
+	// THE SAME METHOD POINTED AT AN ITEM VIEW, which is where it was most
+	// needed and had never been aimed.
+	//
+	// design.md section 12's Phase 0 step 1 names the render gate's fixture
+	// exactly: "a real existing dialog containing a `QTreeView` and a
+	// `QComboBox`", and Phase 2's exit criterion is that THAT dialog
+	// "renders and is fully interactive under snapshot test". The block
+	// above met the interactive half for the preferences dialog -- a check
+	// box, two radios and a button box. **No snapshot fixture in this tree
+	// contained an item view at all**: not this one, and not
+	// widgets_gallery, whose combo box, progress bar, slider, tabs and
+	// check box stop short of one.
+	//
+	// That is the family section 17.2 calls "the biggest single chunk" and
+	// the one a CellItemDelegate change can move without any targeted check
+	// noticing, because a targeted check asserts the thing it names and a
+	// characterisation snapshot asserts everything else. A tree's branch
+	// marks, its indentation, its header, and a combo box's arrow in the
+	// same frame are what a product following Phase 3 would be
+	// characterising first, and until now the tree had no worked example.
+	{
+		QDialog td;
+		td.setWindowTitle(QStringLiteral("Sources"));
+		auto *tv = new QVBoxLayout(&td);
+		auto *combo = new QComboBox(&td);
+		combo->addItems({ QStringLiteral("All files"),
+		                  QStringLiteral("Tracked only"),
+		                  QStringLiteral("Modified") });
+		tv->addWidget(combo);
+		auto *tree = new QTreeView(&td);
+		auto *model = new QStandardItemModel(&td);
+		model->setHorizontalHeaderLabels({ QStringLiteral("Name"),
+		                                   QStringLiteral("Kind") });
+		for (const char *top : { "src", "doc" }) {
+			auto *parent = new QStandardItem(QString::fromLatin1(top));
+			for (const char *kid : { "one", "two" })
+				parent->appendRow({ new QStandardItem(QString::fromLatin1(kid)),
+				                    new QStandardItem(QStringLiteral("file")) });
+			model->appendRow({ parent,
+			                   new QStandardItem(QStringLiteral("dir")) });
+		}
+		tree->setModel(model);
+		tv->addWidget(tree);
+		auto *tbb = new QDialogButtonBox(QDialogButtonBox::Ok
+		                                 | QDialogButtonBox::Cancel, &td);
+		tv->addWidget(tbb);
+		td.resize(Qtty::GridMetrics::cells(52, 16));
+		td.show();
+		QCoreApplication::processEvents();
+
+		const QString still = Qtty::test::snapshot_of(td, 52, 16);
+		const int st_snap = Qtty::test::check_snapshot(
+		    QStringLiteral(QTTY_SOURCE_DIR),
+		    QStringLiteral("tree_combo_dialog"), still, record);
+		r += st_snap;
+		if (!st_snap && !record)
+			printf("PASS: a dialog holding a tree view and a combo box "
+			       "renders to its fixture\n");
+
+		Qtty::InputRouter tr(&td);
+		Qtty::set_current_window(&td);
+		const auto focus_on = [&](QWidget *w) {
+			w->setFocus();
+			Qtty::set_focus_widget(td.focusWidget());
+			QCoreApplication::processEvents();
+		};
+		const auto tap = [&](Qt::Key k) {
+			Qtty::test::press(tr, k);
+			QCoreApplication::processEvents();
+		};
+
+		// The focus-only yardstick, for the reason the block above paid
+		// for: focus is drawn as reverse video, so a capture taken before
+		// any key differs from the undriven one ANYWAY, and comparing
+		// against the undriven one would be testing focus and saying input.
+		focus_on(combo);
+		focus_on(tree);
+		const QString t_focused = Qtty::test::snapshot_of(td, 52, 16);
+
+		// Right to expand a node, then Down to walk INTO it -- the two keys
+		// an item view exists to answer and the two a terminal user has.
+		// Measured rather than assumed, and the first version had them the
+		// wrong way round: a QTreeView already has a valid current index
+		// when a model is set, so a leading Down moved to the SECOND top
+		// row and the Right expanded that, while the check asked about the
+		// first. The state assertion caught it, which is what it is for.
+		focus_on(tree);
+		tap(Qt::Key_Right);
+		tap(Qt::Key_Down);
+		const QModelIndex first = model->index(0, 0);
+		const bool expanded = tree->isExpanded(first);
+		const QModelIndex cur = tree->currentIndex();
+		const bool on_child = cur.parent() == first && cur.row() == 0;
+		// THE TREE'S OWN CONTRIBUTION, captured before the combo is
+		// touched. The first version compared the fully driven capture
+		// against the focus-only one and called the difference proof that
+		// the tree had moved -- and it passed while the tree did nothing,
+		// because the combo's change was in the frame too. A check that
+		// cannot fail for the reason it names is the fault this file keeps
+		// finding; here it survived one run before the state assertion
+		// beside it gave the game away.
+		const QString t_tree = Qtty::test::snapshot_of(td, 52, 16);
+		focus_on(combo);
+		tap(Qt::Key_Down);
+		const int combo_now = combo->currentIndex();
+		const QString t_driven = Qtty::test::snapshot_of(td, 52, 16);
+
+		// THE STATE FIRST, so the fixture says why it differs rather than
+		// only that it does -- a snapshot that matched while the keys went
+		// nowhere would characterise nothing.
+		const char *tmsg = "arrow keys through the router expand a tree node"
+		    " and move a combo box's current item";
+		if (expanded && on_child && combo_now == 1)
+			printf("PASS: %s\n", tmsg);
+		else {
+			printf("FAIL: %s\n      condition: expanded %d, on the first"
+			       " child %d, combo index %d (wanted 1)\n", tmsg,
+			       int(expanded), int(on_child), combo_now);
+			++r;
+		}
+		if (t_tree != t_focused && t_driven != t_tree)
+			printf("PASS: and each half moved the cells on its own -- the"
+			       " tree's keys against a capture with the focus already"
+			       " on it, then the combo's against that\n");
+		else {
+			printf("FAIL: and each half moved the cells on its own -- the"
+			       " tree's keys against a capture with the focus already"
+			       " on it, then the combo's against that\n"
+			       "      tree moved %d, combo moved %d\n",
+			       int(t_tree != t_focused), int(t_driven != t_tree));
+			++r;
+		}
+		const int td_snap = Qtty::test::check_snapshot(
+		    QStringLiteral(QTTY_SOURCE_DIR),
+		    QStringLiteral("tree_combo_dialog_driven"), t_driven, record);
+		r += td_snap;
+		if (!td_snap && !record)
+			printf("PASS: driven tree-and-combo snapshot matches\n");
+	}
+
 	// A MARK BELONGS TO THE CELL IT SITS IN, not to the boundary nearest
 	// its edges. to_cells() rounds each edge, which is right for the
 	// rectangles it was written for -- a viewport, a panel, a frame, whose
@@ -972,6 +1112,11 @@ int suite_render(bool record) {
 			// a fixture its own generator agrees with is one witness. 8.626.
 			{ "prefs_dialog_driven", 14 },
 			{ "widgets_gallery",  17 },
+			// The tree-and-combo pair, 16 rows at the call site above. Both
+			// are listed for the same reason the driven prefs capture is:
+			// a fixture its own generator agrees with is one witness.
+			{ "tree_combo_dialog", 16 },
+			{ "tree_combo_dialog_driven", 16 },
 		};
 		for (const auto &fx : fixtures) {
 			QFile f(QStringLiteral(QTTY_SOURCE_DIR "/test/snapshot/")

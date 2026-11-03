@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2485 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2493 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -55734,3 +55734,103 @@ exists, which catches a dangling PATH and not a dangling claim about a
 document's own contents. The cheap habit that found all three is the same
 one: when a sentence says a thing is recorded elsewhere, go and read the
 elsewhere.
+
+### 8.670 The phase with no marker, and the fixture family nobody characterised (2026-11-03)
+
+**Found because a Stop hook refused to let the run end on an empty
+backlog** and said to walk the goal gap from the project description
+itself rather than from the previous run's record. §0e's conclusion --
+*the tiers are done* -- had been treated as the answer for two runs. It is
+a true sentence and it is **not the same sentence** as *the phases have met
+their exit criteria*, and only the first had ever been checked.
+
+**Walking the description's own registers first, which is what the hook
+asked for.** §7.5 *Absent entirely*: eight items, seven struck through, the
+eighth the bundled font's FILE, which is a licence decision and the
+holder's. §7.4 *Declared but unreachable*: every unstruck line is a
+statement that something now works rather than an open item. So project.md's
+own "what is not built" is worked out.
+
+**design.md §12's phases are where the marker was missing.** Phase 0 is
+marked `✅ DONE`, Phase 1 carries its retirement note of 2026-10-27, Phases
+3 and 4 are per-product and live in the products' trees. **Phase 2 --
+"Library core", the phase that IS this library -- carries no marker at
+all**, and its exit criterion is concrete and testable: *"the Phase 0
+dialog renders and is fully interactive under snapshot test."*
+
+**Half of it was already met, and the code says so.** `suite_render`
+carries a driven capture of the preferences dialog, taken through
+`InputRouter` rather than by calling `setChecked()`, with a focus-only
+control because focus is drawn as reverse video and comparing against the
+undriven capture *"was testing focus and saying input"*. Its comment cites
+this exact criterion. Nothing in this entry improves on that.
+
+**The gap is narrower and sharper: no snapshot fixture in this tree
+contained an ITEM VIEW at all.** Not the preferences dialog -- a check box,
+two radios and a button box. Not `widgets_gallery`, whose combo box,
+progress bar, slider, tabs and check box stop one widget short of one.
+And §12's Phase 0 step 1 names the pair by hand: *"a real existing dialog
+containing a `QTreeView` and a `QComboBox`"*.
+
+**Which is the family that most needed it.** §17.2 calls item views "the
+biggest single chunk", and `CellItemDelegate` is the thing a change can
+move without a targeted check noticing -- because **a targeted check
+asserts the thing it names and a characterisation snapshot asserts
+everything else**: the branch marks, the indentation, the header's
+columns, and a combo box's arrow, all in one frame. That is what a product
+following Phase 3 is told to capture before deleting its own TUI, and the
+tree had no worked example of it.
+
+**So `tree_combo_dialog` and `tree_combo_dialog_driven` exist now**, 52x16,
+a `QComboBox` over a two-column `QTreeView` over a button box. Driven with
+the two keys an item view exists to answer and a terminal user has: Down to
+land on a row, Right to expand it, then the combo's own Down. **The state is
+asserted before the picture** -- node expanded, current row, combo index --
+so a fixture that matched while the keys went nowhere cannot pass as a
+characterisation of nothing, which is the failure the prefs block names and
+paid for. The driven capture is compared against one taken with the focus
+already on the tree, so the difference is attributable to the key.
+
+**AND THE FIXTURE HAD TWO FAULTS OF ITS OWN, both caught by the very
+discipline the prefs block's comments argue for.** They are worth the
+space because they are the same two the method exists to catch.
+
+- **The keys were the wrong way round.** `Down` then `Right` looks right
+  and is not: **a `QTreeView` already has a valid current index when a
+  model is set**, so the leading `Down` moved to the SECOND top-level row
+  and the `Right` expanded that, while the assertion asked about the
+  first. It read *"expanded 0, on first row 0, combo index 1"* -- the
+  combo half correct and the tree half untouched. Measured with a probe
+  rather than reasoned about: the current index is valid before any key.
+  `Right` then `Down` expands the first node and walks INTO it, which is
+  the better picture anyway -- a branch mark turned, two indented children
+  revealed, and the current row on a child. 2485 checks to 2493.
+- **The cells-moved check could not fail for the reason it named.** It
+  compared the fully driven capture against the focus-only one and called
+  the difference proof that the item view had moved. The combo's change
+  was in the same frame, so **it passed on the run where the tree did
+  nothing at all**. It takes a capture after the tree's keys and before
+  the combo's now, and asserts each half moved the cells on its own.
+
+Neither would have been caught by the snapshot: a fixture recorded from
+the wrong state matches itself for ever, which is `evidence.md`'s point
+about a gate that agrees with its own generator. **What caught both was
+asserting the STATE before the picture**, which the prefs block does and
+says why -- and the second fault survived one full run, visible only
+because the state assertion beside it was printing a failure at the time.
+
+**SO PHASE 2'S EXIT CRITERION IS MET IN BOTH HALVES NOW** -- the Phase 0
+dialog, the one §12 step 1 describes by its two widgets, renders and is
+fully interactive under snapshot test -- **and the marker is not mine to
+add.** Its other content was already there: L2 to L6, the snapshot harness
+and `qtty-inspect`. But "Phase 2 is done" is a statement about project
+status rather than a factual claim the tree has measured false, and §0b's
+standing permission is deliberately narrow about exactly that line. So
+this records that the criterion is satisfied and leaves the `✅` for the
+holder, the way §8.668 left the Replaced tier standing with nothing in it.
+
+**The transferable half is about the register rather than the widget.**
+A roadmap whose phases carry exit criteria is a list of claims that can be
+checked one at a time, and "the tiers are built" answers none of them. The
+tier list and the phase list are different documents making different
+promises, and the one with no marker beside it is the one to read.

@@ -1,0 +1,43 @@
+ [Tracked only                                   ▾]
+ ┌────────────────────────────────────────────────┐
+ │ Name      Kind                                 │
+ │ ▾ src     dir                                  │
+ │     one   file                                 │
+ │     two   file                                 │
+ │ ▸ doc     dir                                  │
+ │                                                │
+ │                                                │
+ │                                                │
+ │                                                │
+ │                                                │
+ │                                                │
+ │                                                │
+ └────────────────────────────────────────────────┘
+                                 <OK>     <Cancel>
+--- attrs ---
+.g...............................................gg
+
+...1111......1111
+
+..gggggggggggggggggggggggggggggggggggggggggggggggg
+
+
+
+
+
+
+
+
+
+
+.................................1111
+--- blink ---
+(none)
+--- colours ---
+(none)
+--- images ---
+(none)
+--- legend ---
+. fg=default bg=default
+attrs: . none, 1 bold, g reverse
+blink: . none
