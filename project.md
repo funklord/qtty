@@ -56659,3 +56659,231 @@ says which arms are owed a run, not that anything failed. Four are owed and
 have never run -- `test-valgrind`, `test-compilers`, `test-platforms`,
 `sabotage` -- and those are parked on a machine at load 85, not on a
 decision.
+
+### 8.683 Sabotage shares the source tree, which no build directory protects (2026-11-03)
+
+**Three verification arms were started together once the machine was quiet,
+and working out which of the four could join them produced a rule this tree
+had never written down.**
+
+**The hazard everybody reaches for is the build directory, and it is the
+wrong one here.** `running-code.md` records the real instance: a concurrent
+`make` from another session deletes a test binary underneath a running
+invocation, and the inconsistent state looks exactly like a memory bug.
+That argument is about two makes in ONE directory, so three arms in three
+directories look safe -- `test-valgrind` in `build-dbg`, `test-compilers`
+in `build-clang` and `build-g`, `test-platforms` in `build`. They are, and
+all three ran together without incident.
+
+**`sabotage` is not in that class, and the reason has nothing to do with
+where its objects land.** It applies a deliberate break to a file in
+`src/`, `test/` or `include/`, builds, and requires the check the entry
+names to go red -- 233 times. The file it breaks is the file every other
+arm compiles from. A separate build directory buys nothing, because **the
+shared thing is the tree, not the output**: a sabotage edit live during
+`test-compilers`' clang build lands in that build, and the failure belongs
+to neither arm. It would read as a clang-only warning, which is precisely
+what that arm exists to find and report.
+
+**The tool's own guard does not cover it, and looking at what the guard IS
+for is what makes the gap visible.** `sabotage.py` refuses to start when
+`src/`, `test/` or `include/` is dirty, overridable with `--dirty-ok`, and
+its help says why: *"more than one session works these trees"*. That
+protects its own measurement from somebody else's uncommitted edits being
+swept into a sabotage run. It is a check on the tree's STATE at one moment,
+and a compiler already reading the tree leaves that state untouched --
+nothing to detect, nothing detected.
+
+**So the rule is one line and it is stricter than the directory rule: no
+concurrent build of ANY kind, anywhere in this tree, while sabotage runs.**
+Not "no build in `build/`".
+
+**AND THE FIRST VERSION OF THIS ENTRY SAID NOTHING ENFORCES IT AND NOTHING
+CAN, WHICH IS WRONG TWICE -- caught by reading the tool rather than
+reasoning about it, two paragraphs before the commit.** `sabotage.py` takes
+a lock: `build/sabotage.lock`, carrying the pid, dropped through `atexit`,
+and validated by `os.kill(pid, 0)` so that a run killed hard leaves no lock
+nobody can clear. Its docstring states the exact hazard this entry is
+about -- *"a run edits the sources under everything else in this tree, so a
+reading taken while one is going describes the sabotage rather than the
+code"* -- and gives the measured instance: a `--validate` run during a
+sabotage of `compositor.cpp` reported that entry's anchor unappliable and
+its check undefended, *"alarming, and false"*.
+
+**What the lock lacks is an audience, not a design.** Exactly one reader
+exists, `--validate` inside the same tool, and the file sits in the
+project's own `build/` where any of this tree's targets could read it.
+So the gap is reachable from inside the project after all: `tests-build`,
+`make check` and the two matrices could refuse while the lock is held, and
+a session would get a one-line refusal naming the pid instead of a result
+that belongs to neither run.
+
+**Named with its cost and whose it is, rather than done here.** It makes
+every build in this tree refuse under a condition it has never refused
+under before, which is a convention change by `working-practice.md`'s
+definition and visible to every other session working here -- and the
+failure mode of getting it wrong is a tree that will not build because of
+a stale lock, which is the one thing `lock_holder()` was careful to
+prevent for its own reader and would now have to be right about for all of
+them. That is a deliberate piece of work, not a line added in passing.
+
+**Which leaves saying it where somebody about to run it will be**, rather
+than here alone. `project.md` is where this is recorded and `sabotage.py
+--help` is what a person reads at the moment the rule applies -- the same
+split this tree already makes for the `--dirty-ok` refusal, whose reason is
+in the help and not only in a record. The help carries it now, under a
+heading of its own and stating the part that is counter-intuitive: a
+separate build directory does not help, because what is shared is the
+tree.
+
+**And the correction is the transferable part.** The first version of this
+reasoning parked `sabotage` behind `test-platforms` because both build in
+`build/`. That is true, it is the obvious hazard, and it is not the binding
+constraint -- which was visible only by asking what sabotage DOES rather
+than where it writes. **An arm that edits the tree is a different kind of
+neighbour from an arm that reads it**, and the directory question cannot
+tell them apart.
+
+### 8.684 The sabotage tool knows it takes six hours and tells you one (2026-11-03)
+
+**`sabotage.py` carries two figures for its own runtime, six-fold apart,
+and the one a person reads is the wrong one.**
+
+`--help` says `--validate` is *"milliseconds rather than an hour"*, and the
+comment above `USAGE` says the ordinary work *"edits the sources and takes
+an hour"*. Three hundred lines further down, in a comment nobody running
+the tool can see, is the measurement: *"the first sweep of the whole spec,
+2026-10-13: of 618 entries, 8 applied and failed to redden their check...
+the first needs the **six-hour** run."*
+
+**It misled this session, which is how it was found.** An earlier run
+ranked `sabotage` against the other arms by reading `--help`, reasoned
+*"`--validate` is milliseconds rather than an hour, so a full run is an
+HOUR"*, and recorded that correction of a previous over-estimate as though
+it were a measurement. The tool's own help was the source, and the help was
+stale.
+
+**And it is worse than six-fold now, because the figure has no
+denominator.** The spec held 618 entries when the six hours were measured,
+which is about 35 seconds an entry -- one apply, one incremental build, one
+suite run. `--validate` reports **805 entries** today. At the same rate the
+full run is **close to eight hours**, and nothing in the help says which
+number the hour was ever true of.
+
+**This is 8.680's lesson in a second file on the same day: the code is the
+copy that gets changed and the header is the copy that gets believed.**
+There the stale claim was `arm-receipt`'s own header describing an identity
+it no longer had. Here it is `--help`, which is stronger still -- a header
+is read by whoever edits the file, and `--help` is read by whoever is
+deciding whether to start an eight-hour job.
+
+**The fix is not a better number, because a number in prose goes stale
+exactly this way.** The help should carry the measured per-entry cost with
+its date, and the entry count should be READ FROM THE SPEC at the moment
+`--help` runs -- the tool already parses that file. A figure derived from
+the artifact cannot drift from it, which is this tree's rule about checking
+the artifact rather than a remembered measurement of it.
+
+**Done, once the four arms had recorded.** `--help` now reads the spec it
+already parses and prints *"the spec holds 805 entries at about 35 seconds
+each, so a full run is about 7.8 hours"*, with the 35 seconds carrying the
+date it was measured in the source beside it. The resume example went the
+same way for the same reason: it read ``sabotage 212/233`` against a spec
+of 805, so it is derived too and prints ``sabotage 268/805``. Both fall
+back to a shape rather than a number when the spec cannot be read, because
+a tool that cannot say what its arguments are on account of a data file is
+one nobody can ask what went wrong -- and both branches were exercised,
+along with `--validate` and the unknown-argument refusal.
+
+**It waited for the four arms to record**, because `tool/` is inside the
+receipts' content identity and an edit mid-run would have staled the
+verdicts they were about to write -- 8.681's method fault, not worth
+repeating in one evening.
+
+### 8.685 Valgrind's first recorded verdict, and a suppression that has grown five-fold (2026-11-03)
+
+**`make test-valgrind` is CLEAN, and this is the first time that arm has
+recorded a verdict against a known tree.** Exit 0, the target's own
+`test-valgrind: clean`, and the log read rather than the exit status:
+**ERROR SUMMARY: 0 errors from 0 contexts in all seventeen processes** --
+the main one and sixteen forked children -- with the main process at
+`definitely lost: 0`, `indirectly lost: 0` and `possibly lost: 0`, and
+169,369 bytes in 569 blocks still reachable, which is Qt's globals at
+exit and not a leak.
+
+**It is the only instrument here that sees the class.** ASan does not
+implement uninitialised reads at all, so a clean sanitizer run says
+nothing about them; §8.608's table has said so since it was written.
+`src/render/cell_paint.cpp` -- index arithmetic over cell buffers -- has
+changed repeatedly since the last memcheck run, which is the shape this
+instrument speaks about.
+
+**THE THING WORTH LOOKING AT IS THE SUPPRESSION COUNT, which the exit
+status cannot show.** The line reads *"suppressed: 84 from 84"*, and
+`tool/valgrind.supp` holds exactly one entry, added in `00aaa3b` on
+2026-09-17 under the subject *"name the **seventeen** memcheck errors and
+suppress them"*. So a suppression written for seventeen hits now fires
+eighty-four times, and nothing announced the growth: a suppression's
+breadth is invisible in a green run by construction, which is what makes
+it the half of a clean result worth reading.
+
+**The file names the property its own tolerability rests on, and that
+property was re-checked rather than assumed.** The entry matches on
+`obj:*` because valgrind's unwinder stops after two frames in HarfBuzz's
+hot loops and names neither -- `--num-callers=25`, `--keep-debuginfo=yes`
+and `--track-origins=yes` all give `???`, which gdb through vgdb resolved
+to `QTextEngine::shapeTextWithHarfbuzzNG` under `QGridLayout::sizeHint`.
+Its cost is stated plainly: *"Any Memcheck:Cond whose top two frames have
+no object at all is now silent. Everything this project builds carries
+symbols, so a fault of ours cannot hide behind it -- that is the property
+that makes the entry tolerable, and it is the one to re-check."*
+
+Re-checked: `build-dbg-test/qtty-tests` is `not stripped`, built `with
+debug_info`, and `build-dbg/lib/libqtty.a` carries 1073 text symbols. The
+net has widened because the suite shapes five times as much text as it did
+in September, not because it catches more kinds of thing.
+
+**So the growth is explained and the entry stands -- and the explanation
+is the record, not the silence.** A suppression is a gate switched off in
+one place; its own file says the next person has to be able to judge it
+rather than inherit it. Eighty-four against a subject line that says
+seventeen is exactly the discrepancy somebody inherits without noticing,
+and the only reason it was noticed here is that this arm had never
+recorded a verdict before, so the number had nothing to be compared
+against except the commit that created it.
+
+### 8.686 The compiler matrix, and 8.677's addition proved by the arm it was for (2026-11-03)
+
+**`make test-compilers` passes, and it is the fourth of four arms that had
+never recorded a verdict.** g++ and clang++ each ran 2493 checks with 0
+failures and 0 step-overs; g++ reported **0 warnings** and clang **8**,
+none of them in other people's headers and none outside the known set the
+arm maintains as `-Woption`/path pairs.
+
+**The eight, named rather than counted**: six `-Wunused-lambda-capture` in
+`test/suite_widgets.cpp` -- one capture unused, four not required to be
+captured, one more unused -- and two
+`-Wdeprecated-declarations` for `QFontDatabase` in
+`src/grid/grid_style.cpp`. Both pairs are in the known set with their
+reasons, which is what the arm checks: a PAIR this tree produces that the
+set does not name is the failure, not a count.
+
+**AND IT PROVES 8.677, which is why this run is worth more than a green
+row.** That entry restored the four tools and the chat example to this
+arm's build after `04453dd` silently dropped them -- and the proof until
+now was that `make BUILD_DIR=... tools example` succeeded by hand. The arm
+itself now shows five `sub-tool-` and `sub-example-` invocations in its
+clang log and five directories under `build-clang/`, so **a second front
+end compiled the helper code for the first time since 2026-10-30**, which
+is exactly what the gap cost and exactly what closing it bought. None of
+the eight warnings is in that code: the helpers are clean under clang.
+
+**What the known set cannot see, said once and not filed.** It is a
+pair-level allowance, so six `-Wunused-lambda-capture` in one file could
+become sixty and the arm would stay green -- the same blindness 8.685
+found in the valgrind suppression, where seventeen became eighty-four.
+The parallel is real and the consequence is not: a suppression hides a
+class of genuine errors, while a known warning pair records a decision
+this tree has already made about a named file, and more instances of one
+decision teach a reader nothing. By 8.679's own stopping criterion that
+is where the lens stops.

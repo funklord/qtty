@@ -280,8 +280,55 @@ def passing_checks(output):
 # already had the defect its own tree records for the four binaries: every
 # flag explained in a comment nobody running it could see, and an unknown
 # one answered by doing the ordinary work. Here the ordinary work edits the
-# sources and takes an hour, so `sabotage.py --help` was the worst version
-# of that trap available.
+# sources and takes HOURS, so `sabotage.py --help` was the worst version of
+# that trap available.
+#
+# AND THE FIGURE IS DERIVED, NOT WRITTEN DOWN, because this text spent a
+# fortnight saying "an hour" while a comment three hundred lines below it
+# carried the measurement -- "of 618 entries ... the first needs the
+# six-hour run", 2026-10-13. The help is the copy somebody reads to decide
+# whether to start the job, and it was the copy that was wrong, by six-fold
+# and growing: the spec is half as long again now. So the per-entry cost is
+# stated with the date it was measured, the entry count is read from the
+# spec at the moment this prints, and the total is multiplied here rather
+# than remembered. project.md 8.684.
+PER_ENTRY_SECONDS = 35          # 618 entries in about six hours, 2026-10-13
+
+
+def spec_entries():
+	"""How many entries the spec holds, or None if it cannot be read.
+
+	`--help` must work in a tree whose spec is missing or malformed --
+	a tool that cannot say what its arguments are because of a data file
+	is a tool nobody can ask what went wrong.
+	"""
+	try:
+		with open(SPEC, "rb") as f:
+			return len(tomllib.load(f).get("sabotage", []))
+	except Exception:
+		return None
+
+
+def usage():
+	n = spec_entries()
+	if n is None:
+		scale = ("the spec could not be read, so the size of a full run\n"
+		         "          cannot be stated here; it is about %d seconds an\n"
+		         "          entry." % PER_ENTRY_SECONDS)
+	else:
+		hours = n * PER_ENTRY_SECONDS / 3600.0
+		scale = ("the spec holds %d entries at about %d seconds each,\n"
+		         "          so a full run is about %.1f hours."
+		         % (n, PER_ENTRY_SECONDS, hours))
+	# The resume example is drawn from the spec too, for the same reason
+	# the duration is: a worked pair with literal numbers is a fact with a
+	# shelf life, and this one had gone stale at 212/233 while the spec
+	# held 805. With no spec to read it is stated as a shape instead.
+	resume = ("`sabotage %d/%d` means `--from %d`" % (n // 3, n, n // 3)
+	          if n else "`sabotage N/TOTAL` means `--from N`")
+	return USAGE % {"scale": scale, "resume": resume}
+
+
 USAGE = """\
 sabotage.py -- break the code on purpose and confirm the suite says so.
 
@@ -291,15 +338,27 @@ Runs every entry in tool/sabotage.toml: applies it, builds, runs the
 suite, and requires the check the entry names to go red. Restores the
 tree under every exit path, including a signal.
 
+HOW LONG: %(scale)s
+
+NOTHING ELSE MAY BUILD IN THIS TREE WHILE THIS RUNS, and that is
+stricter than it sounds: a run breaks a file in src/, test/ or include/
+on purpose, so any build anywhere -- a different BUILD_DIR, another
+session's `make check`, a second verification arm -- compiles the
+sabotage and reports a failure that belongs to neither run. A separate
+build directory does not help, because what is shared is the tree.
+The --dirty-ok refusal below is about the tree's STATE when this
+starts; a compiler already reading the tree leaves that state untouched
+and so is invisible to it. project.md 8.683.
+
   --validate     check that every anchor still matches its source, and
-                 nothing else. Milliseconds rather than an hour, so this
+                 nothing else. Milliseconds rather than hours, so this
                  is what `make check` runs.
   --only TEXT    run the entries whose name contains TEXT. Refuses when
                  it matches none, rather than reporting a green run over
                  an empty list.
   --from N       start at the Nth entry of the spec, numbered as the
                  per-entry line prints it. For resuming a run that was
-                 interrupted: `sabotage 212/233` means `--from 212`.
+                 interrupted: %(resume)s.
   --dirty-ok     run although src/, test/ or include/ has uncommitted
                  changes. The refusal exists because more than one
                  session works these trees.
@@ -369,7 +428,7 @@ def drop_lock():
 
 def main():
 	if "--help" in sys.argv or "-h" in sys.argv:
-		sys.stdout.write(USAGE)
+		sys.stdout.write(usage())
 		return 0
 	unknown = known_arguments(sys.argv[1:])
 	if unknown is not None:
