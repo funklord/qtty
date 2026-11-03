@@ -169,8 +169,17 @@ for entry in $plan; do
 
 	log="$bd-test/compiler-matrix.build"
 	mkdir -p "$bd-test" 2>/dev/null
+	# THE HELPERS AND THE EXAMPLE ARE NAMED, for the reason version-matrix
+	# names them and with one edge sharper here: the clean above says "so
+	# every file is compiled", and after 04453dd narrowed $(LIB) to
+	# `sub-src` that sentence stopped being true. `tests-build` reaches the
+	# library and the suite; the four tools and the chat example are Qt
+	# source that the suite does not link, so a second compiler's reading of
+	# them is exactly what this arm exists to get and exactly what it had
+	# quietly stopped getting. project.md 8.677.
 	if ! timeout "${QTTY_BUILD_TIMEOUT:-2400}" \
-	     make CXX="$path" BUILD_DIR="$bd" tests-build > "$log" 2>&1; then
+	     make CXX="$path" BUILD_DIR="$bd" tests-build tools example \
+	          > "$log" 2>&1; then
 		echo "compiler-matrix: $cc did not build, so it was not run" >&2
 		echo "                 the build output is $log" >&2
 		grep -E 'error:' "$log" | head -10 | sed 's/^/                 /' >&2

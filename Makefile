@@ -35,6 +35,7 @@
 #   make header-check -- every public header compiles on its own
 #   make arms         -- when each arm outside `check` last passed, and on what
 #   make arms-check   -- every arm in ARMS records a receipt, and vice versa
+#   make profiles-check -- every tracked .pro and .pri is named in the Makefile
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
@@ -113,9 +114,21 @@ TEST_HEADERS = $(wildcard test/*.h)
 # there so that the first one does not have to rediscover this.
 TOOL_HEADERS = $(wildcard tool/*/*.h)
 EXAMPLE_HEADERS = $(wildcard example/*/*.h)
+# EVERY TRACKED .pro AND .pri IS NAMED HERE, and `profiles-check` asserts
+# it. The list is load-bearing twice over: $(BUILD_DIR)/Makefile depends on
+# it, so a profile missing from it never re-runs qmake when edited; and
+# SUBDIR_MAKEFILES is derived from it, so the `rm -f` on the configure step
+# never clears that subdir's generated Makefile either. tool/tray/tray.pro
+# arrived in 6260374 and was not added here, and the second half is what
+# made it visible: on 2026-11-03 build/tool/tray/Makefile was dated
+# 2026-10-22 and build-qt6/tool/tray/Makefile 2026-10-29, while every
+# sibling in both trees had been regenerated the same day as its top-level
+# configure. The tray tool had been built from a qmake run twelve days old
+# in one tree and five in the other.
 PROFILES = qtty.pro qtty.pri src/src.pro \
            tool/inspect/inspect.pro tool/replay/replay.pro \
-           tool/negotiate/negotiate.pro example/chat/chat.pro
+           tool/negotiate/negotiate.pro tool/tray/tray.pro \
+           example/chat/chat.pro
 TEST_PROFILES = test/test.pro qtty.pri
 
 ifdef DEBUG
@@ -1583,8 +1596,21 @@ record: tests-build
 #
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
+# EVERY `-check` TARGET IN THIS FILE MUST BE IN THIS LIST, and the recipe
+# below asserts it before dispatching. The list is kept by hand, which is
+# the shape 8.678 is about: adding a gate part is not adding it to the list,
+# and a part outside the list is a check nobody runs -- which reads exactly
+# like one that passes. It was written straight after adding
+# `profiles-check` by hand and remembering; the guard is for the time
+# somebody does not. Drift writes FAIL to the stamp rather than merely
+# exiting, so the commit hook refuses the content: the gate did not run, and
+# "did not run" must not be indistinguishable from "passed".
+#
+# It covers the `-check` naming convention and not the other parts (style,
+# layout, test, test-tools, test-install, probe-style), because a convention
+# is what a new part will follow.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              arms-check fuzz-check header-check sabotage-check test test-tools \
+              arms-check profiles-check fuzz-check header-check sabotage-check test test-tools \
               test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
@@ -1602,6 +1628,18 @@ check:
 	id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
 	       | sha1sum | cut -d' ' -f1 ); \
 	echo "RUNNING $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
+	left=; for t in $$(grep -oE '^[a-z0-9-]+-check:' $(firstword $(MAKEFILE_LIST)) \
+	                   | tr -d ':'); do \
+		case " $(CHECK_PARTS) " in *" $$t "*) ;; *) left="$$left $$t";; esac; \
+	done; \
+	if [ -n "$$left" ]; then \
+		echo "FAIL $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
+		echo "check: a \`-check\` target exists that the gate does not" >&2; \
+		echo "       run:$$left" >&2; \
+		echo "       A gate part outside CHECK_PARTS is a check nobody" >&2; \
+		echo "       runs, and it reads exactly like one that passes." >&2; \
+		exit 1; \
+	fi; \
 	if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
 		echo "PASS $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	else \
@@ -1688,6 +1726,48 @@ arms-check:
 	fi; \
 	echo "arms-check: $(words $(ARMS)) arm(s) listed, each records a receipt, and every arm script's skip path records a skip"
 
+# EVERY QMAKE PROFILE IS NAMED IN THE MAKEFILE, which nothing checked until
+# one was not. A profile absent from $(PROFILES) is absent from the
+# $(BUILD_DIR)/Makefile prerequisites AND from $(SUBDIR_MAKEFILES), so its
+# generated Makefile is neither refreshed when the profile changes nor
+# removed when anything reconfigures -- and the build keeps working, from a
+# configuration nobody has looked at since. That is the stale-artifact shape
+# this tree keeps meeting: no error, a wrong answer.
+#
+# IT ASKS git, NOT A WILDCARD. A wildcard over tool/*/*.pro would find the
+# same file today and would also find an untracked scratch profile, which is
+# not this list's business; and the wildcard that MISSES is the failure mode
+# the other direction already cost us. A count of zero is a failure rather
+# than a pass, for the usual reason.
+profiles-check:
+	@all=" $(PROFILES) $(TEST_PROFILES) "; \
+	tracked=$$(git ls-files '*.pro' '*.pri'); \
+	n=0; miss=; for f in $$tracked; do \
+		n=$$((n + 1)); \
+		case "$$all" in *" $$f "*) ;; *) miss="$$miss $$f";; esac; \
+	done; \
+	if [ -n "$$miss" ]; then \
+		echo "profiles-check: tracked but not in PROFILES or" >&2; \
+		echo "                TEST_PROFILES:$$miss" >&2; \
+		echo "                qmake is never re-run when it changes, and the" >&2; \
+		echo "                generated Makefile beside it is never cleared." >&2; \
+		exit 1; \
+	fi; \
+	gone=; for f in $(PROFILES) $(TEST_PROFILES); do \
+		[ -f "$$f" ] || gone="$$gone $$f"; \
+	done; \
+	if [ -n "$$gone" ]; then \
+		echo "profiles-check: named but not on disk:$$gone" >&2; \
+		echo "                a prerequisite that cannot exist makes its" >&2; \
+		echo "                rule run every time." >&2; \
+		exit 1; \
+	fi; \
+	[ "$$n" -gt 0 ] || { \
+		echo "profiles-check: git listed no .pro or .pri at all, so nothing" >&2; \
+		echo "                was compared -- that is not a pass." >&2; \
+		exit 1; }; \
+	echo "profiles-check: $$n qmake profile(s), each named in PROFILES or TEST_PROFILES"
+
 layout:
 	@test -n "$(strip $(LAYOUT_SRC))" || { \
 		echo "layout: LAYOUT_SRC matched no files, so the gate would read" >&2; \
@@ -1759,6 +1839,15 @@ tools-check:
 # than from INSTALLED_HEADERS, deliberately -- a new public header is
 # checked the moment it exists, where a hand-kept list would check it when
 # somebody remembered. An empty list is a failure, not a pass.
+#
+# AND THE HAND-KEPT LIST IS COMPARED AGAINST IT, because the sentence above
+# is an argument against hand-kept lists written two lines from one.
+# INSTALLED_HEADERS is what `make install` copies, and nothing compared the
+# two sets: a new public header would be compiled here and not shipped, so a
+# consumer of the installed library could not include it and this target
+# would report it cleared. Both directions are named -- a header in
+# include/qtty and not in the list, and a list entry with no file. 8.678 is
+# the same shape in $(PROFILES) and is what sent the lens here.
 PUBLIC_HEADERS = $(wildcard include/qtty/*.h)
 header-check:
 	@n=0; \
@@ -1780,7 +1869,26 @@ header-check:
 	[ "$$n" -gt 0 ] || { \
 		echo "header-check: no public headers found -- include/qtty/*.h" >&2; \
 		echo "              matched nothing, which is not a pass" >&2; exit 1; }; \
-	echo "header-check: $$n public header(s) compile standalone"
+	echo "header-check: $$n public header(s) compile standalone"; \
+	miss=; for h in $(notdir $(PUBLIC_HEADERS)); do \
+		case " $(INSTALLED_HEADERS) " in *" $$h "*) ;; *) miss="$$miss $$h";; esac; \
+	done; \
+	gone=; for h in $(INSTALLED_HEADERS); do \
+		[ -f include/qtty/$$h ] || gone="$$gone $$h"; \
+	done; \
+	if [ -n "$$miss" ] || [ -n "$$gone" ]; then \
+		[ -z "$$miss" ] || { \
+			echo "header-check: public but NOT INSTALLED:$$miss" >&2; \
+			echo "              this target compiles it, because the list" >&2; \
+			echo "              above it is a wildcard; \`make install\`" >&2; \
+			echo "              copies INSTALLED_HEADERS, which is kept by" >&2; \
+			echo "              hand. A consumer of the installed library" >&2; \
+			echo "              cannot include what is not copied." >&2; }; \
+		[ -z "$$gone" ] || \
+			echo "header-check: installed but not in include/qtty:$$gone" >&2; \
+		exit 1; \
+	fi; \
+	echo "header-check: and all $$n are in INSTALLED_HEADERS, so \`make install\` ships what this target cleared"
 
 FUZZ_SOURCES = tool/fuzz/caps_fuzz.cpp tool/fuzz/input_fuzz.cpp
 fuzz-check:
@@ -1797,7 +1905,18 @@ fuzz-check:
 			"$$f" || exit 1; \
 		n=$$((n + 1)); \
 	done; \
-	echo "fuzz-check: $$n fuzz harness(es) still compile against the library"
+	echo "fuzz-check: $$n fuzz harness(es) still compile against the library"; \
+	extra=; for f in $(wildcard tool/fuzz/*.cpp); do \
+		case " $(FUZZ_SOURCES) " in *" $$f "*) ;; *) extra="$$extra $$f";; esac; \
+	done; \
+	[ -z "$$extra" ] || { \
+		echo "fuzz-check: a harness under tool/fuzz that FUZZ_SOURCES does" >&2; \
+		echo "            not name:$$extra" >&2; \
+		echo "            The loop above reads the list, so an unlisted" >&2; \
+		echo "            harness is never compiled and never run -- and" >&2; \
+		echo "            this target reports a pass over the others." >&2; \
+		exit 1; }; \
+	echo "fuzz-check: and tool/fuzz holds no harness the list does not name"
 
 # Every sabotage entry anchors on a literal line of source, and an entry whose
 # anchor has drifted cannot be applied -- so the check it names is undefended
@@ -2053,7 +2172,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check header-check \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check profiles-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         test-overlay-z test-versions test-compilers \

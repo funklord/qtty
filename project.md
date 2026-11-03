@@ -56268,3 +56268,190 @@ precondition of §8.671 working twice over: parked at load 44 with
 twenty-two other builds, re-taken when load fell to 11.33, and finished in
 eleven minutes. **The first finding any arm has produced came from the one
 that was almost not run.**
+
+### 8.677 The default target narrowed, and two arms lost coverage with it (2026-11-03)
+
+**A correct change to the build silently shrank what the version matrix
+and the compiler matrix compile, and the entry that made the change had
+already looked for exactly this and found three of five.**
+
+`04453dd` narrowed `$(LIB)` from `$(MAKE) -C $(BUILD_DIR)` -- qmake's whole
+subdirs build -- to `$(MAKE) -C $(BUILD_DIR) sub-src`, because a bare `make`
+must build the software and not the helpers around it. 0f records the
+search that went with it: *"Three leaned on the breadth and now name what
+they want: `test-tray` the tray check, `test-tools` the groups, `run` the
+example."* That search read the Makefile, and the other two consumers are
+not in the Makefile. `tests-build` depends on `$(LIB)`, and both
+`tool/version-matrix` and `tool/compiler-matrix` invoke `make ...
+tests-build` -- so each had been compiling the four tools and the chat
+example for free since it was written, through a dependency two levels away
+and in another file.
+
+**What was lost is coverage rather than correctness.** The helpers and the
+example are the only Qt source in this tree that the suite does not link, so
+nothing else compiles them twice; after `04453dd` an incompatibility in
+`qtty-inspect`, `qtty-replay`, `qtty-negotiate`, `qtty-tray` or the chat
+example would have been seen by no arm at all. The gate builds Qt 6 with
+g++, the sanitizer, valgrind and platform arms build the suite, and these
+two matrices were the only places a second Qt version or a second compiler
+ever met that code. **The compiler matrix states the loss in its own
+comment**: it removes its build directories *"so every file is compiled"*,
+and that sentence stopped being true the day the default narrowed.
+
+**Measured, not assumed, in both directions.** `make BUILD_DIR=build-qt5
+QMAKE=/usr/bin/qmake tools example` builds all five clean today -- zero
+warnings, zero errors -- so there is no defect sitting behind the gap, which
+is the answer that makes this a gate finding and not a code one. And the
+price of closing it is 52 seconds per version, timed on a machine at load
+87, against a run that spends minutes on the library and the suite.
+Both matrices ask for `tests-build tools example` now, naming what the
+default target no longer promises.
+
+**The lens, and it is the one 8.676 handed over.** That entry's finding was
+a call whose TYPE differs between Qt versions; the shape underneath it is a
+value with two consumers where only some are wired, which this tree has
+recorded before. `04453dd` rewired the producer and `0f` walked the
+consumers it could see. The two it could not see were in shell scripts, and
+the enumeration that finds them is `grep -E '^[^:]+:.*(\$\(LIB\)|tests-build)'`
+over the Makefile followed by the same question asked of `tool/`: **a
+dependency edge that leaves the file you are editing is one the file cannot
+show you.** Eleven other Makefile consumers were enumerated the same way and
+each is correct -- they run the suite, which links none of the helpers --
+and of the three places under `tool/` that invoke `make`, the third is
+right: `sabotage.py` rebuilds with `tests-build` after restoring a file,
+and its comment there records the measurement that makes the narrowness the
+point rather than a gap -- a plain `make` relinked the library and left the
+suite binary built against the LAST sabotage's library, which reported two
+failures in a whole tree on 2026-09-16.
+
+### 8.678 A qmake profile nobody listed, and a build twelve days old (2026-11-03)
+
+**One of the six qmake profiles was not in `$(PROFILES)`, and the cost was
+a tool built from a configuration generated twelve days earlier in one
+build tree and five in another.** `tool/tray/tray.pro` arrived with
+`6260374` and was never added to the list.
+
+**The list is load-bearing twice, and the second use is what made the
+defect visible.** `$(BUILD_DIR)/Makefile` names `$(PROFILES)` as its
+prerequisites, so a profile outside the list never re-runs qmake when it
+changes -- which is quiet but bounded. `SUBDIR_MAKEFILES` is *derived* from
+the same list, and the configure recipe does `rm -f $(SUBDIR_MAKEFILES)`
+before running qmake, deliberately: the comment above it records that a
+generated subdir Makefile does not notice a NEW include, so clearing them
+costs one qmake run per subdir on the configure step and nothing per
+build. A profile outside the list is therefore never cleared either, and
+its generated Makefile survives every reconfigure the tree has ever had.
+
+**Measured in three build directories, and the timestamps are the whole
+proof.** On 2026-11-03: `build/tool/tray/Makefile` dated 2026-10-22 beside
+siblings regenerated 2026-11-02; `build-qt6/tool/tray/Makefile` dated
+2026-10-29 beside a top-level configure from the same morning; and
+`build-qt5/tool/tray/Makefile` dated 2026-10-19 beside three siblings
+regenerated minutes before the reading. **The asymmetry is the signal and
+it was seen before it was understood**: a `find` for generated Makefiles
+under `build-qt5` had returned the tray's and not the other three tools',
+which read as an oddity for twenty minutes before the mechanism explained
+it -- the other three are removed at every configure and regenerated only
+when built, and the tray's is removed by nothing.
+
+**What it did NOT cost, checked rather than assumed.** The stale Qt 5 tray
+Makefile targets Qt 5: its `INCPATH` is `/usr/include/x86_64-linux-gnu/qt5`
+and it links `libQt5Widgets.so`, so 8.677's measurement that all five
+helpers build clean under Qt 5 stands. The exposure is a configuration
+change -- a flag, a Qt version, an edited profile -- that the tray tool
+would not have received, in a tree where `build-qt5` and `build-qt6` are
+reused rather than recreated.
+
+**A gate part rather than a fix, because the fix is one word and the class
+is not.** `profiles-check` asks git for every tracked `.pro` and `.pri` and
+requires each to appear in `$(PROFILES)` or `$(TEST_PROFILES)`, requires
+every name in those lists to exist on disk, and fails on a count of zero.
+It asks **git rather than a wildcard**: a wildcard would find the same file
+today and would also sweep up an untracked scratch profile, and a wildcard
+that misses is the failure mode this entry is about. Seen to fail in both
+directions before being believed -- with `tool/tray/tray.pro` removed from
+the list it names it, and with a profile named that does not exist it says
+so.
+
+**The lens is 8.677's, one turn on.** That entry's shape was a dependency
+edge leaving the file you are editing. This is the same edge pointed at
+data rather than at targets: a LIST that two different mechanisms consume,
+where adding a file to the tree is not adding it to the list, and nothing
+anywhere fails. Both were found by enumerating what the tree actually holds
+and comparing it against what the Makefile names -- which is now a gate
+part for profiles, as it already was for the verification arms.
+
+### 8.679 Every hand-kept list in the Makefile, asked the same question (2026-11-03)
+
+**8.678 found one list that had drifted, so the lens became "what else is
+a hand-kept enumeration of something the tree holds?" -- and the whole
+population was enumerated rather than sampled.** `grep -nE '^[A-Z_]+ *[:+]?=
+'` over the Makefile, minus the ones that are a single value, gives seven:
+`ARMS`, `PROFILES`, `TEST_PROFILES`, `INSTALLED_HEADERS`, `INSTALLED_FILES`,
+`CHECK_PARTS` and `FUZZ_SOURCES`. Each was asked two questions -- does
+anything check that the list covers the tree, and does anything check the
+other direction.
+
+**Two were already gated in both directions.** `ARMS` by `arms-check`,
+built the same day (8.672). `INSTALLED_FILES` by `test-install`, which
+walks the list forwards and then asks of each installed path whether the
+list names it -- the reverse arm being the one that catches an install
+shipping something nobody declared.
+
+**`FUZZ_SOURCES` was gated forwards only**, and the gap is the expensive
+direction: `fuzz-check` loops over the list, so a harness added under
+`tool/fuzz/` and not listed is never compiled, never run, and the target
+reports a pass over the other two. Two of two today, so no drift -- the
+reverse arm is there now.
+
+**`INSTALLED_HEADERS` was gated in neither direction, and the argument
+against it was already written two lines above it.** `PUBLIC_HEADERS` is a
+wildcard over `include/qtty/*.h`, and the comment says why in as many
+words: *"a new public header is checked the moment it exists, where a
+hand-kept list would check it when somebody remembered."* `INSTALLED_HEADERS`
+is that hand-kept list, it is what `make install` copies, and nothing
+compared the two sets -- so a new public header would be compiled standalone
+by `header-check`, reported as cleared, and not shipped, leaving a consumer
+of the installed library unable to include it. Eighteen and eighteen today.
+`header-check` compares them now, both ways, and says so in its own output
+rather than passing silently.
+
+**`CHECK_PARTS` was gated by nothing, which is the one with teeth**, since
+a gate part outside it is a check nobody runs and reads exactly like one
+that passes. `check` asserts the containment before dispatching: every
+`-check` target in the Makefile must be in the list. It covers that naming
+convention and not the six parts named otherwise, because a convention is
+what a new part will follow. **Drift writes `FAIL` to the stamp rather than
+merely exiting**, so the commit hook refuses the content -- "the gate did
+not run" must not be indistinguishable from "the gate passed", which is
+this tree's oldest rule about itself.
+
+**The honest provenance: it was written immediately after adding
+`profiles-check` by hand and remembering to extend `CHECK_PARTS`.** The
+guard is for the time somebody does not, and the only reason to trust it
+is that all three additions were seen to fail before being believed --
+`profiles-check` with `tool/tray/tray.pro` removed from the list and with a
+profile named that does not exist, `header-check` with sixteen of eighteen
+headers withheld from the install list, `fuzz-check` with one of two
+harnesses withheld, and the `CHECK_PARTS` assertion with the list cut to two
+parts, which named all nine omitted targets and left `FAIL` in the stamp.
+
+**AND THE LENS NEEDS A STOP, or it gates everything.** `qtty.pro`'s
+`SUBDIRS` is a hand-kept list of the same five directories, and it is
+deliberately NOT gated: a profile left out of `SUBDIRS` makes
+`make -C build sub-tool-x` fail with "No rule to make target", which is an
+error at the moment of use. **The class worth a gate is the one that fails
+SILENTLY** -- a list consumed by a loop, where an omission means the loop
+does less and reports the same. All four gated here are that: the loop over
+`FUZZ_SOURCES` compiles fewer harnesses and says "2 harnesses still
+compile"; the loop over `CHECK_PARTS` runs fewer gates and says PASS; the
+copy of `INSTALLED_HEADERS` ships fewer headers and install succeeds; the
+`rm -f $(SUBDIR_MAKEFILES)` clears fewer Makefiles and qmake runs happily.
+Ask of a list "what does the consumer do when the list is short?", and gate
+it only where the answer is "its job, quietly".
+
+**What the sweep says about the shape**: five of seven lists were fine, and
+the two that mattered were fine *today* and ungated, which is the state that
+produces a defect later and no error when it does. **A list in sync is not a
+list that is kept in sync** -- the first is a measurement of this afternoon
+and the second is a property, and only a gate can assert the second.

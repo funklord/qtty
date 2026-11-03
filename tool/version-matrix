@@ -93,9 +93,21 @@ for entry in $plan; do
 	# would also rebuild it -- in a tree more than one session works in,
 	# clobbering the directory the gate builds from is how a concurrent
 	# `make check` ends up linking half of two configurations.
+	# THE HELPERS AND THE EXAMPLE ARE NAMED, not left to the default.
+	# `tests-build` depends on $(LIB), and until 04453dd $(LIB) ran the
+	# whole subdirs build -- so this arm compiled the five helpers and the
+	# chat example for free. That commit narrowed $(LIB) to `sub-src`,
+	# correctly, because a bare `make` must build the software and not the
+	# helpers around it. The cost was invisible and landed here: the
+	# helpers are Qt source that no other arm compiles twice, so a Qt 5
+	# incompatibility in the inspector or the negotiator would have been
+	# seen by nothing. They are asked for by name now, which is what the
+	# default target no longer promises. Measured at 52 seconds per version
+	# on a machine at load 87, against a run that spends minutes on the
+	# library and the suite.
 	echo "--- Qt $ver, $path, into $bd"
 	if ! timeout "${QTTY_BUILD_TIMEOUT:-1800}" \
-	     make BUILD_DIR="$bd" QMAKE="$path" tests-build; then
+	     make BUILD_DIR="$bd" QMAKE="$path" tests-build tools example; then
 		echo "version-matrix: Qt $ver did not build, so it was not run" >&2
 		failed=$((failed + 1))
 		continue
