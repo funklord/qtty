@@ -129,6 +129,35 @@ def compiles(cxx, flags, names, form=0):
 		return done.returncode == 0, done.stderr
 
 
+def culprits(cxx, flags, names):
+	"""The documented names no probe form can reach, found by bisection.
+
+	WHY NOT THE LINEAR SCAN THIS REPLACES. It compiled one translation unit
+	per documented symbol -- 87 of them -- and it ran on exactly the
+	occasion somebody is waiting for the answer. Measured twice on
+	2026-11-03: naming a single culprit took about five minutes, and one run
+	hit its 300-second timeout before finishing and so reported nothing at
+	all. Bisection costs O(k log n) for k culprits: about seven compiles for
+	one, about twenty-eight for four.
+
+	TERMINATION. Each call either returns without recursing, or splits into
+	two strictly smaller lists; a list of one is the base case and compiles
+	at most twice. So the recursion depth is at most log2(len(names)) + 1 and
+	the number of compiles is bounded by 2 * len(names) in the worst case,
+	which is the case where every name is unreachable.
+
+	Both forms before condemning a single name: the batch probes with form 0,
+	and a member needing form 1 is reachable rather than missing.
+	"""
+	if compiles(cxx, flags, names, 0)[0]:
+		return []
+	if len(names) == 1:
+		return [] if compiles(cxx, flags, names, 1)[0] else list(names)
+	mid = len(names) // 2
+	return (culprits(cxx, flags, names[:mid])
+	        + culprits(cxx, flags, names[mid:]))
+
+
 def umbrella_gaps():
 	"""Public headers that qtty.h does not reach.
 
@@ -336,22 +365,35 @@ def main():
 		return 0
 
 	# Name the culprits rather than printing a wall of compiler output.
-	# BOTH forms before condemning a name: the header-informed guess
-	# above is a guess, and a member it reads wrongly must cost a
-	# second compile rather than a false finding.
-	missing = [s for s in symbols
-	           if not compiles(cxx, flags, [s], 0)[0]
-	           and not compiles(cxx, flags, [s], 1)[0]]
+	missing = culprits(cxx, flags, symbols)
 	if missing:
 		say("guide-check: the documentation names %d symbol(s) an"
 		    " application cannot reach:" % len(missing))
 		for sym in missing:
 			say("    %s" % sym)
-	else:
-		say("guide-check: every symbol resolves alone, so the whole-set"
-		    " translation unit failed for another reason:")
-		say(err.strip()[:2000])
-	return 1
+		return 1
+
+	# AND THIS IS A PASS, where it used to be a failure. The question this
+	# gate asks is whether every documented name is reachable, and the line
+	# above has just answered yes for all of them -- so a whole-set
+	# translation unit that will not compile is a fault in THIS PROBE's
+	# choice of form, not in the documents. It used to `return 1` here, and
+	# that false failure was met on 2026-11-03: `Qtty::Color::Default` needs
+	# `decltype(X)` where the batch had guessed `decltype(&X)`, every symbol
+	# resolved alone, and the gate went red with nothing wrong. member_forms()
+	# now orders the forms so that everything documented today batches in one
+	# compile, and the comment there says a non-static member function would
+	# re-enter this branch -- which must not be a failure when it does.
+	#
+	# The compiler's own words are kept, because somebody should still look:
+	# a whole-set failure that is not explained by any single name is worth
+	# reading even when it cannot make the documents wrong.
+	say("guide-check: all %d documented symbol(s) are reachable, and the"
+	    " whole-set translation unit did not compile -- which is this"
+	    " probe's form guess rather than a fault in the documents, so it"
+	    " passes. See member_forms(). The compiler said:" % len(symbols))
+	say(err.strip()[:2000])
+	return 0
 
 
 if __name__ == "__main__":

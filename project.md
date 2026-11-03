@@ -55528,3 +55528,55 @@ examples, this is one revert away** and the prose is what was implemented.
 The gate's docstring already records two deliberate departures from that
 same sentence, so departing from it with the reason written down is this
 tool's established practice rather than a new liberty.
+
+### 8.667 The gate that failed when nothing was wrong (2026-11-03)
+
+**Queued as a speedup and it was a correctness bug**, which is the part
+worth carrying: the item in the work file said *guide-check's failure path
+is slow*, and reading the code to make it fast is what showed it was also
+wrong.
+
+**The false failure.** When the whole-set translation unit would not
+compile but every symbol resolved alone, `guide_check.py` printed a useful
+diagnostic and then `return 1`. The question that gate asks is *is every
+documented name reachable from the public headers*, and the line above had
+just answered **yes for all of them** -- so the thing that failed was the
+probe's own batching, not the documents, and the gate went red over its own
+form guess.
+
+**It was met the same day rather than imagined.** §8.665's four names
+landed in exactly that branch: `Qtty::Color::Default` needs
+`decltype(X)` where the batch had guessed `decltype(&X)`, every symbol
+resolved alone, and the run reported *"every symbol resolves alone, so the
+whole-set translation unit failed for another reason"* and exited 1. That
+was fixed by ordering `member_forms()` so everything documented today
+batches in one compile -- a fix to the trigger, and **the comment there
+says plainly that a non-static member function would re-enter the branch**.
+So the false failure was left loaded for whoever documents one.
+
+**Proven on that exact scenario.** Documenting `Qtty::CellBuffer::rows`, a
+non-static non-overloaded member, now gives **exit 0** and *"all 88
+documented symbol(s) are reachable, and the whole-set translation unit did
+not compile -- which is this probe's form guess rather than a fault in the
+documents"*. The compiler's own words are still printed, because a
+whole-set failure no single name explains is worth a human's eye even when
+it cannot make the documents wrong.
+
+**And the bisection, which was the original item.** The linear scan
+compiled one translation unit per documented symbol -- 87 of them -- on
+precisely the occasion somebody is waiting for the answer. `culprits()`
+splits instead: a list that compiles is clean and returns at once, a list
+of one is tried in both forms, anything else halves. **Termination is
+named in the docstring rather than assumed**: each call returns or splits
+into two strictly smaller lists, so the depth is at most log2(n) + 1 and
+the compiles are bounded by 2n in the worst case, which is every name
+unreachable.
+
+**Measured, and the honest figure is the wall clock rather than the compile
+count.** One absent name, `Qtty::Color::NoSuchKind`, is now found and named
+in **100 seconds**; the scan took about five minutes and on one run hit its
+300-second timeout and so reported **nothing at all**, which is the worst
+possible behaviour for a failure path. The gain is smaller than O(k log n)
+suggests because an early subset compile costs nearly what the whole set
+does -- Qt's headers dominate, not the 87 `using` lines -- so three times
+faster, and inside the timeout rather than outside it.
