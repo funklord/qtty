@@ -26,6 +26,14 @@ best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
 by the end of the three runs.
 
+**That is the gate. For the fourteen arms OUTSIDE it, ask `make arms`**
+rather than reading for a date: each records a receipt carrying its
+verdict and the content id it ran against, so the report says which arms
+are owed a run against the tree as it stands, and distinguishes a SKIP
+from a pass. Until 2026-11-03 their freshness lived only in prose here,
+which is how a week-old sanitizer verdict came to be quoted as though it
+were a property of the code (8.671, 8.672).
+
 **Re-taken 2026-10-24 and NOT comparable, which is the whole of what the
 re-take says: 8.29 user, 0.73 sys, 21.2 wall, at load 131** over 2395
 checks. The load differs from the figure above by two orders of magnitude,
@@ -56021,3 +56029,46 @@ and the fault lived in the order they ran in. That is the shape this
 document keeps recording -- a wrapper that reports on work it did not
 watch -- and it is the third time this session that running the thing
 beat reading it.
+
+### 8.673 The first thing the receipts did was name twelve unknowns (2026-11-03)
+
+**§8.672 built the receipts; this is what they were for.** `make arms`
+reported **twelve of fourteen arms as never run** -- not "probably stale",
+not a date to be dug out of prose, a list. That list is the first thing
+this tree has been able to state about its own verification outside the
+gate, and it was actionable within the hour.
+
+**Five of them ran and passed, and every dependency was present**, so none
+stood down for a missing tool. With `test-screen`'s earlier skip that
+makes six of the fourteen recorded:
+
+- **`test-pty`** -- the whole suite under a real pseudo-terminal,
+  `OK (0 failures)`. The arm had never recorded a verdict before.
+- **`test-tray`** -- `0 failure(s)` on a private D-Bus session, and its own
+  no-bus control ran first and had to fail, so the pass is not over a
+  measurement of nothing.
+- **`test-overlay-z`** -- *"the GUI twin stacks by z and not by show
+  order"*, so §8.623's fix still holds against a real X server rather than
+  only under the offscreen platform that cannot raise a window.
+- **`test-consume`** -- a program built against the INSTALLED library with
+  nothing from this tree, which is the adoption path a stranger takes.
+- **`test-negotiate`** -- *"xterm agrees with qtty on all four"*, which is
+  the one arm here that corroborates against a second implementation
+  rather than against this tree's own reading of a terminal.
+
+**What stayed parked, and on what.** The four rebuild-heavy arms --
+`test-sanitize`, `test-valgrind`, `test-versions`, `test-compilers` -- are
+parked on machine load rather than on a decision, which `make arms` now
+says out loud instead of leaving to a reader's memory. The load was 72
+when §8.671 stopped the sanitizer and 50 when these four ran; the
+precondition is one command and is written at that entry.
+
+**The point the five results make together is about the instrument rather
+than the results.** None of them found anything, which is the expected and
+boring outcome; what changed is that "nobody knows" became **six
+recorded -- five passes and `test-screen`'s skip -- and eight never run**,
+with the eight enumerated by name. **A verification arm that nothing records
+is indistinguishable from one that has never existed**, and this tree spent
+a week quoting a sanitizer verdict from 2026-10-27 as though it described
+today's code. It no longer can: the receipt carries the content id, and the
+report prints `no` beside any verdict taken against different code.
