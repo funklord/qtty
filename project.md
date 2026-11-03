@@ -55834,3 +55834,95 @@ A roadmap whose phases carry exit criteria is a list of claims that can be
 checked one at a time, and "the tiers are built" answers none of them. The
 tier list and the phase list are different documents making different
 promises, and the one with no marker beside it is the one to read.
+
+### 8.671 Re-running the detectors, because a verdict has a shelf life (2026-11-03)
+
+**The question was "apart from the open questions, is qtty done?", and the
+honest answer needed an instrument rather than an assertion.** Two runs in
+a row had concluded the construction was complete and then found real
+faults by reading further -- a gate missing eleven of sixteen calls, a gate
+that failed when nothing was wrong, a replacement layer promised in four
+documents after being closed in one, an index pointing at a row nobody
+wrote, and a widget family with no characterisation fixture. Every one of
+those came out of reading DOCUMENTS. So this pass pointed the other kind of
+instrument at the code.
+
+**What the code says about itself, and it is a strong answer on its own.**
+Zero `TODO`, `FIXME`, `HACK` or `XXX` across `src/`, `include/`, `test/`,
+`tool/` and `example/`. Zero `#if 0` and zero `QSKIP`. **Forty-five
+conditional SKIP sites and not one of them fired** in a full gate run, so
+no check is quietly sitting out -- the one chased by hand, the README's
+promise that a view "scrolls to keep the selection visible", is asserted
+and passing, its SKIP branch being the documented Qt 5 menu-pagination
+case (§8.466). No crash, leak or timeout artifact anywhere in the tree, so
+no past fuzz finding sits unfixed. And the backend seam has **five**
+implementations -- `AnsiBackend`, `NullBackend` and three fakes in the
+suite -- so the README's claim that an existing TUI codebase can be adapted
+to it is exercised rather than asserted.
+
+**WHY THE DETECTORS NEEDED RE-RUNNING, which is the part worth keeping.**
+§8.608 and §8.609 leave a static-analysis table dated **2026-10-27**: `g++
+-Wall -Wextra` in use and at zero, clang 19 the only instrument that ever
+paid out, and clang-tidy, cppcheck and `gcc -fanalyzer` each declined with
+a reason. `make test-valgrind` was clean the same day at *"0 errors from 0
+contexts (suppressed: 0 from 0)"*. **Since that date, 28 commits have touched
+`src/` or `include/`.**
+
+So every one of those verdicts was a week old against 28 commits of
+library change, and none of the arms that produced them runs in `make
+check`:
+fifteen verification arms sit outside the gate. Counted rather than
+eyeballed: the Makefile documents 35 targets, `CHECK_PARTS` names 13, and
+of the 25 outside it ten are not verification at all (`clean`, `install`,
+`help`, `run` and their kind). The fifteen are `test-sanitize`,
+`test-valgrind`, `test-versions`, `test-compilers`, `test-platforms`,
+`test-consume`, `test-negotiate`, `test-screen`, `test-pty`, `test-tray`,
+`test-overlay-z`, `sabotage`, `fuzz`, `fuzz-input` and `coverage`. Each is out for a stated reason, and together they
+are the standing exposure this tree carries by design: **the gate is what
+blocks a bad commit, and the arms are what notice a bad week.**
+
+**WHAT THIS PASS ACTUALLY RE-RAN, stated so the next reader is not left
+inferring it.** `make test-sanitize` -- ASan, UBSan and the leak detector
+over the whole suite -- was started and was still building when this was
+written: the machine sat at **load 42 rising to 66 on 24 cores** from other
+sessions, and ASan on `suite_router.cpp` alone held one compiler at 1.3 GB
+of resident memory for minutes. That is slow rather than hung, and the
+elapsed figure beside the load is the only thing that says so, which is
+`running-code.md`'s own point. **Its verdict is recorded separately rather
+than guessed here**, because an entry that assumed the answer would be the
+exact fault this file keeps finding.
+
+The arms NOT re-run, with their cost, so the exposure is named rather than
+implied: `test-valgrind` (a debug rebuild plus memcheck's 20-fold
+slowdown, and the only instrument here that sees uninitialised reads),
+`test-versions` and `test-compilers` (one or more full rebuilds each),
+`test-consume`, `test-pty`, `test-negotiate`, `test-screen`, `test-tray`,
+`test-overlay-z`, the two fuzz runs and `sabotage`. Each is cheap in
+isolation and none of them is cheap on a machine at load 66.
+
+**A recorded verdict is not a property of the code, it is a measurement of
+the code as it was.** That is this file's own shelf-life rule applied to
+the instruments rather than to the prose, and it is the answer to "is it
+done": the record says yes, the code's own markers say yes, and the
+detectors say yes *about the tree of a week ago* until somebody runs them
+again. Re-running them is cheap -- they are already written, already
+bounded, and already explain themselves.
+
+**AN OPTION THIS TURNED UP, named rather than built.** Answering "is it
+done" took archaeology -- grepping `project.md` for the date beside each
+verdict -- because **nothing records when an arm last passed.** `make
+check` writes a receipt (`.git/qtty-check-stamp`, `PASS` plus a content
+id) and the pre-commit hook reads it; the fifteen arms outside the gate
+write nothing, so their freshness lives only in prose that goes stale by
+construction.
+
+The option is a receipt per arm, the same shape as the check stamp, and a
+target that prints them. The cost is why it is not done here: it is a
+change to fifteen targets or a helper every one of them has to call, and
+**a partially wired set is worse than none** -- a missing receipt would
+read as "never run" rather than "not wired", which is the confident-wrong
+failure this file keeps recording. It is also a mechanism this tree would
+then carry, which `working-practice.md` says is a convention change and
+its own piece of work rather than something to adjust in passing.
+
+So: the option, its cost, and whose it is -- the copyright holder's.
