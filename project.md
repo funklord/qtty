@@ -55900,6 +55900,31 @@ slowdown, and the only instrument here that sees uninitialised reads),
 `test-overlay-z`, the two fuzz runs and `sabotage`. Each is cheap in
 isolation and none of them is cheap on a machine at load 66.
 
+**AND IT WAS STOPPED RATHER THAN FINISHED, which is the honest outcome
+and is recorded as one.** The ASan library built, then one translation unit
+-- `suite_router.cpp`, the largest -- held a compiler for over five
+minutes at 1.3 GB while the load climbed from 42 to 69, with five more
+still to compile and the suite run after that. Half an hour of watching a
+starved build, for a low-probability finding in 28 commits of a tree whose
+last valgrind run was clean, is not the best use of a session; **and
+abandoning the attempt silently would have been worse than not making
+it**, which is why this paragraph exists.
+
+Two things make the next attempt cheap, so this is a deferral rather than
+a loss. `build-san` and `build-san-test` are **left in place**, 132 MB and
+76 MB, with the instrumented library and 8 of 13 suite objects already
+built -- a re-run starts there rather than from nothing. And the right
+condition is simply a quiet machine: `cut -d' ' -f1 /proc/loadavg` before
+starting is the whole precondition, and at 24 cores anything near 60 means
+the answer will not arrive.
+
+**The general point, which cost nothing to learn and is worth keeping.**
+The fifteen arms outside the gate are cheap in isolation and none of them
+is cheap on a shared machine at load 66. That is not an argument for
+moving them into `make check` -- each is out for a stated reason -- it is
+an argument for knowing when each last passed, which is the option named
+above and the reason it is named.
+
 **A recorded verdict is not a property of the code, it is a measurement of
 the code as it was.** That is this file's own shelf-life rule applied to
 the instruments rather than to the prose, and it is the answer to "is it
