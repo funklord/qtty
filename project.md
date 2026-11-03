@@ -56149,3 +56149,51 @@ and `make -q tests-build` says it would rebuild, so it must not. That
 check also tripped the documented hazard it was checking around: `make -q`
 on a recursive target executes the sub-make and printed `make -C build
 sub-src`, which is why a dry run of one is not a dry run.
+
+### 8.675 A partial valgrind run, and the receipt that refused to call it a pass (2026-11-03)
+
+**`test-valgrind` was attempted and stopped, and the partial result is
+worth more than nothing: 0 errors through 1,764 of 2,493 checks.** No
+`Invalid read`, `Invalid write` or uninitialised-value report in the
+memcheck log at the point it was stopped, and the one suppression in
+`tool/valgrind.supp` -- HarfBuzz's text shaping, third party rather than
+qtty's -- had not fired.
+
+**Where it stalled is the useful part.** The first 1,764 checks went by at
+a steady rate and then it sat in the GRAPHICS suite, last line *"while the
+overlay reaches neither the placements nor a cell"*. That is where sixel
+and half-block encoding do per-byte pixel work, which is the most
+expensive thing there is under an instrument that shadows every byte. The
+arm is affordable on a quiet machine and not otherwise: memcheck was
+getting **42 per cent of one core at load 60**, and 20 minutes bought the
+debug build plus 71 per cent of the suite.
+
+**THE RECEIPT REFUSED TO CALL IT A PASS, which is the first time that
+mattered.** `make test-valgrind` writes its receipt as the last line of a
+successful recipe, so a run stopped part way writes nothing and `make
+arms` still reports the arm as never run. **A partial verification is not
+a weak pass, it is not a verification**, and the mechanism said so without
+anybody deciding to be careful. §8.672 built that; this is it working on
+the first occasion it could have been fudged.
+
+**The build is left in place deliberately**, as §8.671 left the
+sanitizer's: `build-dbg` and `build-dbg-test` carry the debug library and
+suite, so the next attempt pays only for the memcheck run.
+
+**And the stale-log trap caught me inside this run, which is why the
+figures above are the second reading.** The recipe builds first, then
+`rm -f`s the log, then runs valgrind -- so for the ten minutes of debug
+build I was reading the PREVIOUS run's log and taking it for progress: 17
+child summaries, each `ERROR SUMMARY: 0 errors` and each
+`definitely lost: 39,744 bytes`. All true of some earlier run and none of
+it evidence about this one. The count dropping from 17 to 0 the moment
+the `rm` fired is what exposed it.
+
+**A last confirmation of this morning's signal.** After the stop, a count
+of `valgrind` processes read **4**, which looked like orphans surviving a
+task-kill. They were not: memcheck and the test binary were both gone, and
+the four were shells whose command lines contain the word -- including the
+waiter this session had started, which greps for `valgrind-exit=`. That is
+exactly the self-match `claude-guidelines` `88b0257` was signalled about,
+met again within the day and by the same mechanism. Asking for the thing
+itself -- `memcheck-amd64`, and `qtty-tests` -- answered 0 and 0.
