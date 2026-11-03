@@ -2955,9 +2955,12 @@ already know: Tui Widgets, termpaint, notcurses, and what a team does
 instead -- hand-writing a second TUI view against the same model, which is
 the four products this project exists to consolidate.
 
-**Two messages are unread in `.git/cc-inbox/`**, arrived during this
-session and not opened: reading is cheap, acting on one is not, and the
-`SessionStart` hook puts them in front of whoever arrives next.
+~~**Two messages are unread in `.git/cc-inbox/`**, arrived during this
+session and not opened.~~ **Read and cleared since; the inbox was empty on
+2026-11-03.** Struck rather than deleted because the sentence is the one
+thing in this fold that was a claim about the present, and a later reader
+finding it would go looking for messages that are not there -- which is
+this file's shelf-life rule meeting a section written at a halt.
 
 Nothing else is open that §0b and §0e do not already carry.
 
@@ -55866,7 +55869,15 @@ conditional SKIP sites and not one of them fired** in a full gate run, so
 no check is quietly sitting out -- the one chased by hand, the README's
 promise that a view "scrolls to keep the selection visible", is asserted
 and passing, its SKIP branch being the documented Qt 5 menu-pagination
-case (§8.466). No crash, leak or timeout artifact anywhere in the tree, so
+case (§8.466).
+
+**AND THAT SENTENCE IS TRUE OF ONE CONFIGURATION ONLY, which 8.676
+measured hours later: twelve of the forty-five fire on Qt 5.** The gate
+builds Qt 6, so a skip count taken from it says nothing about the others,
+and the conditional checks are not dead -- they wait for the configuration
+they are about. Corrected here rather than only there because this is the
+paragraph a reader meets first, and a strike-through on the later entry
+would not reach them. No crash, leak or timeout artifact anywhere in the tree, so
 no past fuzz finding sits unfixed. And the backend seam has **five**
 implementations -- `AnsiBackend`, `NullBackend` and three fakes in the
 suite -- so the README's claim that an existing TUI codebase can be adapted
