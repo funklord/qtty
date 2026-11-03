@@ -56222,3 +56222,49 @@ waiter this session had started, which greps for `valgrind-exit=`. That is
 exactly the self-match `claude-guidelines` `88b0257` was signalled about,
 met again within the day and by the same mechanism. Asking for the thing
 itself -- `memcheck-amd64`, and `qtty-tests` -- answered 0 and 0.
+
+### 8.676 The version matrix pays out, and the twelve step-overs answer an older question (2026-11-03)
+
+**`make test-versions` found a real defect, and it is exactly the class
+that arm exists for: a fault visible in one configuration and in no
+other.** `test/suite_render.cpp` printed `dev.devicePixelRatio()` with
+`%f`. On Qt 6 that returns `qreal` and the format is right; **on Qt 5 it
+returns `int`**, and the compiler says so --
+
+    warning: format '%f' expects argument of type 'double',
+             but argument 5 has type 'int'
+
+A varargs type mismatch is undefined behaviour rather than a cosmetic
+complaint, and **it sits in a FAIL branch**: the one occasion somebody
+needs that diagnostic is the occasion it may print nonsense. `make check`
+builds Qt 6, where the format is correct, so the gate cannot see it; nor
+can any other arm.
+
+**Fixed with `double()` rather than a `QT_VERSION` conditional.** The cast
+is right on both versions, adds no thirteenth conditional to the twelve
+`src/qt_compat.h` already carries, and the comment at the site says which
+call changes type and which arm found it -- because the next reader's
+question will be *why is there a cast here*. Verified both ways: Qt 6
+compiles clean and the Qt 5 warning is gone, each by a syntax-only build
+against that version's own headers.
+
+**The arm's own verdict, which is the other half:** Qt 6.8.2 **2493 pass,
+0 fail**; Qt 5.15.15 **2481 pass, 12 step over, 0 fail**; both agreeing at
+2493 checks, which is what the matrix asserts and what a count moving with
+the version would betray.
+
+**AND THE TWELVE STEP-OVERS ANSWER A QUESTION ASKED EARLIER IN THE
+SESSION.** §8.671 counted **45 conditional SKIP sites in the suite and
+found that none fired** in a full gate run, and took that as evidence no
+check was quietly sitting out. True, and incomplete: it was measured on
+the Qt 6 arm alone. **Twelve of them fire on Qt 5** -- the menu-pagination
+case of §8.466 among them. So the conditional checks are not dead code and
+not vacuous; they are waiting for the configuration they are about, and the
+only way to see that was to build the other configuration. A skip count
+read in one configuration says nothing about the others.
+
+**This arm was stopped once and re-taken in the same run**, which is the
+precondition of §8.671 working twice over: parked at load 44 with
+twenty-two other builds, re-taken when load fell to 11.33, and finished in
+eleven minutes. **The first finding any arm has produced came from the one
+that was almost not run.**

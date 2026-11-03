@@ -4568,7 +4568,15 @@ int suite_render(bool record) {
 			printf("FAIL: the paint device reports its own size, depth and ratio\n"
 			       "      %dx%d px, depth %d, ratio %f, %dx%d mm, %d colours\n",
 			       dev.width(), dev.height(), dev.depth(),
-			       dev.devicePixelRatio(), dev.widthMM(), dev.heightMM(),
+			       // double(), because the TYPE OF THIS CALL DIFFERS BY
+			       // QT VERSION: Qt 6 returns qreal and Qt 5 returns
+			       // int, so `%f` is right on one and undefined
+			       // behaviour on the other. Found by `make
+			       // test-versions` and by nothing else -- `make check`
+			       // builds Qt 6, where the format is correct.
+			       // project.md 8.676.
+			       double(dev.devicePixelRatio()),
+			       dev.widthMM(), dev.heightMM(),
 			       dev.colorCount());
 			++r;
 		}
