@@ -2725,6 +2725,44 @@ A window drawn in the default theme answers 0 at every depth, because
 the theme leaves the terminal's own colours alone; it is the colours
 *you* pick, which practice 14 is about, that this measures.
 
+**And to ask about one cell rather than the whole screen, read it out of
+the buffer.** `at(x, y)` on a `Qtty::CellBuffer` hands back a `Qtty::Cell`: its
+`ch` is one grapheme cluster, `fg` and `bg` are `Qtty::Color`, and `attrs`
+and `width` carry the rest.
+
+    const Qtty::Cell &c = frame.at(3, 1);   // column 3, row 1
+    QCOMPARE(c.ch, QStringLiteral("K"));    // whichever glyph you expect
+
+**Ask a colour's KIND before its value.** A `Qtty::Color` is one of three
+things, and only the third is a number you can compare:
+
+    switch (c.bg.kind()) {
+    case Qtty::Color::Default:  break;   // the terminal's own -- unknown here
+    case Qtty::Color::Indexed:  use(c.bg.index());      // 0..255
+    case Qtty::Color::Rgb:      use(c.bg.value());      // a QRgb
+    }
+
+A `Default` colour means *whatever the terminal is already using*, which
+this library deliberately does not guess -- and **its `value()` is 0**. So a
+test that compares `bg.value()` without asking `kind()` first reads the
+terminal's own background as opaque black.
+
+**That mistake passes rather than fails, which is why it is worth a
+paragraph.** Measured on a plain window of a label and a button at 40x12:
+all **480** cells come back `Default`, because the default theme leaves the
+terminal's own colours alone. So `QCOMPARE(c.bg.value(), 0u)` -- "the
+background is black" -- is true of every cell on the screen while inspecting
+nothing at all, and it keeps being true until somebody sets a theme. Ask
+`kind()` first and the question becomes answerable: `Default` is a cell you
+have no colour for, not a black one.
+
+**The cell size in pixels is `Qtty::GridMetrics::cw()` and `ch()`**, and
+`Qtty::GridMetrics::cells(cols, rows)` is the pixel size of a grid that many
+cells across -- which is what to resize a widget to before rendering it, so
+that no geometry lands off the grid:
+
+    win.resize(Qtty::GridMetrics::cells(40, 12));
+
 **There is a snapshot harness for what the screen shows.**
 `qtty/testing.h` ships with every install:
 

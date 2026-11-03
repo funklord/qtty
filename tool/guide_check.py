@@ -56,7 +56,36 @@ def qt_cflags():
 	return out.stdout.split() if out.returncode == 0 else None
 
 
-def compiles(cxx, flags, names):
+def member_forms(n):
+	"""The probe lines that name a member `A::B::c`, best first.
+
+	TWO FORMS ARE NEEDED AND NEITHER COVERS THE OTHER'S CASE. `decltype(X)`
+	names an ENUMERATOR, a static member, a data member and a free function
+	in a nested namespace; `decltype(&X)` is the only way to name a
+	NON-STATIC MEMBER FUNCTION and is ill-formed for an enumerator, because
+	an enumerator has no address. The gate knew only the second, so it could
+	never accept a documented enumerator -- and `Qtty::Color`'s three kinds,
+	which every consumer reads a cell's `fg` and `bg` through, are
+	enumerators.
+
+	Bare goes first because it covers everything this tree documents:
+	measured 2026-11-03, all 87 documented symbols resolve in ONE
+	translation unit that way. The address form is the fallback the
+	per-symbol path tries, so a document naming a non-static member function
+	still passes -- by the slow route, and only that one name costs it.
+
+	An earlier version of this chose the order by looking for the leaf name
+	followed by `(` in the headers. That is a worse idea than it looks: the
+	leaf is matched anywhere in any header, `Default` matches a `Default (`
+	that has nothing to do with `Color::Default`, and the whole-set compile
+	then fails while every symbol still resolves alone -- the one failure
+	mode that reports no culprit. No heuristic is better than a cheap one
+	here, because the compiler is the authority either way.
+	"""
+	return ["using X = decltype(%s);" % n, "using X = decltype(&%s);" % n]
+
+
+def compiles(cxx, flags, names, form=0):
 	"""True when a translation unit naming every symbol in `names` compiles.
 
 	A using-declaration, because it is the one form that names a TYPE, a
@@ -81,10 +110,12 @@ def compiles(cxx, flags, names):
 	# do so gets this comment rather than a puzzle.
 	lines = []
 	for i, n in enumerate(names):
-		member = n.count("::") == 2
-		lines.append("namespace probe_%d { %s }" % (
-		    i, ("using X = decltype(&%s);" % n) if member
-		       else ("using %s;" % n)))
+		if n.count("::") == 2:
+			forms = member_forms(n)
+			line = forms[min(form, len(forms) - 1)]
+		else:
+			line = "using %s;" % n
+		lines.append("namespace probe_%d { %s }" % (i, line))
 	body = "\n".join(lines)
 	src = "#include <qtty/qtty.h>\n#include <QWidget>\n" + body + "\n"
 	with tempfile.TemporaryDirectory() as tmp:
@@ -305,7 +336,12 @@ def main():
 		return 0
 
 	# Name the culprits rather than printing a wall of compiler output.
-	missing = [s for s in symbols if not compiles(cxx, flags, [s])[0]]
+	# BOTH forms before condemning a name: the header-informed guess
+	# above is a guess, and a member it reads wrongly must cost a
+	# second compile rather than a false finding.
+	missing = [s for s in symbols
+	           if not compiles(cxx, flags, [s], 0)[0]
+	           and not compiles(cxx, flags, [s], 1)[0]]
 	if missing:
 		say("guide-check: the documentation names %d symbol(s) an"
 		    " application cannot reach:" % len(missing))

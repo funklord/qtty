@@ -1162,7 +1162,7 @@ Owned by the copyright holder:
 | **Should a Channel B stroke carry its pen colour?** Today it does not: a rule drawn through the paint engine lands in a cell with the default colour. The obvious fix was built and measured on a 40x20 fixture -- **294 rule cells all default today, against 174 default and 120 true-colour with the pen carried** -- and the measurement is why it was not taken. **1586 of 1597 pens reaching `line()` resolve to a hard 24-bit colour and 1569 of those to one grey**, because Qt draws sunken borders with `pal.dark()` and `pal.light()`: carrying the pen would paint that grey across the tree, which is the #bebebe incident by a new route. The suite is blind to it -- with the pen carried every check passes and both fixtures re-record identically. The real fix wants an "is this colour anywhere in the palette" rule, which is a section 6 decision and the holder's | 8.x, near "left for the holder" |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 | **Should a dashed pen render as dashed at all?** Measured 2026-11-02: every `Qt::PenStyle` -- Dash, Dot, DashDot, DashDotDot -- renders cell for cell identically to Solid, so a chart telling series apart by dashing has that removed, which matters most where colour is scarce. **It is a decision rather than a defect, and the direction of the ink is why**: weight and colour ADD to cells drawn anyway, while dashing REMOVES ink, and a twenty-cell line rendered as ten reads as damage rather than style against N2's legible reinterpretation. Both remedies are known -- Unicode's dashed box family, unused here but with no diagonals, so dashing would vanish when a line slopes; or skipping cells, which works at every angle and is about twenty-five lines, threading the dash phase through `stroke_polyline` so it carries across segments. 8.658 | 8.658 |
-| **Should qtty say that the DOCUMENTED surface is the supported one?** Not the parked question, which was whether to promise API stability; measurement narrowed it. 203 names are declared in the public headers and **80 are named in the documentation**, which `make guide-check` compiles against those headers on every `make check` -- so a documented name cannot be removed without failing our own gate. Of the **44** names that were ever public and are not now, **not one was ever documented**, and 33 of the 44 are a single event, the camelCase-to-snake_case migration of 2026-08-27. So the guarantee a consumer wants already exists mechanically; what is missing is the sentence saying so. That sentence is a statement to other projects -- fuzznet keeps its qtty render test out of its own `make check` for want of it -- and committing this tree to a supported subset is the holder's call, not a recording | 8.662, 8.648 |
+| **Should qtty say that the DOCUMENTED surface is the supported one?** Not the parked question, which was whether to promise API stability; measurement narrowed it. 203 names are declared in the public headers and **87 are named in the documentation** -- 80 when this was measured, plus the five of 8.663 and the two the same passage documents beside them, `Qtty::Color` itself and its `Default` kind -- which `make guide-check` compiles against those headers on every `make check` -- so a documented name cannot be removed without failing our own gate. Of the **44** names that were ever public and are not now, **not one was ever documented**, and 33 of the 44 are a single event, the camelCase-to-snake_case migration of 2026-08-27. So the guarantee a consumer wants already exists mechanically; what is missing is the sentence saying so. That sentence is a statement to other projects -- fuzznet keeps its qtty render test out of its own `make check` for want of it -- and committing this tree to a supported subset is the holder's call, not a recording | 8.662, 8.648 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -55193,3 +55193,158 @@ signature split across lines, so 203 and 247 are floors. And this measures
 SOURCE compatibility, not ABI -- a defaulted parameter is an ABI break and
 reads as compatible here, which is right for consumers that vendor and
 rebuild and would be wrong for one linking a shared library.
+
+### 8.663 The five names every consumer uses and no document named (2026-11-03)
+
+**§8.662 established that the documented surface is the only part of this
+API with a stability guarantee, because `guide-check` compiles every
+documented name on every `make check`.** The obvious next question is
+whether that surface covers what the consumers actually use, and it did
+not.
+
+**Measured across the four consumer trees, reading only their OWN code.**
+They use **15** distinct `Qtty::` names between them, in six hand-written
+files -- `main.cpp` in netcfgd and raidcfgd, fuzzypickles' `qtty-spike/`,
+and the `qtty_render_test.cpp` all four carry. Ten are documented. **Five
+are not**: `Qtty::Cell`, `Qtty::Color::Indexed`, `Qtty::Color::Rgb`,
+`Qtty::GridMetrics::cells` and `Qtty::GridMetrics::cw`.
+
+**The asymmetries are what make this a defect rather than a shortfall.**
+`Qtty::CellBuffer` is documented and the `Cell` it holds is not.
+`GridMetrics::ch` is documented and `cw` is not -- one concept, and the
+gate covers half of it. And `Qtty::Color` appears in the documentation
+**nowhere at all**, neither the class nor either kind, although a cell's
+`fg` and `bg` are of that type and reading them is what every one of those
+render tests does. This is §0e's own lens -- a value with two consumers
+where only one is wired -- pointed at the documentation.
+
+All five are one vocabulary: what you need to **inspect** a rendered cell.
+That is exactly the job of the test fuzznet keeps out of its own `make
+check`, which is the parked question this serves.
+
+**The remedy is documentation and nothing else**, because the five names
+are public, correct and already working -- so this is recording rather than
+deciding, and the gated surface goes from 10 of 15 to 15 of 15. Written
+into `doc/keyboard-first.md` beside the `render_once` example a consumer
+would already be reading.
+
+**AND WRITING IT TURNED UP A TRAP WORTH MORE THAN THE NAMES.** A
+`Qtty::Color`'s `value()` is 0 when its `kind()` is `Default`, so a test
+comparing `bg.value()` without asking `kind()` first reads the terminal's
+own background as opaque black. Measured on a plain window of a label and a
+button at 40x12: **all 480 cells come back `Default`**, because the default
+theme leaves the terminal's colours alone. So `QCOMPARE(c.bg.value(), 0u)`
+-- "the background is black" -- is true of every cell on screen while
+inspecting nothing, and stays true until somebody sets a theme.
+`evidence.md`'s vacuous pass, reachable through a public accessor by a
+consumer following the documentation that did not exist. The passage leads
+with it.
+
+**METHOD, and it is the third detector fault of this session.** The first
+count said each consumer touched about fifty names. Every one of the four
+appeared to use all fifty, including `compose_kitty_placeholders`, which
+§8.662 had just established was removed in 2026-08-28, and
+`qt_static_metacall`, which is moc's. **The walk was reading each
+consumer's VENDORED COPY OF QTTY** -- all four vendor it, and fuzznet
+vendors it again inside two of them. Excluding any path with a `qtty`
+component, and `moc_` files, gives 15.
+
+What caught it was not suspicion of the tool but a name that could not be
+there: a symbol known to be deleted cannot be called by four programs. So
+the cheap check on a census is to look for an impossible member, which is
+`evidence.md`'s sweep for impossibility rather than absence -- and it works
+on a list far too long to read.
+
+### 8.665 Documenting an enumerator made the gate refuse it (2026-11-03)
+
+**§8.663 documented five names consumers use, and `guide-check` then
+reported four of them unreachable** -- `Qtty::CellBuffer::at`,
+`Qtty::Color::Default`, `Qtty::Color::Indexed` and `Qtty::Color::Rgb`.
+Every one is public and every one works.
+
+**The gate was the first suspect and the evidence was already in hand**,
+which is the only reason this took minutes. `evidence.md`'s rule is that a
+gate disagreeing with code you believe correct is the first suspect before
+the code is -- and here the probe written for §8.663's own measurement had
+compiled and RUN using all four names, reading `buf.at(x, y).bg.kind()`
+against `Color::Default`, `Indexed` and `Rgb`. A name that a running binary
+resolved is not an unreachable name.
+
+**Two causes, and the tool had predicted one of them by name.**
+`tool/guide_check.py` probes a member with `using X = decltype(&N::M);`,
+and its own comment says: *"decltype of an address is AMBIGUOUS for an
+overloaded member, so a document naming one would be reported unreachable.
+No document names one today; the next one to do so gets this comment rather
+than a puzzle."* `CellBuffer::at` is overloaded -- a mutable and a const
+overload -- so that was me, and the comment did its job exactly as written.
+
+**The other cause was not foreseen and is the larger one: you cannot take
+an enumerator's address.** Measured 2026-11-03:
+
+    decltype(&Qtty::Color::Rgb)        fails
+    decltype(Qtty::Color::Rgb)         compiles
+    decltype(&Qtty::CellBuffer::at)    fails -- overloaded
+    decltype(Qtty::GridMetrics::cw)    compiles
+
+So **neither form covers the other's case**. `decltype(&X)` is the only way
+to name a non-static member FUNCTION and is ill-formed for an enumerator;
+`decltype(X)` is fine for an enumerator, a static member and a data member
+and ill-formed for a non-static member function. The gate knew one form and
+therefore could never accept a documented enumerator -- a whole category of
+public API, and the category a cell's `fg` and `bg` are read through.
+
+**The fix keeps the batch in one compile, and the first attempt at it was
+wrong in an instructive way.** `member_forms()` now returns the bare form
+first and the address form second, with **no heuristic at all**: measured,
+all **87** documented symbols resolve in ONE translation unit that way,
+because `decltype(X)` covers an enumerator, a static member, a data member
+and a free function in a nested namespace alike. The address form is the
+fallback the per-symbol path tries, so a document naming a non-static
+member function still passes -- by the slow route, and only that one name
+pays for it.
+
+**What the first attempt did was choose the order by looking for the leaf
+name followed by `(` in the headers**, on the theory that a function needs
+the address form. It is a worse idea than it looks. The leaf is matched
+anywhere in any header, and `Default` matches a `Default (` that has
+nothing to do with `Color::Default` -- so the whole-set compile failed
+while every symbol still resolved alone, which lands in the one branch
+that reports **no culprit at all**: *"every symbol resolves alone, so the
+whole-set translation unit failed for another reason"*. A gate that fails
+while naming nothing is worse than the gate that was wrong, and the cheap
+heuristic bought nothing the compiler was not already deciding.
+
+**SEEN TO FAIL, because a probe made more permissive is one that has to
+prove it can still refuse.** Two forms where there was one is a weaker
+test by construction, so the control matters more than usual here. End to
+end: `Qtty::Color::NoSuchKind` added to the documents, and guide-check
+named **exactly one** symbol of 88 as unreachable -- that one. And
+directly, which is the cheap form and the one to reach for first:
+
+    decltype(Qtty::Color::NoSuchKind)     rejected
+    decltype(&Qtty::Color::NoSuchKind)    rejected
+    decltype(Qtty::Color::Rgb)            compiles
+
+Both forms refuse an absent enumerator, so a name that does not exist
+still lands in `missing`. **The end-to-end control cost about five minutes
+and the three compiles above cost seconds**, and the second is what should
+be run first next time: the whole-gate route takes the per-symbol path by
+definition, since that is the path a failure is on.
+
+**The overloaded member stays outside both forms, and the prose moved
+instead.** There is no form that names an overload set without resolving it,
+and the honest options were to weaken the gate or to reword one sentence.
+The passage says `at(x, y)` on a `Qtty::CellBuffer` now rather than
+`Qtty::CellBuffer::at(x, y)`, which names a class the gate checks and reads
+better than it did. A documented limit left standing, with its comment.
+
+**AND THE FAILED GATE REPORTED ITSELF AS PASSING, which nearly cost the
+commit.** The run was `make check 2>&1 | tail -30` in the background, and
+the harness reported **exit code 0** -- because a pipeline's status is the
+LAST command's, and `tail` succeeded. I read that notification as a pass and
+said so before reading the log, where `check: FAILED` and
+`make: *** [check] Error 1` were sitting. `evidence.md` carries this exactly
+-- never reduce a check's output before you know it passed, and a count and
+an exit code are halves of one result. The remedy is not to pipe a gate at
+all, or to end the pipeline with the status that matters; a backgrounded
+`make | tail` hides the one bit the notification claims to carry.
