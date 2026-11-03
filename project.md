@@ -56575,12 +56575,20 @@ no harder to type.
 
 ### 8.681 Six arms re-recorded, and the tool edit that undid five of them (2026-11-03)
 
-**Nine of the fourteen arms now carry a verdict about this tree**, up from
-four this afternoon: `test-screen` (SKIP), `test-pty`, `test-tray`,
-`test-negotiate`, `test-consume` and `test-overlay-z` re-taken in about two
-minutes between them, all passing, `test-screen` standing down correctly on
-load 80.52 against its threshold of 40 because a timed capture on a busy
-machine measures the scheduler rather than the terminal.
+**~~Nine~~ SIX of the fourteen arms now carry a verdict about this tree**,
+up from ONE immediately before the re-take -- the figure was nine in this
+entry's first draft and in its commit message, arrived at by counting the
+arms that had been RUN rather than the rows the report prints `yes` for.
+Re-derived from `make arms` itself, which is the artifact: fourteen rows,
+four reading `no`, four reading `never`, six reading `yes`. **A count
+inherits its detector, and the detector here was memory**, which is the one
+instrument this file never accepts from anybody else.
+
+The six are `test-screen` (SKIP), `test-pty`, `test-tray`,
+`test-negotiate`, `test-consume` and `test-overlay-z`, re-taken in about
+two minutes between them and all passing, with `test-screen` standing down
+correctly on load 80.52 against its threshold of 40 because a timed capture
+on a busy machine measures the scheduler rather than the terminal.
 
 **They were worth re-taking and the test is not that the receipt was
 stale.** No `src/` or `include/` file changed in any of today's four
@@ -56612,3 +56620,42 @@ edit-to-fix made during a run is still an edit made during a run.
 **And the cost was paid in the right coin.** Re-running six cheap arms is
 two minutes; the alternative was a report with five rows that were true and
 read as stale, which is the condition 8.680 exists to remove.
+
+### 8.682 The report can say "owed" and cannot say "declined" (2026-11-03)
+
+**`make arms` ends the day reading four stale, four never run and six
+against this tree -- and three of the four stale are stale ON PURPOSE,
+which the report has no way to say.**
+
+`fuzz`, `fuzz-input` and `test-sanitize` passed at 16:29, 16:31 and 16:32.
+**No `src/` or `include/` file has changed since**, in any of the day's six
+commits, so re-running them would re-run over unchanged code -- below the
+bar, and the receipts were deliberately left red rather than refreshed to
+buy green rows. `test-versions` is the fourth and is a different case
+again: it passed at 17:54 and its row went red because `tool/arm-receipt`
+was edited afterwards, so the verdict is current about the library AND
+about the arm, and only the recording tool moved.
+
+**So the instrument has three states where the question has four.** `yes`,
+`no` and `never` cannot distinguish *owed a run* from *considered and
+declined, for this reason*, and a reader meeting four red rows has exactly
+the archaeology 8.671 built receipts to remove -- they must go to the log
+to find out that three of the four are a decision.
+
+**The entry is the answer for today and is not the fix.** Writing the
+reason here is what the record is for, and it works once; it does not work
+in three weeks, when this paragraph is one of nine hundred and the report
+still shows four red rows. A fourth state -- a `declined` verdict carrying
+a one-line reason, written by hand the way a `skip` is written by a script
+-- is the shape that would, and it is a change to a mechanism this tree
+adopted today rather than something to add in passing. **Named with its
+cost and whose it is**: it would let a session mark an arm green-ish
+without running it, which is precisely the power these receipts were built
+to take away, so whether that trade is worth making is the copyright
+holder's and not this session's.
+
+**The honest reading meanwhile is the one the report already prints**: it
+says which arms are owed a run, not that anything failed. Four are owed and
+have never run -- `test-valgrind`, `test-compilers`, `test-platforms`,
+`sabotage` -- and those are parked on a machine at load 85, not on a
+decision.
