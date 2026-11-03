@@ -55420,3 +55420,111 @@ said so before reading the log, where `check: FAILED` and
 an exit code are halves of one result. The remedy is not to pipe a gate at
 all, or to end the pipeline with the status that matters; a backgrounded
 `make | tail` hides the one bit the notification claims to carry.
+
+### 8.666 The layout gate banned five of sixteen ways to hardcode a pixel (2026-11-03)
+
+**The lens is §8.665's shape rather than a suspicion: a tool whose probe
+handles one FORM of a thing and silently cannot see another.** That was
+`guide-check`, which could not name an enumerator. The question is where
+else a check in this tree is keyed on one form, and `layout-gate` answered
+by reporting that it had judged **6 call sites in 8 files** -- few enough
+to be worth asking what it cannot see.
+
+**Its SCOPE turned out to be sound, which is worth saying first.** It reads
+`example/*/*` and `tool/*/*` and deliberately not `src/` (the library
+legitimately deals in pixels) nor `test/` (a fixture is built at an exact
+size on purpose). The wildcard-matched-nothing hole -- the way a gate like
+this usually goes vacuous -- is already guarded: the Makefile refuses when
+`LAYOUT_SRC` is empty, because a `make style` that checked nothing looks
+exactly like one that passed.
+
+**The gap was the BANNED list.** Five calls, taken from design.md §7's
+parenthetical: *"A CI check bans setContentsMargins, setSpacing,
+setFixedSize, and setFixedWidth"*, plus `setFixedHeight` as the obvious
+sibling. But the RULE in that section is the prose above it -- **"must not
+hardcode margins, spacing or pixel sizes"** -- and `setMinimumWidth(200)`
+hardcodes a pixel size and sailed through. Banning `setFixedWidth(200)`
+while allowing `setMinimumWidth(200)` is incoherent on a cell grid: both
+put a widget off it, and the minimum form is the commoner idiom.
+
+**Eleven calls added**: the minimum and maximum width, height and size
+triples, `addSpacing` beside `setSpacing`, the grid-and-form-layout
+spellings `setHorizontalSpacing` and `setVerticalSpacing`, and
+`setColumnMinimumWidth` with `setRowMinimumHeight`.
+
+**It costs this tree nothing, which is what makes widening safe rather
+than merely defensible.** Not one of the eleven appears in the eight files
+the gate reads -- measured before the change and confirmed after, the gate
+reporting **6 call sites judged** both times. So the list grew and the
+verdict did not move. What it protects is the case the tool's own docstring
+says it exists for: *"the gate takes paths so an application can point it
+at its own"*, and in an application's UI `setMinimumWidth(200)` and
+`addSpacing(8)` are everywhere.
+
+**DELIBERATELY NOT ADDED, because the rule is about layout inside shared
+view code.** `resize`, `setGeometry` and `move`: sizing and placing a
+top-level window in pixels is how Qt works and is what
+`GridMetrics::cells()` exists to feed. And `setMaximum`/`setMinimum`, which
+are a spin box's and a slider's VALUE range with nothing to do with pixels
+-- the substring search cannot reach them from the names added, which is a
+control rather than an assumption: a fixture calling `setMaximum(9999)` and
+`setMinimum(10)` stays silent.
+
+**SEEN TO FAIL, and the control matters because widening a ban is widening
+what can go wrong.** A fixture calling all eleven with a bare non-zero
+literal is flagged eleven times with exit 1; the same fixture's control
+half -- zero, cell arithmetic, an excused call carrying `qtty-allow:`, the
+two value-range calls, and `resize(80 * cw, 24 * ch)` -- reports nothing.
+
+**AND THE FIRST VERSION INTRODUCED THE NOISE THE DOCSTRING WARNS AGAINST.**
+`setRowMinimumHeight(1, 24)` reported *"hardcodes 1, 24"* -- the 24 is the
+finding and the 1 is a row number, so half the message was wrong. That
+file's own argument is that a gate flagging what is not the code's fault is
+one somebody disables, and it had just been proved on the gate's own
+change. `INDEX_ARGS` now skips leading index arguments **by name**, which is
+narrower than assuming a first argument is never a size:
+`setMinimumSize(200, 80)` disproves the general form.
+
+**The limit it inherits rather than adds**: a QSize is one argument and not
+a number, so `setMinimumSize(QSize(200, 80))` is not flagged while
+`setMinimumSize(200, 80)` is. `setFixedSize` has always had that hole;
+closing it means reading inside a constructor's arguments, which is a
+different gate.
+
+**AND THE GATE HAD NO TEST AT ALL, which is the larger finding.** No
+fixture in the tree, no sabotage entry, nothing in `test/` -- and the
+docstring's *"measured on a fixture"* refers to one that was never
+committed. Every rule in it rested on somebody having run it by hand once,
+which is `evidence.md`'s *a check is untested until it has been seen to
+fail* applied to the checker instead of the code. It mattered more after
+widening the list than before: eleven new rules with nothing defending
+them is eleven a refactor can drop in silence.
+
+`guide_check.py`, in the same directory, already carries this tree's
+answer -- a control that must fail, run on every invocation, refusing when
+it does not -- so `layout_gate.py` has one now. Five cases: every banned
+call with a bare literal (expect one finding each), the same with zero,
+the same with cell arithmetic, a call excused by `qtty-allow:`, and the
+two value-range calls. It costs string work and no compile, so it runs
+every time rather than behind a flag nobody passes, and `check()`'s own
+output is swallowed so the control's deliberate violations are not printed
+by a passing gate.
+
+**Generated from BANNED rather than written out**, which is the property
+that makes it last: a hand-written fixture would have passed while
+covering fifteen of sixteen the moment somebody added a call -- this
+gate's own failure mode wearing a test's clothes.
+
+**Seen to fail**: with `LITERAL` narrowed to require a decimal point,
+*"THE CONTROL FAILED on case 0 -- expected 16 finding(s), got 0"* and exit
+2. **And its limit stated rather than left to be discovered**: generating
+the fixture from BANNED proves the gate implements its list and cannot
+prove the list is right, since removing a call shrinks the fixture and the
+expected count together. The policy is §7's and this entry's; the control
+only holds the mechanism to it.
+
+**If §7's four were meant as an exhaustive specification rather than as
+examples, this is one revert away** and the prose is what was implemented.
+The gate's docstring already records two deliberate departures from that
+same sentence, so departing from it with the reason written down is this
+tool's established practice rather than a new liberty.
