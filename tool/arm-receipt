@@ -34,12 +34,44 @@ dir=$(git rev-parse --git-common-dir 2>/dev/null) || {
 	exit 2
 }
 
-# The same identity `make check` stamps: HEAD, plus every uncommitted change
-# to a tracked file. A new file is outside it until staged, which is the
-# pre-commit hook's documented behaviour and is kept deliberately so the two
-# receipts mean the same thing.
+# THE CONTENT OF THE TRACKED FILES AN ARM CAN READ, hashed from the working
+# tree -- not `make check`'s identity, and the two differences are what make
+# these receipts usable at all.
+#
+# FIRST, MARKDOWN IS OUT. The gate's stamp is consumed within the minute by
+# the pre-commit hook, and the gate READS documentation: `style-docs` holds
+# project.md to the tree and `count-check` reads a number out of it, so a
+# .md edit can genuinely turn the gate red and its stamp must be strict. An
+# arm's receipt is consumed hours or days later, and NO ARM READS A MARKDOWN
+# FILE -- checked rather than assumed on 2026-11-03: every `.md` in the six
+# arm scripts is a comment or a diagnostic citing project.md, none of the
+# fourteen recipes names one, and `sabotage.py` runs `make`, `make test` and
+# `make tests-build`, none of which reads one.
+#
+# SECOND, AND THIS IS THE HALF THAT WAS ALMOST MISSED: it hashes FILE
+# CONTENT rather than `HEAD` plus a diff. `rev-parse HEAD` moves on any
+# commit and the diff empties at the same moment, so the old id changed when
+# a tree was COMMITTED even though not one byte on disk had moved -- which
+# means every arm run on a dirty tree, which is every arm run that verifies
+# a change before it lands, was invalidated by the commit it was verifying.
+# That is not a stale verdict, it is a verdict thrown away. Hashing the
+# bytes is commit-invariant by construction.
+#
+# WHAT THE OLD ID COST, measured: on 2026-11-03 three commits landed in one
+# afternoon, one of them documentation only, and `make arms` went from
+# naming the arms that were owed a run to reporting ten of fourteen stale.
+# That is the saturation CLAUDE.md describes of a marker that is always on
+# -- switched off by instalments -- and an instrument whose answer is
+# "stale" whatever anybody does is read once and then not read.
+#
+# A new file is outside the identity until it is tracked, which the gate's
+# stamp also says of an unstaged one, and is kept so the two agree about
+# that much. A tracked file deleted from the working tree makes one sha1sum
+# fail; its stderr goes nowhere and the id simply stops carrying it, which
+# is the honest reading -- there is no content to hash.
 content_id() {
-	{ git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
+	git ls-files -z -- . ':(exclude)*.md' 2>/dev/null \
+		| xargs -0 sha1sum 2>/dev/null \
 		| sha1sum | cut -d' ' -f1
 }
 

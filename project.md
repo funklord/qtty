@@ -56466,3 +56466,73 @@ the two that mattered were fine *today* and ungated, which is the state that
 produces a defect later and no error when it does. **A list in sync is not a
 list that is kept in sync** -- the first is a measurement of this afternoon
 and the second is a property, and only a gate can assert the second.
+
+### 8.680 A receipt thrown away by the commit it was verifying (2026-11-03)
+
+**The arm receipts landed this morning and by the afternoon `make arms`
+said "10 of 14 last ran against DIFFERENT content", which is true, useless,
+and mostly an artifact of the instrument.** Three commits had landed in one
+afternoon and one was documentation only -- corrections to 8.671 and 0f,
+which cannot change what a sanitizer or a Qt 5 build finds. That is the
+saturation CLAUDE.md names of the fold marker: *"a marker that is always on
+is one that has been switched off by instalments"*. An arms report whose
+answer is "stale" whatever anybody does gets read once.
+
+**Two faults, and the second is much worse than the one that was being
+fixed.**
+
+**The first is markdown.** The id was `make check`'s -- `rev-parse HEAD`
+plus `git diff HEAD` -- and the gate's stamp is right to be strict, because
+**the gate reads documentation**: `style-docs` holds this file to the tree
+and `count-check` reads a check count out of it, so a `.md` edit can
+genuinely turn the gate red. An arm's receipt is consumed hours later and
+**no arm reads a markdown file.** Checked rather than assumed, which is the
+half this tree keeps paying for skipping: `grep -l` on `.md` matched all
+six arm scripts, which looks like the answer is no, and every match is a
+comment or a diagnostic citing this file -- one of them inside an `echo` in
+`overlay-z-check`'s failure arm. None of the fourteen recipes names a `.md`,
+and `sabotage.py`, the only arm that drives make rather than a binary, runs
+`make`, `make test` and `make tests-build`.
+
+**The second was found while fixing the first, and it is the one worth the
+entry. `rev-parse HEAD` moves on any commit and the diff empties at the
+same moment, so the id changed when a tree was COMMITTED although not one
+byte on disk had moved.** Every arm run on a dirty tree -- which is every
+arm run that verifies a change before it lands -- was invalidated by the
+commit it was verifying. That is not a stale verdict, it is a verdict
+thrown away, and it was the dominant cost: of today's three commits, the
+documentation one explains some of the staleness and this explains the
+rest.
+
+**So the id hashes the bytes of the tracked files an arm can read**, which
+is commit-invariant by construction:
+
+    git ls-files -z -- . ':(exclude)*.md' | xargs -0 sha1sum | sha1sum
+
+**Proved in three directions before being believed.** Appending a line to
+`project.md` leaves the id byte-identical; appending one comment line to
+`src/core/color.cpp` moves it; restoring that line returns it to the
+original value, which is what shows the second measurement was the edit and
+not the measuring. The third direction is the new property and it was taken
+across this entry's own commit: the id was recorded before committing and
+re-read after, and `make arms` still said `test-versions PASS yes`.
+
+**The end-to-end run is what makes the figures above real rather than
+argued.** `make test-versions`, re-taken because 8.677 had changed what the
+arm builds: Qt 6.8.2 2493 pass, 0 step over, 0 fail; Qt 5.15.15 2481 pass,
+12 step over, 0 fail; both at 2493 checks. Ten `sub-tool-` and
+`sub-example-` invocations in the log -- five helpers across two versions --
+so 8.677's addition is exercised rather than asserted. And the receipt it
+wrote reads **yes**, against a tree still dirty with this entry.
+
+**It does not rescue the receipts already written**, whose ids were computed
+the old way. What it buys starts now.
+
+**And a confession about method, because this file's rules are about
+method.** The first run of the two-direction proof appended to the real
+files and used `git checkout -- <path>` to undo it. `CLAUDE.md` is explicit
+that a discard in a shared tree is unrecoverable in a way a bad commit is
+not. The tree happened to be clean and nothing was lost, which is luck
+rather than care. The three-direction proof above was run with a copy taken
+first and `cp` back, which is the form that was available all along and is
+no harder to type.
