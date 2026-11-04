@@ -57377,10 +57377,32 @@ each run by hand:
   argument (2).
 - `python3 tool/style_gate.py docs` -- clean.
 
-Not run: `style` over the source, `layout`, `guide-check`, `tools-check`,
-`arms-check`, `fuzz-check`, `header-check`, `test`, `test-tools`,
-`test-install`, `probe-style`. **The first thing the next session should do
-is `make check`.**
+~~Not run: `style` over the source, `layout`, `guide-check` ... **The first
+thing the next session should do is `make check`.**~~
+
+**IT FINISHED, AND IT PASSED: `make check` exited 0 over exactly these
+bytes**, `sabotage-check` reporting both halves and `--names` seeing each
+of 805 entries name exactly one of 2493 passing checks. So this batch is
+gated and the next session need not re-run it.
+
+**But the STAMP cannot say so, which is 8.680's fault in the one place it
+was left alone.** The gate was started while the batch was uncommitted, so
+it stamped `58287e9d...` -- HEAD-at-the-time plus the diff. Committing then
+moved HEAD and emptied the diff, giving `26097885...` for files that are
+byte-identical. 8.680 changed the ARM receipts to hash file content for
+exactly this reason and deliberately declined to change the gate stamp, on
+the grounds that it is consumed within the minute by the pre-commit hook
+and so cannot go stale. **That reasoning holds for the ordinary case and
+not for this one**: a gate run that straddles its own commit is the window
+where the stamp is consumed after HEAD has moved, and the hook then tells
+the next person nothing has checked this content when something has.
+
+**So 8.687's open question gains a second measurement**, in the half that
+was thought safe. The remedy is the same -- hash what the gate read rather
+than where it came from -- and it is still the holder's, since the stamp
+is what refuses a commit and a wrong identity there fails in the dangerous
+direction. **What a session can do meanwhile is cheap: run the gate on a
+committed tree, or commit first and gate after.**
 
 **WHAT TO PICK UP, in order.**
 
