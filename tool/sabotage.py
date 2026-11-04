@@ -359,6 +359,11 @@ and so is invisible to it. project.md 8.683.
   --from N       start at the Nth entry of the spec, numbered as the
                  per-entry line prints it. For resuming a run that was
                  interrupted: %(resume)s.
+  --names FILE   read a suite run's output and refuse any entry whose
+                 check matches more than ONE passing check. Milliseconds,
+                 like --validate, and it catches the one class of refusal
+                 that --validate's presence test cannot see. An absent
+                 file or one with no PASS line is a failure, not a skip.
   --dirty-ok     run although src/, test/ or include/ has uncommitted
                  changes. The refusal exists because more than one
                  session works these trees.
@@ -372,7 +377,7 @@ def known_arguments(argv):
 	until this was written. A tool that edits the tree owes its caller a
 	refusal it can read instead of an hour of work it did not ask for.
 	"""
-	takes_value = {"--only", "--from"}
+	takes_value = {"--only", "--from", "--names"}
 	flags = takes_value | {"--validate", "--dirty-ok", "--help", "-h"}
 	i = 0
 	while i < len(argv):
@@ -444,6 +449,75 @@ def main():
 	# after it. Validation writes nothing and restores nothing, and a gate
 	# that declines while the tree has uncommitted source is a gate that is
 	# off during exactly the work that breaks anchors.
+	# ONE CHECK, NOT SEVERAL, counted against the suite's own OUTPUT.
+	#
+	# WHAT IT COSTS TO GET WRONG, measured before a line of this was kept.
+	# The 805-entry sweep of 2026-11-04 spent nine and a half hours to
+	# report ONE entry refused for naming a check that matches two passing
+	# checks -- detectable in milliseconds, and the comment in --validate
+	# already argues the case: a refusal is "a string comparison and
+	# belongs in a gate". The first attempt counted occurrences in the
+	# SUITE SOURCE and found 95 entries, 40 after folding the PASS:/FAIL:
+	# printf pairs that spell one check twice by construction. The
+	# authoritative run found 1. Source text is simply not the run-time
+	# check count: a message also appears in comments, in `info:` lines, in
+	# branches that do not execute and in #if-guarded halves, and no
+	# amount of folding makes one into the other.
+	#
+	# So this counts PASS lines, which is what the run itself matches
+	# against, and it agrees with the run exactly: 1 of 805. The cost is a
+	# file the gate already produces.
+	#
+	# ABSENCE IS A FAILURE AND NOT A SKIP, and zero PASS lines likewise: a
+	# gate that needs the thing it checks for is weakest where it matters,
+	# and a loop over an empty list exits like a pass.
+	if "--names" in sys.argv:
+		i = sys.argv.index("--names")
+		if i + 1 >= len(sys.argv):
+			say("sabotage: --names needs the path of a suite run's output")
+			return 2
+		out = sys.argv[i + 1]
+		try:
+			with open(out, encoding="utf-8", errors="replace") as f:
+				passes = [l[6:].rstrip("\n") for l in f
+				          if l.startswith("PASS: ")]
+		except OSError as exc:
+			say("sabotage: cannot read the suite output at %s (%s)."
+			    % (out, exc))
+			say("          Nothing was compared, which is a failure and not")
+			say("          a skip -- run the suite first.")
+			return 2
+		if not passes:
+			say("sabotage: %s carries no PASS line, so every entry would"
+			    % out)
+			say("          match nothing and this would exit like a pass.")
+			return 2
+		with open(SPEC, "rb") as f:
+			spec = tomllib.load(f).get("sabotage", [])
+		bad = 0
+		for e in spec:
+			want = e.get("check", "")
+			if not want:
+				continue
+			hits = sum(1 for l in passes if want in l)
+			if hits > 1:
+				say("sabotage: %s" % e["name"])
+				say("          names a check that matches %d passing checks:"
+				    % hits)
+				say("            %s" % want)
+				say("          A run cannot tell which one it is about, so it")
+				say("          refuses the entry and the behaviour it was")
+				say("          written for is undefended. Make them differ.")
+				bad += 1
+		if bad:
+			say("sabotage: %d of %d entries name an ambiguous check"
+			    % (bad, len(spec)))
+			return 1
+		say("sabotage: %d entries, each naming exactly one of the %d passing"
+		    % (len(spec), len(passes)))
+		say("          checks in %s" % out)
+		return 0
+
 	if "--validate" in sys.argv:
 		held = lock_holder()
 		if held:

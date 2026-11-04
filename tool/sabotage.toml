@@ -4134,7 +4134,7 @@ file = "src/runtime/application.cpp"
 find = "static bool s_terminal_focused = true;"
 into = "static bool s_terminal_focused = false;"
 count = 1
-check = "a terminal that has reported nothing counts as focused"
+check = "a terminal that has reported no focus either way counts as focused"
 
 [[sabotage]]
 # The POSITIVE CONTROL for the entry above it, and it is needed: "loses the

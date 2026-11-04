@@ -1928,8 +1928,23 @@ fuzz-check:
 # anchor on, both silent for a session's worth of commits. String matching
 # costs milliseconds where running costs minutes, which is what lets this be a
 # gate when the sweep itself cannot be.
-sabotage-check:
+# AND THE AMBIGUITY HALF, which --validate structurally cannot see. It
+# counts an entry's check in the suite SOURCE, so it catches a check that
+# has been reworded away; a check that matches TWO passing checks is
+# spelled fine and is refused at run time just the same, leaving the
+# behaviour undefended. The 805-entry sweep of 2026-11-04 spent nine and a
+# half hours to report exactly one of those, which is the argument for
+# moving it here. project.md 8.693.
+#
+# IT DEPENDS ON count-check, for the suite output and for the freshness of
+# it. count-check builds the suite and runs it into $(dir $(TEST_BIN))count.out,
+# so naming it as a prerequisite is what stops this reading a file an
+# earlier run left -- the stale-artifact trap this tree keeps meeting. A
+# missing file or one with no PASS line is a failure in the tool and not a
+# skip, for the usual reason.
+sabotage-check: count-check
 	@python3 tool/sabotage.py --validate
+	@python3 tool/sabotage.py --names $(dir $(TEST_BIN))count.out
 
 # Does the documentation name anything an application cannot reach? The
 # documentation is read by people who cannot test what it says, so a guide

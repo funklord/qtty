@@ -104,8 +104,16 @@ int suite_router() {
 		// reporting never sends either sequence, and silence must not
 		// dim it -- so the abstention is "focused" and nothing about
 		// such a session changes.
+		// SPELLED SO THAT IT IS NOT A PREFIX of main.cpp's seat claim,
+		// which says "and a terminal that has reported nothing counts as
+		// focused, which only this seat can tell...". The sabotage spec
+		// matches a check by SUBSTRING -- deliberately, since a message
+		// may carry a tail built at run time -- so a shorter message
+		// inside a longer one makes an entry name two passing checks and
+		// the run refuses it. project.md 8.693.
 		CHECK(terminal_focused(),
-		      "a terminal that has reported nothing counts as focused");
+		      "a terminal that has reported no focus either way counts as"
+		      " focused");
 		const CellBuffer silent = shot(bw, 10, 1);
 
 		fr.on_focus_change(true);

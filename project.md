@@ -57227,3 +57227,179 @@ check made to fail and then watched failing, which is a build, and nothing
 may build in this tree while the sweep holds it (8.683). They are
 recorded with their entry numbers so the next session can go straight to
 `--only` on each.
+
+### 8.692 Why entry 339's check cannot fail: the property has two guards (2026-11-04)
+
+**Diagnosed by reading, while the sweep still holds the tree, and the
+answer is in the code's own comment.** 8.691 recorded three checks that
+passed against broken code; this is the first of them worked out, and it is
+not a weak check.
+
+**The sabotage.** Entry 339 turns `k.cell_px = caps_.cell_px` into
+`k.cell_px = QSize()` in `ansi_backend.cpp:1311`, so the image-encode
+cache key stops carrying the terminal's cell size. The check it names
+asserts that presenting the SAME frame after the terminal's cell changes
+produces different wire bytes -- *"the same picture is re-encoded at the
+terminal's new cell rather than served at the old one"* -- which is exactly
+the property the key provides.
+
+**Why it stays green: a second mechanism covers.** At
+`ansi_backend.cpp:2553`, the handler for the `CSI 4/6 t` cell-size report
+does this when the cell has moved:
+
+    if (caps_.cell_px.isValid() && caps_.cell_px != was) {
+            forget_uploads();
+            last_pixel_size_ = QSize();
+
+So the cache is flushed outright on the arrival the test uses to move the
+cell -- a CSI written to the master, which is the only route the fixture
+has. **With the key sabotaged the flush still runs, the cache is empty
+either way, the picture is re-encoded either way, and the wire differs
+either way.**
+
+**The comment above that flush states the very thing no check can
+confirm.** It reads: *"The upload cache carries cell_px in its key now, so
+a stale entry is already unreachable and this is no longer what keeps the
+picture honest -- what it does is hand the ids back and stop the map
+holding uploads nothing can ever hit again."* That is a claim about which
+of two guards is load-bearing, written at the moment the second was added,
+and it is unfalsifiable by this suite: break the key and the flush covers;
+break the flush and the key covers.
+
+**So the shape is a property with TWO guards and a check that cannot tell
+them apart** -- which is 8.677's "two consumers, one wired" turned over.
+There the danger was a value reaching only some of its consumers; here it
+is a property defended twice, where every single-guard sabotage is masked
+and the suite reports both guards tested when neither is.
+
+**The fix is `evidence.md`'s rule and not a stronger assertion**: break the
+symmetry rather than a side of it. The check has to reach the key on a path
+the flush does not take -- a cell size arriving other than through
+`dispatch_csi()`, or an encode COUNT asserted across two presents where
+only the key could save one. The counting machinery is already in that
+fixture (`held_photo`, `held_changed`, `held_two`, `held_again`), so the
+instrument exists; what is missing is a route to the key alone.
+
+**And the entry is not wrong, which matters for what gets changed.** It
+breaks real code and the break is real: a cache keyed without the cell
+WOULD serve a stale encoding on any path that does not flush. The defect
+is in the check, and the sabotage spec is the thing that found it -- which
+is what 805 entries and nearly ten hours were spent to be told.
+
+### 8.693 The sweep's verdict, and the one refusal moved into the gate (2026-11-04)
+
+**All 805 entries ran. 794 reddened the check they name; 8 did not; 2 were
+inconclusive; 1 was refused.** Nine hours twenty-three minutes, exit 2,
+and the tree restored -- 33 files put back, the lock cleared, and
+`git status` showing nothing but this document. **No receipt was written**,
+because the run failed and the `arm-receipt pass` line never ran, so `make
+arms` still reads `never` for sabotage. That is the mechanism working: a
+sweep that found faults is not a sweep that passed.
+
+**THE COVERAGE NUMBER, which this tree has never had before.** The entries
+between them redden **1473 distinct checks of the 2493 the suite runs**, so
+**1020 checks are reddened by no entry at all**. That is not a gap to close
+by writing 1020 entries -- most checks are asserted by construction and a
+sabotage for each would be ceremony -- but it is the honest scope of what
+the sweep proves, and it was previously unstated in either direction.
+
+**The eight that did not redden, by entry number so the next session can
+`--only` each**: 167 the cursor record across a handover, 339 the encode
+cache keyed without the cell, 446 a run joining the line it is drawn on,
+548 a thin fill's sub-cell span, 554 a tiled pixmap's placement per tile,
+708 a sub-control declining a part the base style claims, 713 a spin box's
+two arrows however narrow, 785 a narrow item's text rect going negative.
+8.692 diagnoses 339 and the answer there is not a weak check: the property
+has two guards and the suite cannot tell them apart.
+
+**The two inconclusive ones are different from each other**, which is the
+tool's own split earning its place. 17's suite finished and reported 2492
+of 2493, so the named check sits behind a condition that was false. 686's
+suite was **cut off** -- that sabotage hangs the run, which the tool says
+to read as the run and not the check.
+
+**THE REFUSAL IS NOW A GATE, and that is what nine hours bought.** 388
+named a check matching two passing checks rather than one: the spec
+matches by SUBSTRING, deliberately, because a message may carry a tail
+built at run time -- and `suite_router.cpp`'s *"a terminal that has
+reported nothing counts as focused"* is a prefix of `main.cpp`'s *"and a
+terminal that has reported nothing counts as focused, which only this seat
+can tell..."*. A refused entry leaves its behaviour undefended exactly as a
+drifted anchor does, and `--validate`'s own comment already argued the
+case: a refusal is *"a string comparison and belongs in a gate"*. It is
+one now, as `sabotage.py --names`, run by `sabotage-check`.
+
+The shorter message is reworded so it is not a prefix, with the reason at
+the check rather than only here, and entry 388's `check` follows it.
+
+**AND THE FIRST VERSION OF THAT GATE WAS WRONG, which is the fifth
+detector failure of this session and the one with the best control.** It
+counted occurrences of each check in the suite SOURCE and reported **95**
+entries ambiguous -- **40** after folding the `PASS:`/`FAIL:` printf pairs
+that spell one check twice by construction. The authoritative run had
+found **1**. Source text is not the run-time check count: a message also
+appears in comments, in `info:` lines, in branches that do not execute,
+and in `#if`-guarded halves, and no folding turns one into the other.
+**What made it obvious was that the detector disagreed with the artifact**
+-- `evidence.md`'s rule that a gate disagreeing with code you believe
+correct is the first suspect, with the ten-hour run as the thing believed.
+Counting the suite's own `PASS:` lines agrees exactly: 1 of 805.
+
+**So it reads the suite's output, and `sabotage-check` depends on
+`count-check` to produce it** -- naming the prerequisite rather than
+trusting a file to be there is what stops this reading an earlier run's,
+which is the stale-artifact trap in its purest form. An absent file is a
+failure and so is one with no `PASS` line, because a loop over an empty
+list exits like a pass. Seen to fail on a synthetic output carrying one
+check's message twice, on a missing path, on an empty file and on a
+missing argument.
+
+### 8.694 Stopped at 99 per cent, with the gate mid-run (2026-11-04)
+
+**Weekly usage reached 99 per cent against CLAUDE.md's stop figure of 98,
+and the window resets 2026-11-08T16:00Z -- 107 hours away, so the
+three-hour exemption does not apply.** This session stops here. The record
+is committed because keeping folded applies regardless of the stop figure.
+
+**WHAT IS NOT GATED, stated plainly because the commit carrying it says so
+too.** `make check` was started on this batch and had reached
+`profiles-check` when the session stopped. What was verified directly,
+each run by hand:
+
+- `make count-check` -- builds and runs the suite, *"project.md and the
+  suite agree at 2493 checks"*, so the reword in `suite_router.cpp`
+  changed a message and not a count.
+- `make sabotage-check` -- both halves pass, `--validate` over 805 anchors
+  and `--names` reporting each entry naming exactly one of 2493 passing
+  checks.
+- `--names`' four failure paths: a synthetic output carrying one check's
+  message twice (exit 1), a missing file (2), an empty file (2), a missing
+  argument (2).
+- `python3 tool/style_gate.py docs` -- clean.
+
+Not run: `style` over the source, `layout`, `guide-check`, `tools-check`,
+`arms-check`, `fuzz-check`, `header-check`, `test`, `test-tools`,
+`test-install`, `probe-style`. **The first thing the next session should do
+is `make check`.**
+
+**WHAT TO PICK UP, in order.**
+
+1. **`make check` on this batch.** Nothing else until it is green.
+2. **The eight dead checks from 8.693**, each reachable with
+   `sabotage.py --only` on its entry name: 167, 339, 446, 548, 554, 708,
+   713, 785. 8.692 diagnoses 339 and the fix there is a route to the cache
+   key that the explicit flush does not take; the other seven are
+   undiagnosed.
+3. **R1, the `ResizeToContents` column drift** (8.652), which has a
+   specification and was wrongly parked as a question (8.690).
+4. **Entries for `qt_compat.h`** -- `combined_mods` and
+   `combined_key_only`, whose single caller is `input_router.cpp:1784`.
+   Only 3 of its 11 helpers are reachable by a one-version sweep at all
+   (8.688).
+
+**ELEVEN QUESTIONS are the holder's**, each now carrying what it blocks and
+a best guess, which eight of them lacked. The two from this session are
+whether the tray should get suite checks (8.688) and whether the arm
+receipts need a fourth verdict or a per-arm identity (8.682, 8.687) -- the
+second now has its measurement: thirteen true verdicts turned red by a
+commit touching a file none of them reads.
