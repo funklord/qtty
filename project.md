@@ -56685,6 +56685,27 @@ shared thing is the tree, not the output**: a sabotage edit live during
 to neither arm. It would read as a clang-only warning, which is precisely
 what that arm exists to find and report.
 
+**AND THE HAZARD IS NOT HYPOTHETICAL: `sabotage.py` carries a measured
+instance of it, in a comment, which this entry's first version did not
+know about.** The tool splits one verdict into two -- *"no summary line,
+so it was killed, hung or crashed"* against *"it ran to the end, so the
+check did not run"* -- and the comment says what produced the split: *"a
+`make count-check` run in the same tree WHILE this harness was running,
+which rebuilt and relinked the test binary underneath the suite. The
+verdict said the check was never reached, which was true, and nothing said
+the run had been truncated rather than the check skipped -- so the next two
+builds were spent on a guess about timeouts."*
+
+That is this entry's rule, already paid for: a concurrent `make` in the
+same tree, a verdict that was true and misleading, and two builds spent
+chasing the wrong thing. **So the rule was recorded, in the one place a
+reader of the tool would meet it and nowhere a reader of this file would**
+-- which is the third time in one day that something this session called
+unrecorded turned out to be written in a comment. The pattern is worth more
+than the instance: **the decisions this tree has actually made live beside
+the code that obeys them**, and a search of `project.md` alone will say
+they were never taken.
+
 **The tool's own guard does not cover it, and looking at what the guard IS
 for is what makes the gap visible.** `sabotage.py` refuses to start when
 `src/`, `test/` or `include/` is dirty, overridable with `--dirty-ok`, and
@@ -56950,3 +56971,259 @@ would re-run over source that has not changed, which this file has
 declined three times today as buying a green row. **A red row that is
 explained in the log is cheaper than an hour of machine, and both are
 cheaper than an identity nobody has thought through.**
+
+### 8.688 The tray is verified by one program and no check (2026-11-03)
+
+**While the 805-entry sweep runs, the spec was asked what it does NOT
+cover, and the answer turned out to be structural rather than a gap in the
+spec.**
+
+Of the 49 tracked sources under `src/` and `include/`, **26 are named by a
+sabotage entry and 23 are not**. Most of the 23 are headers of
+declarations with no behaviour to break, which is not a gap. Two are not
+headers of that kind:
+
+**`src/runtime/tray.cpp`, 371 lines of library code, and the reason no
+entry names it is not that nobody got round to it.** A sabotage entry
+requires a check in the SUITE to go red -- the tool matches its `check`
+against the suite's own `FAIL:` lines -- and **the suite does not test the
+tray at all**. Measured by symbol rather than by eye: of the names
+`tray.h` exports, `tray` appears 0 times in `test/`, `notifications` 0,
+and `notification` once, incidentally. The only thing outside the library
+that references the tray is `tool/tray/main.cpp`, the `qtty-tray-check`
+program that `make test-tray` runs under `dbus-run-session`.
+
+So the tray is **library code the gate never exercises and the sabotage
+model cannot reach**: `make check` does not run `test-tray`, which is an
+arm by design, and no sabotage entry for `tray.cpp` is even expressible
+while there is no suite check for it to redden. Its verification is one
+program, run by one arm, outside both.
+
+**`src/qt_compat.h`, 262 lines**, is the other and is an ordinary gap: the
+Qt 5/6 compatibility layer compiles into every translation unit, so
+breaking it would redden suite checks and an entry IS expressible. 8.676
+is the argument for wanting one -- the file changed four times in a
+fortnight, it is what makes the Qt 5 arm work, and a fault in a Qt 5-only
+hash is invisible to `make check` and to every arm but one.
+
+**AND THE FIRST VERSION OF THIS ENTRY SAID THE OPPOSITE ABOUT THE TRAY,
+on a count from a detector that lied.** It read *"the suite does: `tray`
+appears 32 times across four suite files"* -- taken with `grep -c 'tray'`,
+which matches **stray**. Every one of the 32 was `a stray continuation
+byte`, `a stray close after an abandoned paste`, `a stray letter`.
+`grep -cE '\btray\b|Tray'` over the same files returns nothing at all.
+**Four counts today were taken with a loose detector and three of them
+were wrong**; this is the one that would have put a false claim about
+coverage into the record, and it was caught by going to look for the
+checks the count promised were there.
+
+**Why it matters more than a coverage score.** This tree's argument for
+`make sabotage` is that a check which has stopped discriminating passes
+the gate exactly as loudly as one that works, and it has recorded that
+happening -- 8 of 618 entries dead at the 2026-10-13 sweep. For code with
+an entry, the sweep proves the claim. For `qt_compat.h` the claim is
+merely absent. **For the tray there is nothing for the claim to be about**,
+which is a different and more interesting state: `make test-tray` reported
+`0 failure(s)` today, and what that sentence is worth rests entirely on
+`qtty-tray-check` being a good program, with no check anywhere that a
+sabotage could redden to prove it.
+
+**AND HOW MUCH OF `qt_compat.h` IS REACHABLE AT ALL WAS MEASURED, WITH THE
+DETECTOR GETTING IT WRONG FIRST.** The file holds eleven inline helpers. A
+sabotage sweep builds ONE Qt version, so a helper whose body is split by
+`#if QT_VERSION` can have only the half that version compiles proved; the
+other half is unreachable by this mechanism however many entries are
+written. Scanning for `#if` inside each body gave five helpers as
+version-independent and therefore sabotage-able.
+
+**Two of the five were the opposite.** Both `qHash` overloads sit inside an
+outer `#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)` that begins eighteen
+lines above them -- they are Qt 5 only and do not compile on Qt 6 at all.
+The detector looked INSIDE each function and not AROUND it, which is the
+same fault as counting `tray` with a substring: an instrument that cannot
+see the context its subject sits in. Corrected: **three of eleven helpers
+are reachable by a Qt 6 sweep** -- `combined_mods`, `combined_key_only`
+and one `event_position` -- and `combined_mods` and `combined_key_only`
+have exactly one caller between them, `input_router.cpp:1784`, which is
+where a drafted entry would aim.
+
+**The part that matters is what the other eight imply.** `7cf444f`
+*"compat: combine the Qt 5 size and rect hashes rather than xor them"*
+changed one of those `qHash` functions. That is behavioural Qt 5 code, and
+**no sabotage run can ever prove the check covering it can fail**, because
+the sweep builds one version and the gate builds Qt 6. 8.676's defect
+lived in exactly this part of the tree and was found by a compiler
+warning on the other version, not by any check. So the Qt 5 half of the
+compatibility layer is verified by `make test-versions` passing and by
+nothing that could show a check going red -- which is a narrower statement
+than "qt_compat.h has no entries" and a more useful one.
+
+**The work it implies needs builds, so it waits** -- an entry is honest
+only once it has been watched reddening the check it names. The two halves
+differ in kind: `qt_compat.h` needs entries, and the tray needs **suite
+checks first**, which is the larger question of whether a dbus-dependent
+subsystem belongs in a suite that runs with no session bus. That one is
+worth putting to the holder rather than answering in passing.
+
+### 8.689 Four counts, four detectors, one move that caught them all (2026-11-03)
+
+**In one day this session took four counts with a detector that could not
+see what it was counting, and every one was caught the same way.** The
+instances are worth listing together because the shapes look unrelated and
+the remedy does not.
+
+- **A substring for a word.** `grep -c 'tray'` over the suite returned 32,
+  and all 32 were **stray** -- `a stray continuation byte`, `a stray close
+  after an abandoned paste`. `\btray\b` returns nothing. It would have put
+  into the record a claim that the suite tests the tray, which it does not
+  (8.688).
+- **A word for a default.** Classifying `make style` targets by the mode
+  word on the `style_gate.py` line read a tree invoking the gate with NO
+  argument as docs-only; the default is `check` and it had been running
+  both all along. Three trees were reported short where one was.
+- **An act for an artifact.** "Nine of fourteen arms carry a verdict"
+  counted the arms this session had RUN rather than the rows `make arms`
+  prints `yes` for. Six was right (8.681).
+- **Inside a scope for around it.** Scanning each inline helper in
+  `qt_compat.h` for `#if` called five version-independent; two sit inside
+  an outer Qt-5-only `#if` opening eighteen lines above and do not compile
+  on Qt 6 at all (8.688).
+
+**What they share is not looseness.** Each detector matched a PROXY for
+the thing -- a substring for a word, a literal for a behaviour, an action
+for a record, a scope for its context -- and in every case the proxy's
+output was indistinguishable from the real answer. A wrong count does not
+look wrong. `evidence.md` says a count inherits its detector; these are
+four ways to inherit badly, and knowing the ways did not stop any of them
+being made.
+
+**One move caught all four, and it is cheaper than choosing a better
+detector: go and look at the instances the count promises are there.**
+Thirty-two tray references means thirty-two lines to read, and the first
+three said `stray`. Nine arms with verdicts means nine rows in a report
+that prints the answer. Five version-independent helpers means five bodies
+to open, and the second one is inside a guard. **The check is not "is this
+pattern right" -- which is the question the detector's author already
+thought they had answered -- it is "show me the things you counted".**
+
+**CHECKED BEFORE SIGNALLING, AND THERE IS NOTHING TO SIGNAL.**
+`evidence.md`'s *Re-derive the scope number* already carries the remedy in
+stronger words than these -- *"before a count becomes a premise, run it a
+second way. Not the same query again -- a different one that would fail
+differently"*, and *"enumerating the population and checking each member
+against its own guard ... a query answers about the shape you described,
+and an enumeration answers about the thing."* It even records the same
+asymmetry, four scope errors in a day all wrong in the direction that made
+the finding look bigger. **So this entry is four instances of a rule that
+already exists, not a new one** -- which is the honest measure of its
+worth, and the reason it stays here rather than going to the signal list.
+
+What the instances add is that **knowing the rule did not prevent any of
+them.** Each was written by a session that could have quoted
+`evidence.md` from memory. The gap is not knowledge, it is that a count
+arrives feeling like a measurement, and the second way costs a minute
+nobody budgets at the moment the first number appears.
+
+**And the asymmetry is why it is worth a rule.** A detector that is too
+NARROW returns a number that is too small, and a small number rarely gets
+acted on. A detector that is too WIDE returns a number that is too big,
+and a big number is exactly what gets written into a record as evidence --
+three of today's four were too wide. So the instances to spot-read first
+are the ones a generous count would have swept in.
+
+### 8.690 A question list that is rewritten is a question list nobody re-reads (2026-11-03)
+
+**One of the eleven questions this session was carrying for the holder was
+not a question, and finding that out took writing down what each one
+blocks.**
+
+The `/go` skill asks for two things beside every parked question -- what it
+blocks and a best guess -- and eight of the eleven had neither. They were
+bare one-liners: *"5. ResizeToContents drift."* Supplying the missing
+halves meant reading the entry behind each, and 8.652 turns out to carry a
+full specification for the fix (a Channel A separator at each section's
+last cell, Qt's own grid off so its pixel stops being counted), a measured
+defect (every such column a cell multiple plus one, drift running 0 to 9
+px over twelve columns and losing four of twelve separators), and a
+correction of its own cost claim -- *"and the committed table snapshots
+re-recorded"* is struck, because none of the three committed snapshots
+contains a table. **It is buildable work waiting on a machine, not an
+answer waiting on anybody.**
+
+**WHERE THE FAULT WAS, measured rather than assumed.** `ResizeToContents`
+and `8.652` appear **zero times** in §0b, the project's own register of
+open questions. The project never deferred this; a work file did. So the
+scope of the finding is one session's `.claude/go.md` and not this
+document -- which is worth stating, because the alternative reading would
+have sent a session sweeping 34 curated rows on no evidence.
+
+**And the two lists decay differently, which is the part worth keeping.**
+§0b is committed, reviewed, and every row carries its measurement and the
+sections that hold it; it opens by saying what it is and that none of its
+rows blocks anything. `.claude/go.md` is gitignored and **rewritten at the
+start of every run**, so a question parked there is copied forward by
+whoever rewrites it, in whatever form it already had, without the entry
+behind it being opened again. A one-liner is exactly the form that
+survives that copying unexamined -- there is nothing in it to disagree
+with.
+
+So the rule is the skill's own, and it is load-bearing rather than
+bookkeeping: **a parked question carries what it blocks and a best guess,
+or it is not parked, it is forgotten in a tidy way.** The two fields are
+what make a copy-forward an act of judgement instead of transcription.
+`working-practice.md` says a wrongly-deferred question is caught by
+nothing, because it looks exactly like diligence; a bare one-liner is that
+sentence's purest form.
+
+### 8.691 The sabotage sweep pays out: three checks that do not discriminate (2026-11-04)
+
+**Folded mid-run at entry 509 of 805, because the findings are worth
+recording before the sweep ends rather than after.** The holder answered
+question 10 with *yes*, and the arm that had never been taken has found
+what it exists to find.
+
+**Three entries applied a deliberate break and the check they name
+PASSED.** That is the whole claim this target makes about the suite --
+that every check can fail -- and it is false in three places:
+
+- **167, "the cursor record survives a handover that hid the cursor"**,
+  check *"but asking again after a handover writes it"*.
+- **339, "the encode cache is keyed without the terminal's cell"**, check
+  *"and the same picture is re-encoded at the terminal's new cell"*. A
+  cache-invalidation check that does not notice the cache being keyed
+  wrongly -- and cache invalidation is one of the four lenses §0e records
+  as having paid out before, which is where it was found the first time.
+- **446, "a run does not join the line it is drawn on"**, check *"a
+  subscript stays on the line it belongs to"*. This one reported a
+  DIFFERENT check failing while the named one passed, which is why the
+  entry is a finding and not a pass: the break was noticed by something,
+  and not by the check that claims to be about it.
+
+**One entry found a check that does not run at all.** 17, *"the offscreen
+screen keeps its 800x800 default"*, named *"a menu opens where it was
+asked to, past the 80 columns"* -- and the suite reported **2492 passes
+where this tree has 2493**, finishing normally. The tool's two-way split
+is what makes that readable: no summary line means killed or hung, a
+summary with the check absent means it never ran. So the check sits behind
+a condition that was false, which is the same family as 8.671's
+forty-five conditional skips and 8.676's twelve that fire only on Qt 5.
+
+**One is a spec fault rather than a code one.** 388 was REFUSED because
+its check text matches **two** passing checks, not one. An anchor or a
+check name that has stopped being unique applies to the wrong place or to
+nothing, and the tool refuses rather than guessing -- which is the
+behaviour that makes the other findings trustworthy.
+
+**What this costs to believe, stated now because the run is not over.**
+509 entries in 6h12m is 43.9 seconds each, so the full 805 lands at about
+9.8 hours against the 7.8 the derived figure predicted (8.684) -- the
+per-entry constant was measured at 618 entries on a quieter machine, and
+the outer `timeout 36000` leaves roughly twelve minutes of margin. If it
+is killed by that timeout the restore still runs, because the handler
+catches SIGTERM; what is lost is the last entries and the summary.
+
+**None of the three is fixed here and none can be**, since a fix is a
+check made to fail and then watched failing, which is a build, and nothing
+may build in this tree while the sweep holds it (8.683). They are
+recorded with their entry numbers so the next session can go straight to
+`--only` on each.
