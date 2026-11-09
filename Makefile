@@ -36,6 +36,7 @@
 #   make arms         -- when each arm outside `check` last passed, and on what
 #   make arms-check   -- every arm in ARMS records a receipt, and vice versa
 #   make profiles-check -- every tracked .pro and .pri is named in the Makefile
+#   make private-check -- no source reaches a Qt private header (G5)
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make fuzz         -- libFuzzer over the capability-reply parser (clang)
 #   make fuzz-input   -- libFuzzer over the live-input decoder (clang)
@@ -1669,7 +1670,7 @@ record: tests-build
 # layout, test, test-tools, test-install, probe-style), because a convention
 # is what a new part will follow.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              arms-check profiles-check fuzz-check header-check sabotage-check test test-tools \
+              arms-check profiles-check private-check fuzz-check header-check sabotage-check test test-tools \
               test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
@@ -1798,6 +1799,54 @@ arms-check:
 # not this list's business; and the wildcard that MISSES is the failure mode
 # the other direction already cost us. A count of zero is a failure rather
 # than a pass, for the usual reason.
+# G5 HELD BY SOMETHING OTHER THAN HABIT. Section 0.2's fifth goal is "no Qt
+# private headers and no patched Qt", with one documented exception that is
+# public API rather than a private header -- and until this existed NOTHING
+# asserted it. Measured 2026-11-09: zero private includes among 570, so the
+# goal holds; a session could have added one the next day and every gate
+# would have passed.
+#
+# IT MATTERS MORE THAN TIDINESS. A private header is the thing that makes
+# "without forking Qt" false: it is not covered by Qt's compatibility
+# promise, so a point release may move it, and a build that reaches for one
+# has quietly taken on Qt's internals as an interface.
+#
+# THE PATTERN CARRIES ITS OWN POSITIVE CONTROL, because a gate whose regex
+# has rotted reports a clean tree exactly as loudly as a clean tree does --
+# this tree's vacuous pass, met often enough to be the default suspicion. So
+# the three shapes a private include takes are fed to the same expression
+# and it must match all three before the tree's own count is believed.
+private-check:
+	@pat='^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^>"]*(private/|_p\.h)'; \
+	ctl=0; for probe in '#include <private/qwidget_p.h>' \
+	                    '#include "foo_p.h"' \
+	                    '#include <QtGui/private/qfont_p.h>'; do \
+		printf '%s\n' "$$probe" | grep -qE "$$pat" \
+			&& ctl=$$((ctl + 1)); \
+	done; \
+	if [ "$$ctl" != 3 ]; then \
+		echo "private-check: the pattern matched $$ctl of 3 known private" >&2; \
+		echo "               includes, so it cannot be trusted about this" >&2; \
+		echo "               tree. Nothing was concluded." >&2; \
+		exit 1; \
+	fi; \
+	n=$$(grep -rhcE '^[[:space:]]*#[[:space:]]*include' src include test tool \
+	     example 2>/dev/null | paste -sd+ | bc); \
+	[ "$${n:-0}" -gt 0 ] || { \
+		echo "private-check: found no #include at all, so nothing was" >&2; \
+		echo "               searched -- a pass over an empty tree." >&2; \
+		exit 1; }; \
+	bad=$$(grep -rlE "$$pat" src include test tool example 2>/dev/null); \
+	if [ -n "$$bad" ]; then \
+		echo "private-check: a Qt private header is included here:" >&2; \
+		for f in $$bad; do echo "               $$f" >&2; done; \
+		echo "               G5 is no private headers and no patched Qt: a" >&2; \
+		echo "               private header is outside Qt's compatibility" >&2; \
+		echo "               promise, so a point release may move it." >&2; \
+		exit 1; \
+	fi; \
+	echo "private-check: $$n include(s) and none reaches a Qt private header, which is G5"
+
 profiles-check:
 	@all=" $(PROFILES) $(TEST_PROFILES) "; \
 	tracked=$$(git ls-files '*.pro' '*.pri'); \
@@ -2246,7 +2295,7 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check profiles-check header-check \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks fuzz fuzz-input fuzz-check profiles-check private-check header-check \
         version-check run install uninstall clean veryclean distclean help \
         test-screen test-negotiate test-consume test-tray test-pty sabotage \
         test-overlay-z test-versions test-compilers \

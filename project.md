@@ -58230,3 +58230,186 @@ was recorded with its method and the method's INDEX SPACE changed
 underneath it. The record was accurate when written, the change that
 invalidated it was correct and deliberate, and the two were made by the
 same session an hour apart.
+
+### 8.708 The invariant was never about the text, and one measurement said so (2026-11-09)
+
+**8.706 ended by saying the next attempt must start by establishing what
+`head 7..10 data 10..11` means, read-only, before any edit. That was
+right, it took one measurement, and it found a model error two attempts of
+inference had not.**
+
+**THE BASELINE, with both writers' arithmetic instrumented on the clean
+tree** -- the suite's own header-edge fixture, left-to-right and
+`AlignRight`:
+
+    PROBE item: c=0..11 w=12 used=1   room=11 shown=4 text_at=1 text_x=8
+    PROBE head: c=0..11 w=12 indent=1 room=11 fits=4  from=1   at=8
+
+Both end at column **11**, which is what the code reads: for
+left-to-right, `leading_edge()` returns `left + off`, so the data's text
+ends at `c.left() + c.width() - 1` and the heading's at the same place.
+The two arithmetics are not merely similar, they are the same expression
+written twice -- which is why shrinking each by one cell moved both and
+kept them equal.
+
+**SO THE FAILURE WAS NOT A LAYOUT DISAGREEMENT AT ALL.** The check
+measures the **rightmost non-blank cell** on each row, and a separator is
+ink. Drawing one on the data rows alone put the data's rightmost cell at
+11 -- the glyph -- while the heading's stayed at its text, which had
+correctly moved to 10. `head 7..10 data 10..11` is a heading whose text
+moved and a data row whose *separator* was being read as its text.
+
+**That is why the symptom did not move between the two attempts.** Attempt
+B changed the delegate, the shared helper and five other sites; none of
+them touches where a glyph in column 11 is read from. The thing to change
+was in neither the map nor the sites: it was the heading having no
+separator of its own.
+
+**AND THE FIX CLOSES SOMETHING OLDER THAN THE DEFECT.** Qt's own grid
+never reached a header row, because the rule road refuses a line that
+meets any content and a heading is content -- measured cell by cell
+earlier the same day, a three-column table rendering as
+`│.H..H..H...│` above `│.ab│ab│ab│`. So a table has always had separators
+between its data and none between its headings, and nothing recorded it as
+a defect because Qt's grid was doing the same thing. One writer and one
+rule now put a separator on every row.
+
+**THE METHOD POINT, which is the whole of this entry's value.** Two
+attempts reasoned from reading: the first concluded the map was incomplete
+and added sites, the second concluded the model was wrong and said so
+without finding where. **One `fprintf` of the four numbers each side
+computes settled it in a single build** -- and the numbers that mattered
+were not the ones either attempt was reasoning about. `evidence.md` says
+to ask the object you mean rather than something correlated with it; the
+check reads INK, and both attempts were reasoning about TEXT.
+
+### 8.709 The grid may not cost a label its cell, and the suite said so all along (2026-11-09)
+
+**With a separator on the heading's row the failures went from four to
+two, and the shared-edge invariant passed -- `head 7..11 data 10..11`.
+What is left is not a bug in the change. It is a decision this tree had
+already taken, asserted in a check, and which the design contradicts.**
+
+    CHECK(same, "a table's grid leaves its labels' own spaces alone");
+
+It renders one `QTableView` twice -- `setShowGrid(true)` and
+`setShowGrid(false)` -- and requires the two renderings to be
+**identical** across the row carrying a label. **Turning the grid on must
+not move a label.** The design in 8.706 takes a cell from every column for
+the separator, so the two renderings differ, and the check is right to say
+so.
+
+**WHY IT PASSES TODAY, which is the part that makes the decision real
+rather than accidental.** Qt's grid line is a rule, the rule road refuses
+a line that meets any content, and that fixture's row is full of labels --
+so the grid draws nothing there and the two renderings agree. The check is
+not asserting that a grid shows nothing; it is asserting that a grid costs
+a label nothing, and today that holds because the grid mostly cannot draw
+over labels at all.
+
+**AND THAT IS THE CONSTRAINT THE WHOLE DEFECT RUNS INTO.** The drift is
+real: `QTableView::sizeHintForColumn()` adds a pixel and a cell grid turns
+it into a cell. A separator has to come from somewhere. Where the column
+is **content-sized**, `sizeFromContents()` can widen it and the label
+keeps its room -- that is the defect's own home, `ResizeToContents`, and
+there the design works and is measured working. Where the application has
+**fixed** the width -- `setColumnWidth()`, `setDefaultSectionSize()`,
+`Interactive`, which is what both failing fixtures use -- there is no
+extra cell to take and a separator can only be had at the label's
+expense, which is the thing asserted against.
+
+**So the option that survives is narrower than the design**: draw the
+separator only where the column's width came from this style, and leave an
+application's own fixed width alone. That is a real answer rather than a
+retreat -- it fixes the measured drift, which only occurs in content-sized
+columns, and it leaves the asserted behaviour intact for every column an
+application sized itself.
+
+**It is parked rather than taken, because it is a visible behaviour change
+with a check already pointing the other way.** The two readings are not
+mine to choose between: either a terminal table keeps Qt's promise that
+the grid is free and gets no separators where widths are fixed, or the
+promise is narrowed and a fixed-width column spends a cell on its
+separator like any other. The first is what the suite says today. 8.706's
+site map and this constraint are what the decision needs, and both are now
+written down.
+
+**THE SESSION'S OWN LESSON, three times now.** `working-practice.md` says
+to look for where the project has settled a question under another name
+before treating it as open -- a decision record, a section, or a sibling
+whose comment says why. Three times in this one piece of work the answer
+was already in the tree and found late: the pen-weight comment thirty
+lines from the edit, the delegate's own "shared rather than copied", and
+now a check whose NAME is the decision. **Searching the suite's check
+MESSAGES for the thing being changed would have found this one in
+seconds**, and that is a cheaper first move than reading the code around
+the edit.
+
+### 8.710 G5 was held by habit, and the instrument that found it is new (2026-11-09)
+
+**The goal gap was walked with an instrument this session invented an hour
+earlier by being burned: ask what the SUITE ALREADY ASSERTS about a thing,
+not what the code does.** 8.709 ends with that lesson -- three times in one
+piece of work the decision was already in the tree and found late, the last
+being a check whose NAME was the decision. Pointed at the aims rather than
+at a change, it found one unasserted.
+
+**§0.2's G5 is "No Qt private headers and no patched Qt", and nothing
+checked it.** No suite check, no gate part, no grep anywhere in the
+Makefile or the tools. Measured: **zero private includes among 571**, so
+the goal holds -- and held by habit alone. A session could have added
+`#include <private/qwidget_p.h>` the next day and every gate would have
+passed.
+
+**IT IS NOT A TIDINESS RULE, which is why an unasserted G5 matters.** A
+private header is precisely the thing that makes *"without forking Qt"*
+false: it is outside Qt's compatibility promise, so a point release may
+move it, and a build that reaches for one has taken Qt's internals on as
+an interface. The aim is load-bearing for the project's central claim and
+was resting on nobody doing it.
+
+**`private-check` asserts it, and carries its own positive control.** The
+three shapes a private include takes -- `<private/...>`, `"..._p.h"` and
+`<QtGui/private/...>` -- are fed to the same expression the tree is
+searched with, and the gate refuses to conclude anything unless all three
+match. **A gate whose regex has rotted reports a clean tree exactly as
+loudly as a clean tree does**, which is this tree's vacuous pass and by
+now its default suspicion; the control is what tells the two apart. There
+is a zero-include guard for the same reason.
+
+**Seen to fail, not merely seen to pass.** A throwaway header carrying
+`#include <private/qwidget_p.h>` was put in `tool/`, and the gate named
+the file and exited 1; it was removed by name. The positive control is
+proven by the pass itself, since the target exits 1 unless the pattern
+matches all three probes.
+
+**AND THE GUARD WRITTEN THIS MORNING CAUGHT THIS VERY CHANGE, hours
+later.** The target landed and `CHECK_PARTS` did not: the edit adding it to
+the list lived in a scripted pass whose anchor assertion failed, so that
+pass wrote nothing, and the retry re-did only the target. The gate then
+said
+
+    check: a `-check` target exists that the gate does not run: private-check
+           A gate part outside CHECK_PARTS is a check nobody runs, and it
+           reads exactly like one that passes.
+
+and wrote FAIL for exactly that content, so the commit hook would have
+refused it. That is 8.679's assertion doing the one job it was written for,
+against the session that wrote it, on the first new gate part since -- and
+**it is worth more than the ninety seconds it cost**, because a
+`private-check` target nobody ran would have sat in this tree looking like
+an assertion about G5 while asserting nothing.
+
+The near-miss has a cause worth naming too: **a scripted edit that fails
+its assertion writes nothing, so a retry must re-do all of it.** Three of
+the four edits were lost silently because the retry addressed only the one
+that had failed.
+
+**AND THE ESCAPES HAD TO GO, which is worth a line for the next person
+writing a Makefile recipe.** The control was first written as
+`printf '...\\n...\\n...'`, and the `\\n` reached the file as real
+newlines -- so the recipe had bare lines in it and `make` answered
+*"missing separator"*. Rewritten as a `for` loop over three separately
+quoted probes, which needs no escape at all. A recipe that embeds a
+multi-line literal is a recipe whose quoting has two layers and no
+reader.
