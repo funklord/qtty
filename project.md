@@ -57855,3 +57855,63 @@ a *test* of a case no input reaches, not the defence.
 **Seven of the eight remain**, and this one took reading four code paths to
 close -- which is the measure of what the other seven cost, and why 8.696's
 four-cause split matters more than its count.
+
+### 8.703 The column drift re-measured, and the fix confirmed before writing it (2026-11-09)
+
+**8.652 specified a fix for the `ResizeToContents` pixel drift a week ago
+and left it as work. Re-measured today rather than taken on trust, and the
+measurement both confirms the defect and settles that the fix works --
+which is the half that makes the attempt cheap.**
+
+**THE DEFECT, still live.** Three columns of `"ab"` under
+`ResizeToContents` come out **31 pixels each** against a 10-pixel cell --
+30 plus Qt's grid-line allowance from `QTableView::sizeHintForColumn` --
+so all three are off the grid. Twelve one-character columns come out 21
+each with positions 0, 21, 42, 63, 84, 105, 126, 147, 168: **9 of 12 off
+the grid**, the error accumulating one pixel per column.
+
+**THE FIX WORKS, measured directly before any of it was written.** With
+`setShowGrid(false)`: three columns become **30** each and twelve become
+**20** each at positions 0, 20, 40 ... 160 -- **0 of 12 off the grid**.
+The pixel is Qt's grid allowance and nothing else.
+
+**ONE OF 8.652'S THREE FIGURES NO LONGER REPRODUCES, and the reason is my
+fixture rather than the tree.** That entry recorded `Stretch` as 3 of 3
+off the grid; here it is 0 of 3, because 600 pixels over three columns is
+190 each and 190 divides by 10. The Stretch case is real and my fixture
+cannot see it -- which is worth saying, since "I could not reproduce it"
+about a width-dependent defect is the kind of absence `evidence.md` warns
+is manufactured.
+
+**AND TURNING THE GRID OFF ALONE WOULD BE A REGRESSION, which only
+rendering it showed.** Qt's one-pixel grid line is not invisible on a cell
+grid: the rule road draws it as `│`. Rendered at 24x6 cells with the grid
+on, a table reads `│ aa │ aa │ aa │` in its data rows -- and the header row
+has **no** separators at all, because `clear_run()` refuses a rule that
+crosses text. With the grid off there are no separators anywhere and the
+columns are whitespace-separated.
+
+So today's state is inconsistent separators plus drift; grid-off alone is
+no separators and no drift. **8.652's specification is the only option that
+is strictly better than both**: the grid off, and a Channel A separator
+drawn at each section's last cell, which `clear_run` cannot refuse because
+it writes a glyph into a named cell rather than walking a rule.
+
+**WHETHER A TUI TABLE SHOULD HAVE SEPARATORS AT ALL IS A UI QUESTION, and
+prior art answers it for a GRID widget.** Process monitors separate
+columns with whitespace -- `top`, `htop` -- while the database clients
+that render a table as a table use `|`: `mysql`'s client and `psql` both
+do, and `sqlite3` added `.mode table` for it. A `QTableView` is the second
+kind. So the separators stay, which is what the specification already
+assumed and now has a reason behind it.
+
+**WHAT IS LEFT IS THE DRAWING, and it is deliberately not attempted here.**
+`CE_ItemViewItem` has three writers in one case block -- the fill, the
+label and the decoration -- and 8.652's own closing words are that this
+path "deserves a fresh attempt rather than a tenth iteration", two
+successive ideas in the same area having already been wrong. Qt hands the
+style what it needs: `QStyleOptionViewItem::viewItemPosition` says
+Beginning, Middle, End or OnlyOne, so a trailing separator is drawn except
+at End and OnlyOne, with no geometry guessed. **The two halves must land
+together**, because either alone is a regression -- the grid off without
+separators loses them, and separators without the grid off doubles them.
