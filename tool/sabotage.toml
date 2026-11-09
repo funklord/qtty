@@ -8980,3 +8980,18 @@ find = "\tif (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0 || ws.ws_row <= 0
 into = "\tif (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0) return;"
 count = 1
 check = "a terminal reporting zero rows is refused"
+
+# THE SECOND DOOR, which 8.723 found asserted by nothing and which now has
+# a check. The CSI 8 window-operation reply carries the terminal's claimed
+# size over the same wire as everything else it sends, and its guard is a
+# separate copy of read_winch()'s. Loosening the lower bound here reddened
+# NOTHING before the check beside it existed -- the two checks that look
+# like they cover it drive the PRODUCT bound, and the neighbouring zero
+# checks drive CSI 6 through term_caps.cpp, a third guard again.
+[[sabotage]]
+name = "a CSI 8 reply of zero rows is believed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (rows > 0 && cols > 0"
+into = "\t\t\tif (rows >= 0 && cols > 0"
+count = 1
+check = "a resize report naming zero rows or zero columns is dropped"

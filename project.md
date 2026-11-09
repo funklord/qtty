@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2501 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2502 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -59327,17 +59327,32 @@ terminal could have is refused"* drive `CSI 6` and `CSI 4` through
 `caps_of()`, which is `term_caps.cpp`'s parser and a different guard
 again. Three guards for one shape of nonsense, and checks at two.
 
-**What writing it needs, stated because the next session should not have
-to re-derive it.** `caps_of()` cannot reach this one: the CSI 8 window
-operation is handled by a LIVE backend in its input path, so the fixture
-needs bytes written to a pty master while a backend reads the slave. The
-block holding the ioctl check has the slave and the event loop already.
-**The hazard is in that file's own record**: a fixture written between the
-resize checks once made a check stop RUNNING rather than failing -- 2441
-where 2442 was due, no FAIL line anywhere -- and the cause is recorded as
-unestablished with three comfortable explanations disproved. That failure
-mode is detectable now, because `count-check` asserts the total, so the
-work is safe to attempt; it is not safe to attempt carelessly.
+**IT IS ASSERTED NOW, and the fixture cost nothing because it already
+existed.** The first plan here was a pty fixture beside the ioctl check --
+bytes on a master while a backend reads the slave -- and it named that
+file's own hazard, a fixture written between the resize checks once making
+a check stop RUNNING rather than failing, cause unestablished. None of
+that was needed. **The suite already drives CSI 8 replies into a live
+backend**, through the `Feeder` that replaces stdin with a pipe, and two
+checks a few lines apart already send `\033[8;2000000;2000000t` and
+`\033[8;24;80t` -- the PRODUCT bound and its control. The lower bound was
+the one end of that guard nobody had sent.
+
+So the check sits with its kin, in the same idiom: zero rows, zero
+columns, then a legitimate report as the control, since a parser that
+dropped every report would satisfy the two refusals alone.
+
+    resize reports of 0 rows -> 0, 0 columns -> 0, and a good one
+    -> accepted
+
+**The lesson is the cheaper one and it is about looking.** The brief
+written an hour earlier was for a fixture in the hardest available place,
+complete with its hazard, and the mechanism was already sitting in the
+same file under a different name. `working-practice.md` says to look for
+where the project has settled a question under another name before
+treating it as open; this is that rule applied to a FIXTURE rather than a
+decision, and the search is the same -- something else in this tree
+already doing the job, whatever it is called.
 
 **The run's tally of this shape, which is now five.** A funnel repairing
 the broken value, a sibling road covering the same cells, a toolkit

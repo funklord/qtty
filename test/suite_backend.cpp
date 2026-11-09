@@ -3430,6 +3430,41 @@ int suite_backend() {
 	      "while an ordinary report still arrives, so the bound is not a "
 	      "refusal of resize reports");
 
+	// AND THE OTHER END OF THE SAME GUARD, which nothing asserted -- see
+	// project.md 8.723. The condition is `rows > 0 && cols > 0 && product
+	// <= kMaxTerminalCells`, and the two checks above exercise only the
+	// product. Measured by loosening the lower bound alone, to `rows >=
+	// 0`: not one check in the suite went red, named or collateral.
+	//
+	// IT IS THE SAME NONSENSE AS THE ioctl DOOR'S and a different guard.
+	// A terminal reporting zero rows arrives two ways -- TIOCGWINSZ, which
+	// read_winch() refuses and a pty check covers, and this escape reply,
+	// which nothing covered. One untrusted fact, two guards, and the
+	// fixture was at the first; writing one of them is not writing the
+	// other, which cost an entry aimed at the wrong door.
+	//
+	// What it would cost: a frame with no cells, whose rasterisation is a
+	// null QImage that QPainter refuses to open and warns about once per
+	// call. `stty rows 0` produces it.
+	//
+	// BOTH DIMENSIONS, because the guard names both and a break could
+	// loosen either, and with a legitimate report after them as the
+	// control -- a parser that dropped every report would satisfy the
+	// refusals alone.
+	feed("\033[8;0;100t");
+	const int zero_rows = int(rec.resizes.size());
+	feed("\033[8;30;0t");
+	const int zero_cols = int(rec.resizes.size());
+	feed("\033[8;30;100t");
+	const bool good = rec.resizes.size() == 1
+	                  && rec.resizes[0] == QSize(100, 30);
+	printf("info: resize reports of 0 rows -> %d, 0 columns -> %d, and a"
+	       " good one -> %s\n", zero_rows, zero_cols,
+	       good ? "accepted" : "DROPPED");
+	CHECK(zero_rows == 0 && zero_cols == 0 && good,
+	      "a resize report naming zero rows or zero columns is dropped, "
+	      "while a good one after them still arrives");
+
 	feed("\033[6;19;10t");
 	CHECK(rec.keys.isEmpty() && rec.resizes.isEmpty(),
 	      "and the cell-size report is neither a key nor a resize");
