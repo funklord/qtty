@@ -41,7 +41,20 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 	style->drawControl(QStyle::CE_ItemViewItem, &frame, painter, widget);
 
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	const QRect c = cells_of(opt.rect, painter, dev, widget);
+	QRect c = cells_of(opt.rect, painter, dev, widget);
+	// THE SEPARATOR CELL IS NOT THIS WRITER'S TO USE, where polish() took a
+	// table's grid over. The style's CE_ItemViewItem above has already drawn
+	// the glyph into the item's last cell; what this must do is keep its
+	// content out of it, or the label's last character lands on top of the
+	// separator and one of them is lost.
+	//
+	// Only the shrink, and not a second copy of the drawing, because the
+	// call above is the one writer of that glyph. grid_sep_cells() is in
+	// cell_geometry.h for the reason this file's header gives: a second copy
+	// of a rule arrived at by measurement is the kind that drifts, and the
+	// suite asserts these two writers agree. project.md 8.706.
+	if (c.width() > 1)
+		c.setRight(c.right() - grid_sep_cells(widget, index.column()));
 	CellBuffer &buffer = dev->buffer();
 
 	// Every write below goes straight into the buffer, so nothing else
@@ -213,6 +226,11 @@ QSize CellItemDelegate::sizeHint(const QStyleOptionViewItem &option,
 	const QSize base = QStyledItemDelegate::sizeHint(option, index);
 
 	int cells = indent_cells();
+	// And the separator's cell, as the style's sizeFromContents() adds it:
+	// the column pays for its own separator in whole cells rather than in
+	// Qt's pixel, which is what puts the section boundary back on the grid.
+	// Both writers must add it or they answer different widths for one item.
+	cells += grid_sep_cells(option.widget, index.column());
 	if (index.data(Qt::CheckStateRole).isValid()) cells += check_cells();
 	// A decoration BESIDE the text adds its columns to the row; one ABOVE
 	// stacks, so the wider of the two decides and nothing is added. This

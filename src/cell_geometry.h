@@ -18,10 +18,12 @@
 // symptom is Channel A quietly not firing in half the tree.
 #pragma once
 #include <QFont>
+#include <QHeaderView>
 #include <QPainter>
 #include <QRect>
 #include <QString>
 #include <QStyleOption>
+#include <QTableView>
 #include <QWidget>
 #include <QAbstractItemView>
 #include <QAbstractScrollArea>
@@ -354,6 +356,60 @@ inline int slider_cell(const QStyleOptionSlider *sl, int len) {
 inline int leading_edge(int left, int right, int off, int w,
                         Qt::LayoutDirection dir) {
 	return dir == Qt::RightToLeft ? right + 1 - off - w : left + off;
+}
+
+// A TABLE'S COLUMN SEPARATOR, AND THE CELL IT COSTS. Shared because this
+// tree has two writers of an item's layout -- GridStyle's CE_ItemViewItem
+// and CellItemDelegate -- and the suite asserts they agree. The file that
+// holds the second says why in as many words: "a second copy of a rule
+// arrived at by measurement is the kind that drifts". So both call these.
+//
+// WHY A CELL AT ALL. QTableView::sizeHintForColumn() adds one PIXEL for its
+// grid line when showGrid() is on, and on a cell grid that pixel becomes a
+// whole cell: measured 2026-11-09, three ResizeToContents columns of "ab"
+// came out 31 pixels each against a 10-pixel cell, and twelve
+// one-character columns 21 each with positions drifting to 168 -- nine of
+// twelve off the grid, one pixel at a time. GridStyle::polish() turns Qt's
+// grid off and records that it did, the column is widened by a whole cell
+// instead, and the separator is drawn into it. project.md 8.706.
+//
+// The property is on the VIEW. A header asks through its parent, the view
+// being its parent widget.
+//
+// AND IT IS PER COLUMN, which is the whole of what the fourth attempt
+// changed. The drift this exists to close comes from
+// QTableView::sizeHintForColumn() adding a pixel for the grid line, so it
+// reaches only columns whose width COMES from that hint -- ResizeToContents.
+// A column the application sized itself has no drift to fix, and taking a
+// cell from it would cost a label its space: project.md 8.709, which is a
+// decision this tree had already taken and asserted in the check "a table's
+// grid leaves its labels' own spaces alone". Narrowing to content-sized
+// columns fixes the measured defect and leaves that decision intact, so the
+// two are not in conflict and nothing has to be chosen between them.
+inline int grid_sep_cells(const QWidget *view, int column) {
+	if (!view || column < 0) return 0;
+	if (!view->property("_qtty_grid").toBool()) return 0;
+	const auto *table = qobject_cast<const QTableView *>(view);
+	if (!table) return 0;
+	return table->horizontalHeader()->sectionResizeMode(column)
+	           == QHeaderView::ResizeToContents ? 1 : 0;
+}
+
+// The glyph, down the item's own rows at `at`, carrying `ink`.
+//
+// IT TAKES A COLOUR because set_glyph() leaves a cell's foreground alone,
+// and the first version of this relied on that: the separator sat on
+// whatever the fill had put there and the suite's contrast floor caught it
+// as a pair of this library's own colours failing the minimum. The item's
+// text colour contrasts with the item's background by construction, since
+// the text is drawn in it.
+inline void draw_grid_separator(CellBuffer &buf, int at, int top, int bottom,
+                                Color ink) {
+	for (int y = top; y <= bottom; ++y)
+		if (buf.writable(at, y)) {
+			buf.set_glyph(at, y, QStringLiteral("\u2502"));
+			buf.at(at, y).fg = ink;
+		}
 }
 
 // The emphasis a font carries, as cell attributes. A terminal has these four

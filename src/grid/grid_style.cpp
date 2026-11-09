@@ -49,6 +49,7 @@
 #include <QHeaderView>
 // For polish(), which takes Qt's size grip out of a status bar.
 #include <QStatusBar>
+#include <QTableView>
 
 namespace Qtty {
 
@@ -2432,6 +2433,13 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 			// icon.
 			const bool beside = decoration_beside(vi->decorationPosition);
 			const bool fits = vi->decorationSize.height() <= ch;
+			// AND A CELL FOR THE SEPARATOR, where polish() took the grid
+			// over. The column pays for its own separator in whole cells
+			// rather than in Qt's pixel, which is what puts the section
+			// boundary back on the grid; CE_ItemViewItem draws into the cell
+			// this reserves. Only for such a view -- a list or a tree has no
+			// grid to take over and must not be widened.
+			cells += grid_sep_cells(w, vi->index.column());
 			return QSize(qMax(width, cells * cw),
 			             beside && fits ? ch : snapped);
 		}
@@ -2676,6 +2684,53 @@ void GridStyle::polish(QWidget *w) {
 		QMetaObject::invokeMethod(bar,
 		    [bar] { bar->setSizeGripEnabled(false); },
 		    Qt::QueuedConnection);
+	// A TABLE'S GRID IS TAKEN OVER RATHER THAN LEFT TO QT, because Qt's
+	// costs a pixel and a terminal cannot spend a pixel.
+	//
+	// QTableView::sizeHintForColumn() adds ONE PIXEL for the grid line when
+	// showGrid() is on, and on a cell grid that pixel becomes a whole extra
+	// CELL: measured 2026-11-09, three ResizeToContents columns of "ab" came
+	// out 31 pixels each against a 10-pixel cell, and twelve one-character
+	// columns came out 21 each with positions drifting 0, 21, 42 ... 168 --
+	// nine of twelve off the grid, the error accumulating one column at a
+	// time. With showGrid off they are 30 and 20, and none is off the grid.
+	//
+	// So the grid goes off and this style draws the separator itself, in a
+	// cell the column is widened to pay for -- see sizeFromContents() for
+	// the cell and CE_ItemViewItem for the glyph. The three belong together
+	// and none of them is useful alone: the width without the glyph loses
+	// the separators a table reads by, and the glyph without the width
+	// clips a character off every column.
+	//
+	// THE ORIGINAL IS RECORDED, so an application that turned its own grid
+	// off is not given separators it never asked for. A dynamic property
+	// rather than a member, because this style is one object and the views
+	// are many.
+	//
+	// AND ONLY WHERE THERE IS DRIFT TO FIX. The pixel above is added by
+	// sizeHintForColumn(), so it reaches a column only if that is where the
+	// column's width comes from -- ResizeToContents. A table whose widths
+	// the application set has no drift, and taking its grid over would cost
+	// it Qt's separators while grid_sep_cells() declines to draw ours:
+	// a loss on both sides for a defect it does not have.
+	//
+	// The ordering this depends on: a resize mode set after the view is
+	// first polished is not seen here, and such a table keeps Qt's grid and
+	// its drift. Qt polishes on first show, and a mode is normally set when
+	// the view is built, so the ordinary case is covered; the check in
+	// suite_widgets.cpp builds its table that way and would go red if this
+	// stopped firing.
+	if (auto *tv = qobject_cast<QTableView *>(w)) {
+		const QHeaderView *hh = tv->horizontalHeader();
+		bool content_sized = false;
+		for (int c = 0; hh && c < hh->count() && !content_sized; ++c)
+			content_sized = hh->sectionResizeMode(c)
+			                == QHeaderView::ResizeToContents;
+		if (tv->showGrid() && content_sized) {
+			tv->setProperty("_qtty_grid", true);
+			tv->setShowGrid(false);
+		}
+	}
 	// A scroll bar's step in CELLS, which Qt leaves at 20 pixels against a
 	// cell of 19. See snap_scroll_steps() for the measurement; the router
 	// calls it again on a wheel, where a scroll mode changed after polish
@@ -3451,6 +3506,26 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					v.bg = bg;
 					dev->buffer().fill(c, v);
 				}
+				// AND THE CONTENT BOX NOW EXCLUDES THE SEPARATOR CELL, where
+				// polish() took the grid over.
+				//
+				// Shrunk ONCE, here, rather than at each of the three
+				// leading_edge() calls below -- the check box, the
+				// decoration and the label -- because a cell reserved at one
+				// of them and not the others is a layout that disagrees with
+				// itself. The first version of this change reserved the cell
+				// in sizeFromContents() and nowhere else, so the label still
+				// reached the last cell and the separator then overwrote its
+				// last character: content loss, which is what the extra cell
+				// exists to prevent.
+				//
+				// AFTER the fill and not before: the row's background spans
+				// the whole column including the separator, or a selected
+				// row shows an unfilled gap at every column boundary.
+				const int sep_x = c.right();
+				const int sep = c.width() > 1
+				    ? grid_sep_cells(w, vi->index.column()) : 0;
+				if (sep) c.setRight(c.right() - sep);
 				// The check indicator, which was not drawn at all: an item
 				// view whose items are checkable showed the text and nothing
 				// else, so the state a user is there to set was invisible and
@@ -3476,6 +3551,32 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                   c.top(), box, fg, bg, la);
 					used += 4;                     // the box and one space
 				}
+				// THE SEPARATOR, in the cell sizeFromContents() reserved
+				// for it, where polish() took the grid over.
+				//
+				// Qt draws its own grid line at the RIGHT edge of every
+				// column including the last -- measured cell by cell, a
+				// three-column table rendering as `.ab|ab|ab|` -- so one per
+				// item and no last-column test is needed, which is just as
+				// well: viewItemPosition is Invalid for every item of a
+				// QTableWidget and set only for a tree, so a design resting
+				// on it would have worked on the view this is not about.
+				//
+				// Written into the buffer rather than through the painter,
+				// because the rule road refuses a line that meets any
+				// content -- which is why the HEADER row has never had
+				// separators and the data rows have.
+				// AND IT CARRIES THE ITEM'S OWN INK, which the first
+				// version did not: set_glyph() leaves a cell's foreground
+				// alone, so the separator was a glyph with no colour of its
+				// own sitting on whatever the fill had put there -- and the
+				// suite's contrast floor caught it, a pair of the library's
+				// own colours failing the minimum. The text's colour
+				// contrasts with the item's background by construction,
+				// since the text is drawn in it.
+				if (sep && c.isValid())
+					draw_grid_separator(dev->buffer(), sep_x, c.top(),
+					                    c.bottom(), fg);
 				// THE DECORATION, which this drew nowhere while
 				// CellItemDelegate placed one -- the THIRD field found split
 				// between the two writers, after textElideMode and
@@ -3638,9 +3739,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				//
 				// The arithmetic is CE_ItemViewItem's, for the same reason
 				// the starting column is.
-				const QString label = elide_to_cells(
-				    h->text, c.width()
-				             - (h->orientation == Qt::Horizontal ? 1 : 0));
+				const int head_sep = h->orientation == Qt::Horizontal
+				    ? grid_sep_cells(w ? w->parentWidget() : nullptr,
+				                     h->section) : 0;
+				const QString label = elide_to_cells(h->text, c.width()
+				    - (h->orientation == Qt::Horizontal ? 1 : 0) - head_sep);
 				// AlignRight only, and CENTRING is deliberately still
 				// ignored. Qt centres a horizontal header by default, and
 				// the decision above -- line the heading up with the data --
@@ -3707,9 +3810,22 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// Horizontal, so a caller that sets nothing keeps the
 				// indent it had.
 				const int indent = h->orientation == Qt::Horizontal ? 1 : 0;
-				const int room = c.width() - indent;
-				const int from = leading_edge(c.left(), c.right(), indent,
-				                              room, opt->direction);
+				// AND THE SEPARATOR CELL, by the promise two comments above:
+				// "the arithmetic is CE_ItemViewItem's". That item now
+				// reserves its last cell for the column separator, so a
+				// heading that did not would share no edge with its data --
+				// which is exactly what the suite said when this change
+				// reserved the cell on the data side alone, in all four
+				// direction-and-alignment configurations.
+				//
+				// The view rather than the header carries the property, the
+				// header being its child.
+				const int sep = h->orientation == Qt::Horizontal
+				    ? grid_sep_cells(w ? w->parentWidget() : nullptr,
+				                     h->section) : 0;
+				const int room = c.width() - indent - sep;
+				const int from = leading_edge(c.left(), c.right() - sep,
+				                              indent, room, opt->direction);
 				const int fits = text_cells(label);
 				const Qt::Alignment hal =
 				    QStyle::visualAlignment(opt->direction, h->textAlignment);
@@ -3718,6 +3834,30 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					at = from + room - fits;
 				dev->buffer().text(at, c.top(), label, Color(), Color(),
 				                   label_attrs(opt, w, Attr::Bold));
+				// AND THE SEPARATOR, on the heading's row too.
+				//
+				// NOT COSMETIC, and the suite is what established it. The
+				// invariant that a heading shares an edge with its data is
+				// measured as the RIGHTMOST INK on each row, and a
+				// separator is ink: drawing one on the data rows alone put
+				// the data's rightmost cell one column right of the
+				// heading's and broke the check in all four
+				// direction-and-alignment configurations. Measured with the
+				// arithmetic instrumented -- the text moved correctly to
+				// column 10 on both sides and the data's reading of 11 was
+				// this glyph.
+				//
+				// It also closes something older. Qt's own grid never
+				// reached a header row at all, because the rule road
+				// refuses a line that meets any content and a heading is
+				// content -- so a table rendered with separators between
+				// its data and none between its headings. One writer, one
+				// rule, every row. project.md 8.708.
+				if (sep)
+					draw_grid_separator(dev->buffer(), c.right(), c.top(),
+					                    c.bottom(),
+					                    fg_for(opt->palette.color(
+					                        QPalette::WindowText).rgba()));
 				return;
 			}
 			break;

@@ -6448,7 +6448,7 @@ check = "and CellItemDelegate lays the row out the same way the style"
 [[sabotage]]
 name = "a heading keeps the left edge in both layout directions"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tconst int from = leading_edge(c.left(), c.right(), indent,\n\t\t\t\t                              room, opt->direction);"
+find = "\t\t\t\tconst int from = leading_edge(c.left(), c.right() - sep,\n\t\t\t\t                              indent, room, opt->direction);"
 into = "\t\t\t\tconst int from = c.left() + indent;"
 count = 1
 check = "a heading shares an edge with its data in both layout"
@@ -8887,3 +8887,18 @@ into = "\tif (false)\n\t\treturn FillCell{Cell{}, true};"
 count = 1
 check = "CompositionMode_Clear erases the cells it covers and every other mode is left alone"
 
+
+# The takeover's gate, which is the only thing standing between a table the
+# application sized itself and the loss of Qt's grid for a defect it does
+# not have. Removing it makes the style take every table's grid over --
+# which is what the first three attempts did, and which the suite could not
+# see, because the check meant to catch it compares a table's rendering
+# with its grid on and off and both are blank of a grid once it is forced
+# off. 8.714.
+[[sabotage]]
+name = "the grid is taken over from a table the application sized itself"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (tv->showGrid() && content_sized) {"
+into = "\t\tif (tv->showGrid()) {"
+count = 1
+check = "the grid is taken over only where a column's width comes from this style, a table the application sized itself keeping Qt's own"

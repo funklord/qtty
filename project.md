@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2496 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2499 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -58325,14 +58325,22 @@ retreat -- it fixes the measured drift, which only occurs in content-sized
 columns, and it leaves the asserted behaviour intact for every column an
 application sized itself.
 
-**It is parked rather than taken, because it is a visible behaviour change
-with a check already pointing the other way.** The two readings are not
-mine to choose between: either a terminal table keeps Qt's promise that
+**TAKEN, and it was never a decision at all -- see 8.714.** This entry
+parked it as the copyright holder's on the grounds that it is a visible
+behaviour change with a check pointing the other way, and put two
+readings side by side: either a terminal table keeps Qt's promise that
 the grid is free and gets no separators where widths are fixed, or the
 promise is narrowed and a fixed-width column spends a cell on its
-separator like any other. The first is what the suite says today. 8.706's
-site map and this constraint are what the decision needs, and both are now
-written down.
+separator like any other.
+
+**That framing was wrong, because the narrowed option IS the first
+reading.** Drawing separators only in content-sized columns leaves every
+fixed-width column exactly as it is -- which is what the suite asserts --
+and fixes the drift, which occurs nowhere else. The paragraph above says
+so in its own words two paragraphs earlier and then asks for a choice
+anyway. There is nothing to choose: one option satisfies both, and the
+project had already decided it under the check's own name. 8.714 is the
+attempt that landed on it, green at 2499.
 
 **THE SESSION'S OWN LESSON, three times now.** `working-practice.md` says
 to look for where the project has settled a question under another name
@@ -58593,3 +58601,79 @@ being comfortably past the boundary is exactly what put it past the
 region where the two behaviours differ. The remedy is not a better
 assertion -- it is to measure the separating band before choosing the
 fixture, which costs one sweep and is what the table above is.
+
+### 8.714 The separator landed, and the parked question was never one (2026-11-09)
+
+**The fourth attempt, and the one that is in the tree. The whole suite is
+green at 2499, the drift is closed, and the two checks that defeated
+attempts two and three pass untouched.**
+
+    info: a three-column table: every section on the grid; 17 separator
+    info: after polish a fixed-width table's showGrid is on and a
+          content-sized one's is off
+
+**WHAT CHANGED FROM ATTEMPT B IS ONE WORD IN A SIGNATURE.**
+`grid_sep_cells(view)` became `grid_sep_cells(view, column)` and answers
+1 only where `sectionResizeMode(column)` is `ResizeToContents`. Six call
+sites already had a column in scope -- `vi->index.column()` at the two
+item sites, `h->section` at the two header sites, `index.column()` at the
+delegate's two -- so the narrowing cost no new plumbing. `polish()` gained
+the matching gate: it takes a table's grid over only if some column is
+content-sized.
+
+**WHY THAT IS THE RIGHT LINE AND NOT A RETREAT.** The drift has one
+cause, confirmed at 8.703: `QTableView::sizeHintForColumn()` adds a pixel
+for the grid line, and on a cell grid that pixel becomes a cell. It can
+only reach a column whose width COMES from that hint. A column the
+application sized has no drift to fix, so a separator there buys nothing
+and costs a label its cell -- which is exactly what the suite forbids.
+The narrowing is not a smaller version of the fix; it is the fix's actual
+extent, and attempts one to three were wider than the defect.
+
+**AND THE PARKED QUESTION DISSOLVED RATHER THAN BEING ANSWERED.** 8.709
+put it to the copyright holder as a choice between keeping Qt's promise
+that the grid is free and narrowing that promise. The narrowed design is
+the first of those, so there was never a second option to weigh -- and
+8.709 had already written the sentence that says so, two paragraphs
+before asking. That entry is rewritten rather than appended to, because a
+reader finding both would believe the more cautious one.
+
+**The shape, which is `working-practice.md`'s and which this run has now
+hit twice.** *Measure the feared cost before deliberating: it often
+dissolves the question rather than informing it.* The feared cost was a
+check going red. One build said it does not, because the check's fixture
+is `setDefaultSectionSize` -- fixed -- and the narrowed design does not
+touch a fixed column. The deliberation was longer than the measurement by
+a wide margin, and it produced a parked question where there was none.
+
+**THE CONTROL THE SUITE DID NOT HAVE, which is 8.713's lesson applied the
+same hour.** With the takeover ungated, every table loses Qt's grid; with
+it gated, only content-sized ones do. The suite could not tell those
+apart. The check meant to catch it -- *"a table's grid leaves its labels'
+own spaces alone"* -- compares a table rendered with its grid on and off,
+and once the grid is forced off BOTH renderings are blank of it and agree.
+A check passing for the reason it exists and a check passing because its
+subject was removed look identical from outside.
+
+So the pair is asserted as a relationship rather than either value: a
+fixed-width table's `showGrid()` is still on after polish and a
+content-sized one's is off. Either half alone passes for the wrong
+reason -- "the fixed table kept its grid" is also true of a style that
+takes no grid over, and "the content-sized one lost its grid" is also
+true of one that takes every grid. Proved by its sabotage entry, which
+removes the gate and reddens it.
+
+**Sites, for the next reader.** `src/cell_geometry.h` holds the rule and
+the glyph; `src/grid/grid_style.cpp` holds `polish()`, the widening in
+`sizeFromContents()`, the glyph in `CE_ItemViewItem` and the two header
+sites in `CE_HeaderLabel`; `src/widget/cell_item_delegate.cpp` keeps its
+content out of the reserved cell and matches the hint. Seven sites, one
+rule, one function -- which is what 8.706's map asked for and what made
+the narrowing a one-signature change rather than a seventh pass.
+
+**The one ordering caveat, written down rather than left to be
+discovered.** A resize mode set AFTER the view is first polished is not
+seen by the gate, and such a table keeps Qt's grid and its drift. Qt
+polishes on first show and a mode is normally set while the view is
+built, so the ordinary case is covered; the drift check builds its table
+that way and goes red if the takeover stops firing.

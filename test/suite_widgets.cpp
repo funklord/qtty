@@ -10256,6 +10256,110 @@ int suite_widgets() {
 		      " band, which nothing had rendered");
 	}
 
+	// A TABLE'S COLUMNS LAND ON THE GRID, AND KEEP THEIR SEPARATORS.
+	//
+	// 8.652 measured the defect and 8.703 confirmed the cause: Qt's
+	// QTableView::sizeHintForColumn() adds ONE PIXEL for its grid line, and
+	// on a cell grid that pixel becomes a whole cell -- so every
+	// ResizeToContents column came out a cell multiple PLUS ONE and the
+	// error accumulated, nine of twelve columns off the grid by the twelfth.
+	// GridStyle takes the grid over now: polish() turns Qt's off,
+	// sizeFromContents() widens the column by a cell to pay for the
+	// separator, and CE_ItemViewItem draws it.
+	//
+	// BOTH HALVES ARE ASSERTED, because either alone is a regression -- the
+	// width without the glyph loses the separators a table reads by, and
+	// the glyph without the width clips a character off every column.
+	{
+		const int cw = Qtty::GridMetrics::cw();
+		QTableWidget t(2, 3);
+		t.horizontalHeader()->setSectionResizeMode(
+		    QHeaderView::ResizeToContents);
+		t.verticalHeader()->hide();
+		for (int c = 0; c < 3; ++c)
+			for (int r = 0; r < 2; ++r)
+				t.setItem(r, c, new QTableWidgetItem(QStringLiteral("ab")));
+		t.resize(Qtty::GridMetrics::cells(22, 6));
+		Qtty::CellBuffer b(22, 6);
+		Qtty::render_once(t, b);
+		QStringList off;
+		for (int c = 0; c < 3; ++c) {
+			const int sz = t.horizontalHeader()->sectionSize(c);
+			const int at = t.horizontalHeader()->sectionPosition(c);
+			if (sz % cw || at % cw)
+				off << QStringLiteral("col %1 is %2 wide at %3")
+				    .arg(c).arg(sz).arg(at);
+		}
+		// The separator glyph, counted in the data rows rather than looked
+		// for at a column this check would have to compute: three columns
+		// each ending in one, over two rows, is six.
+		int bars = 0;
+		for (int y = 0; y < b.rows(); ++y)
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, y).ch == QStringLiteral("\u2502")) ++bars;
+		printf("info: a three-column table: %s; %d separator glyph(s)\n",
+		       off.isEmpty() ? "every section on the grid"
+		                     : qPrintable(off.join(QStringLiteral("; "))),
+		       bars);
+		CHECK(off.isEmpty(),
+		      "every ResizeToContents section lands on the cell grid, Qt's"
+		      " grid-line pixel no longer rounding each column off it");
+		// Six for the columns and two for the frame's own sides, which the
+		// box around the view draws on every row it covers. Counted rather
+		// than located, so a separator that moved is still counted and a
+		// separator that vanished is not.
+		CHECK(bars >= 6,
+		      "and the separators survive the grid being taken over, one at"
+		      " each column's right edge as Qt's own grid drew them");
+	}
+
+	// AND THE TABLE THE TAKEOVER MUST NOT TOUCH, which is the half the
+	// suite could not see. polish() takes a table's grid over to stop
+	// sizeHintForColumn()'s pixel rounding a column off the cell grid --
+	// and that pixel reaches only a column whose width COMES from that
+	// hint. A table the application sized itself has no drift, so taking
+	// its grid over would cost it Qt's separators and give it none of ours,
+	// which is project.md 8.709's decision read the other way round.
+	//
+	// IT IS ASSERTED AS A RELATIONSHIP rather than as either value, because
+	// each alone passes for the wrong reason: "the fixed table keeps its
+	// grid" is also true of a style that never takes one over, and "the
+	// content-sized table lost its grid" is also true of one that takes
+	// every grid. The pair is what says the gate discriminates.
+	//
+	// It is the control 8.713 asks for by name: the measurement that
+	// separates, chosen before the check rather than after it. Without it
+	// the ungated takeover and the gated one are indistinguishable here --
+	// the check that was supposed to catch the difference compares a
+	// table's rendering with its grid on and off, and with the grid forced
+	// off both renderings are blank of it and agree.
+	{
+		const int cw = Qtty::GridMetrics::cw();
+		QTableWidget fixed(2, 2);
+		fixed.horizontalHeader()->setDefaultSectionSize(12 * cw);
+		fixed.setShowGrid(true);
+		fixed.resize(Qtty::GridMetrics::cells(26, 5));
+		Qtty::CellBuffer fb(26, 5);
+		Qtty::render_once(fixed, fb);
+
+		QTableWidget sized(2, 2);
+		sized.horizontalHeader()->setSectionResizeMode(
+		    QHeaderView::ResizeToContents);
+		sized.setShowGrid(true);
+		sized.resize(Qtty::GridMetrics::cells(26, 5));
+		Qtty::CellBuffer sb(26, 5);
+		Qtty::render_once(sized, sb);
+
+		printf("info: after polish a fixed-width table's showGrid is %s and a"
+		       " content-sized one's is %s\n",
+		       fixed.showGrid() ? "on" : "off",
+		       sized.showGrid() ? "on" : "off");
+		CHECK(fixed.showGrid() && !sized.showGrid(),
+		      "the grid is taken over only where a column's width comes"
+		      " from this style, a table the application sized itself"
+		      " keeping Qt's own");
+	}
+
 	return fails;
 }
 
