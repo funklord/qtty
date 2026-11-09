@@ -58971,16 +58971,17 @@ leaves empty. So the branch's **upper** bound has a guard and its
 **lower** bound does not, and the entry is aimed at the half that can be
 broken visibly.
 
-**THE OPEN QUESTION, recorded rather than answered.** Whether the branch
-still earns its place is a question about the engine's roads: it was added
-when a shape whose span is sub-cell in every row vanished entirely, and
-something added since appears to cover the same cases. Establishing that
-means reading the roads above it -- the row-centre test
-`if (!inside) continue;` and whatever marks a partially covered cell --
-and it is a design question about `CellPaintEngine` rather than about this
-entry. It is NOT closed by the measurements above: three fixtures failing
-to isolate a branch is evidence about the fixtures as much as about the
-branch, which is the same asymmetry 8.716 records.
+**THE OPEN QUESTION IS ANSWERED, AND THE BRANCH IS GONE -- see 8.720.**
+It was whether the branch still earns its place, which needed the engine's
+roads read rather than another fixture. Reading them took one grep:
+`mark_covered()`, added at 8.649, runs unconditionally for every row
+before this scanline and marks by overlap at every pixel row -- and the
+scanline's own sample is one of those rows, so coverage has already marked
+a superset of what the rescue would. It is the remaining half of a removal
+8.384's row-band pass already got, for the same reason. **That argument is
+what the three failed fixtures could not supply**, which is 8.716's
+asymmetry pointed the right way: non-isolation is evidence about fixtures,
+a superset over the same sample line is evidence about the branch.
 
 **THE LEDGER OF THE EIGHT, closed.** Of the eight the sweep reported:
 
@@ -59074,3 +59075,76 @@ and one paid nothing. Deriving a lens from the last bug is worth doing --
 derivation is a hypothesis and the test is a measurement. Writing down
 the lens that failed costs three lines and saves the next session the
 five builds this took.
+
+### 8.720 The span rescue was the other half of a removal already made (2026-11-09)
+
+**8.718 left open whether the sub-cell span rescue still earns its place
+and said the answer needed the engine's roads read. It did, and the answer
+was written in the tree, in the comment of the road that replaced it.**
+
+`fill_polygon()` carries this, ten lines above the rescue:
+
+    // 8.384'S ROW-BAND PASS WAS HERE AND IS GONE, SUBSUMED.
+    //
+    // It existed because one sample line per row cannot see a shape
+    // lying between two of them ... mark_covered() above computes
+    // coverage itself, at every pixel row -- so every case the band
+    // rescued is now found exactly rather than approximately.
+
+**The two rescues are a pair and only one was removed.** 8.384's row-band
+pass answered "a shape the single sample line misses" by asking which
+cells each edge passes through; the span rescue answers "a span the
+single sample line finds but which covers no cell centre" by marking the
+cell its midpoint falls in. Both are approximations of coverage, written
+for the same deficiency, and 8.649 replaced the deficiency. It removed
+one of them and kept the other, saying so in as many words -- *"the
+thin-shape rescue keeps the case it was written for"* -- which was
+caution rather than a measurement.
+
+**AND THE REDUNDANCY IS BY CONSTRUCTION, not merely unobserved.**
+`mark_covered()` runs unconditionally for every row, **before** the
+scanline, and marks by OVERLAP at every pixel row of the cell row. The
+scanline's own sample is `(y + 0.5) * ch` -- which **is** one of those
+pixel rows. So at the very y a sub-cell span is found, coverage has
+already marked every cell that span touches, and that is a superset of
+the one cell its midpoint falls in. The rescue could not add a cell.
+
+That argument is what distinguishes this from 8.716's mistake. Three
+fixtures failing to isolate a branch is evidence about the fixtures; a
+superset argument over the same sample line is evidence about the branch.
+
+**Proved the way the precedent was**, which named its method: comparison
+against an independent raster render. With the rescue gone --
+
+    nine fills against raster Qt: 0 exact disagreement(s), 0 invented
+    a slanted band marks 22 cells, raster 22
+    three tilings compared against raster Qt, 0 disagreement(s)
+
+-- and the whole suite green at 2499, including *"a fill that covers cell
+centres marks exactly the cells raster Qt paints, a curve included"*,
+which is asserted in both directions, and *"no fill marks a cell raster
+leaves blank, which holds for the thin ones too"*, which is 8.386's floor.
+The two fixtures built in 8.718 agree: the thickness sweep is identical at
+all six thicknesses and the sliver still marks 12 cells over 6 of 6 rows.
+
+**52 bytes of text**, measured on `cell_paint.o` with the branch restored
+and removed, 70,778 against 70,726. Small, and the honest figure rather
+than the one the change is for.
+
+**Its sabotage entry is gone with it**, from 805 entries to 804. That is
+the right order and worth stating: 8.718 re-aimed that entry so the spec
+was truthful about the code **as it stood**, and an hour later the code
+went. Neither step was wasted -- the re-aiming is what established that
+only the rescue's choice of cell was defended, which is what sent the
+next question to the roads.
+
+**WHAT THIS SAYS ABOUT THE WHOLE SWEEP.** The eight entries were read as
+a coverage problem. Four were mis-aimed bookkeeping, one was a real check
+defect, one was kept on purpose, one was retired -- and this one was
+**dead code wearing a dead check's clothes**. A guard nothing can break
+is sometimes a guard nothing needs, and the sweep could not tell those
+apart because it only ever asked whether the named check went red.
+`--diff` asks what moved; neither question asks whether the code should
+be there. That one is still a reading, and the place to read is the
+sibling road's comment rather than the branch's own -- the branch
+explains why it was written and the road explains why it no longer is.

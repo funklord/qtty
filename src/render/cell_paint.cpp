@@ -2663,24 +2663,31 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			// question the row sample above asks, asked along the other axis.
 			int first = int(std::ceil(lo / cw - 0.5));
 			int last = int(std::floor(hi / cw - 0.5));
-			// A SPAN NARROWER THAN A CELL contains no centre, and asking
-			// only about centres loses it. A shape whose span is sub-cell
-			// in every row vanishes entirely, and whether it does is a
-			// property of its slope rather than of its size: measured on a
-			// 3-pixel diagonal band over 20 cells, slopes of 1 and 4 cells
-			// per cell drew 20 cells and slopes of 0.25, 0.5 and 2 drew
-			// NONE -- the shape is regular, the grid is regular, so a band
-			// that misses one centre misses every one of them.
+			// THE SUB-CELL SPAN RESCUE WAS HERE AND IS GONE, SUBSUMED --
+			// the same removal 8.384's row-band pass got, for the same
+			// reason, and it was the remaining half of that pair.
 			//
-			// The cell the span falls in, then, rather than nothing. This
-			// is the same answer the half-block composer reached for an
-			// icon's thin stroke and for the same reason: a point sample
-			// of a shape is a lottery whose stake is the shape. It cannot
-			// over-fill, because it fires only where no centre is covered
-			// and marks exactly one cell.
-			if (last < first) {
-				first = last = int(std::floor((lo + hi) / 2 / cw));
-			}
+			// It existed because a span narrower than a cell contains no
+			// centre, so asking only about centres lost it: a 3-pixel
+			// diagonal band over 20 cells drew 20 cells at slopes of 1 and
+			// 4 and NONE at 0.25, 0.5 and 2, the shape and the grid both
+			// being regular. It answered by marking the one cell the span's
+			// midpoint falls in.
+			//
+			// mark_covered() above makes that unreachable. It runs
+			// unconditionally for every row, before this scanline, and
+			// marks by OVERLAP at every pixel row -- and this scanline's
+			// own sample, (y + 0.5) * ch, is one of those pixel rows. So at
+			// the very y this span was found, coverage has already marked
+			// every cell the span touches, which is a superset of the one
+			// cell the midpoint falls in. The rescue could not add a cell.
+			//
+			// Measured rather than argued, three ways: removing it changes
+			// no line of the whole suite's output; a band swept over six
+			// thicknesses from 0.4 to 3.0 px is identical at every one; and
+			// a 7-pixel sliver built so that every row's span lies strictly
+			// between two cell centres still marks 12 cells over 6 of 6
+			// rows without it. project.md 8.720.
 			// THROUGH fill() rather than cell by cell, which is how this
 			// run gets the wide-cell guard: a fill ending in the middle of
 			// a two-column cluster used to leave the other half behind,
