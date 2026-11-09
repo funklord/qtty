@@ -208,6 +208,39 @@ else
 	fi
 fi
 
+# AND sabotage.py's FLAGS AGAINST ITS OWN --help, both directions. The tool
+# refuses an argument it does not understand -- which is what makes a flag it
+# accepts and does not document a mode nobody can find, and a flag it
+# documents and rejects a command that fails on a reader doing what they were
+# told. Same shape as profiles-check, fuzz-check and header-check: a list and
+# a reality, asked in both directions.
+#
+# Read from the SOURCE rather than by importing it, because importing runs
+# module-level code and this check must not be able to do anything to the
+# tree. Two literals and the usage block, which is why they are spelled
+# plainly in sabotage.py rather than computed.
+# The whole FUNCTION, not the two assignment lines: a set literal wraps when
+# a flag is added to it, and reading the lines caught three of six the first
+# time this was written -- a false failure, which is the one thing a gate
+# must not produce. Only `--` flags are compared; `-h` has no documented
+# line of its own and is `--help`'s alias.
+sab_flags=$(awk '/^def known_arguments/ { inside = 1; next }
+	inside && /^def / { exit }
+	inside { print }' "$root/tool/sabotage.py" \
+	| grep -oE '"--[a-z-]+"' | tr -d '"' | sort -u)
+sab_doc=$(grep -oE '^  --[a-z-]+' "$root/tool/sabotage.py" | tr -d ' ' | sort -u)
+if [ -z "$sab_flags" ] || [ -z "$sab_doc" ]; then
+	echo "tools-check: read no sabotage.py flags ($(echo "$sab_flags" | wc -w)) or" >&2
+	echo "             no documented ones ($(echo "$sab_doc" | wc -w)), so the" >&2
+	echo "             comparison below would pass against nothing" >&2
+	fail=1
+elif [ "$sab_flags" != "$sab_doc" ]; then
+	echo "tools-check: sabotage.py's flags and its --help disagree." >&2
+	echo "             accepted:   $(echo "$sab_flags" | tr '\n' ' ')" >&2
+	echo "             documented: $(echo "$sab_doc" | tr '\n' ' ')" >&2
+	fail=1
+fi
+
 [ "$fail" -eq 0 ] || exit 1
 echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and"
 echo "             .gitignore, both build systems state $qstd, the suite's"

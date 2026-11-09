@@ -32,6 +32,7 @@ import hashlib
 import os
 import re
 import signal
+import difflib
 import subprocess
 import sys
 import tomllib
@@ -333,6 +334,7 @@ USAGE = """\
 sabotage.py -- break the code on purpose and confirm the suite says so.
 
 usage: sabotage.py [--validate] [--only TEXT] [--from N] [--dirty-ok]
+                   [--diff] [--names FILE] [--help]
 
 Runs every entry in tool/sabotage.toml: applies it, builds, runs the
 suite, and requires the check the entry names to go red. Restores the
@@ -364,10 +366,94 @@ and so is invisible to it. project.md 8.683.
                  like --validate, and it catches the one class of refusal
                  that --validate's presence test cannot see. An absent
                  file or one with no PASS line is a failure, not a skip.
+  --help, -h     print this and do nothing. Listed because tools-check
+                 compares the flags this accepts against the flags it
+                 documents, in both directions, and an undocumented one
+                 is a mode nobody can find.
+
+  --diff         print the lines of the suite's output that the sabotage
+                 CHANGED, beside whether the named check went red. For an
+                 entry that is already red this says nothing new; its use
+                 is an entry that stays GREEN, where it answers the only
+                 question worth asking -- did the broken code change any
+                 observable at all. No changed line means the suite cannot
+                 see the code, and a changed `info:` line names where a
+                 check could aim. Best with --only.
+
   --dirty-ok     run although src/, test/ or include/ has uncommitted
                  changes. The refusal exists because more than one
                  session works these trees.
 """
+
+
+def canonical(line):
+	"""A line with every number and address replaced, so two runs of the
+	same code produce the same form for a line whose figures move."""
+	# A temp path first, and by name rather than by its digits: these carry
+	# six random LETTERS, so two runs produce two different canonical forms
+	# and neither looks volatile to the control below. Measured: it was the
+	# last false positive standing after the control had removed the rest.
+	line = re.sub(r"/tmp/[^\s;,]+", "/tmp/#", line)
+	line = re.sub(r"0x[0-9a-fA-F]+", "0x#", line)
+	return re.sub(r"\d+(?:\.\d+)?", "#", line)
+
+
+def volatile_forms(first, second):
+	"""The canonical forms that move between two runs of the SAME code.
+
+	Without this the diff below is unreadable, and that was measured
+	rather than feared: the first version of it reported 24 changed lines
+	for one entry and every one was noise -- a temp directory with a
+	random suffix, a widget's address, a frame budget off by a
+	millisecond, a present time off by 12. A tool whose output is 100 per
+	cent false positives is one nobody reads twice.
+
+	It cannot be fixed by filtering what noise is known to look like,
+	because that is a guess about the suite's whole output and goes stale
+	the moment a check prints something new. So the noise is MEASURED: the
+	baseline is run twice, and any line whose figures differ with nothing
+	changed is excluded from every entry's diff. That is `evidence.md`'s
+	control -- the thing that would move anyway, moved on purpose, before
+	anything is concluded from it moving.
+	"""
+	def forms_of(text):
+		d = {}
+		for l in text.splitlines():
+			if l.startswith("info:"):
+				d.setdefault(canonical(l), set()).add(l)
+		return d
+
+	a, b = forms_of(first), forms_of(second)
+	# NOT IDENTICALLY PRESENT IN BOTH, which is wider than "its figures
+	# moved" and had to be, measured: canonical() replaces digits, so a
+	# temp directory named qt_temp-mdAELi and one named qt_temp-aiEdfa are
+	# two DIFFERENT forms, each seen once, and neither looked volatile. Four
+	# of eight surviving lines were that shape. A form missing from either
+	# run is not evidence about the entry under test, whatever the reason.
+	return {f for f in set(a) | set(b)
+	        if f not in a or f not in b or a[f] != b[f]}
+
+
+def changed_lines(before, after, noise):
+	"""The suite's `info:` lines a sabotage moved, noise excluded.
+
+	Asked only of an entry that stayed GREEN, where the interesting answer
+	is usually the empty one: broken code that changes no line of the
+	suite's output is code the suite cannot see, and no assertion written
+	against the existing fixtures can be made to catch it. That is a
+	different finding from a check aimed at the wrong value, and until
+	this existed the two were told apart by hand, one investigation at a
+	time.
+
+	Only `info:` lines. PASS and FAIL are judged above and reported there;
+	build output is not the suite's. What is wanted is the figures a check
+	could be aimed at.
+	"""
+	def keep(text):
+		return [l for l in text.splitlines()
+		        if l.startswith("info:") and canonical(l) not in noise]
+	diff = difflib.unified_diff(keep(before), keep(after), lineterm="", n=0)
+	return [l for l in diff if l[:1] in "+-" and l[:3] not in ("+++", "---")]
 
 
 def known_arguments(argv):
@@ -378,7 +464,8 @@ def known_arguments(argv):
 	refusal it can read instead of an hour of work it did not ask for.
 	"""
 	takes_value = {"--only", "--from", "--names"}
-	flags = takes_value | {"--validate", "--dirty-ok", "--help", "-h"}
+	flags = takes_value | {"--validate", "--dirty-ok", "--diff", "--help",
+	                       "-h"}
 	i = 0
 	while i < len(argv):
 		a = argv[i]
@@ -748,7 +835,25 @@ def main():
 					say("          FAIL: " + c)
 			return 2
 		green = set(passing_checks(out))
+		base_out = out
 		say("sabotage: baseline green, %d checks passing" % len(green))
+
+		# THE CONTROL FOR --diff, and it is not optional: see
+		# volatile_forms(). The second run rebuilds nothing, the sources
+		# being untouched, so it costs one suite run and buys the
+		# difference between a readable diff and 24 false positives.
+		noise = set()
+		if "--diff" in sys.argv:
+			ok2, out2 = build_and_test()
+			if ok2 is not True:
+				say("sabotage: the second baseline run is not green, so"
+				    " --diff has no control.")
+				return 2
+			noise = volatile_forms(base_out, out2)
+			say("sabotage: --diff control -- %d output line(s) move between"
+			    " two runs of" % len(noise))
+			say("          the same code, and are excluded from every diff"
+			    " below")
 
 		# Every check any entry reddens, kept so the run can say what the
 		# SET defends rather than only that each entry did its own job. An
@@ -930,6 +1035,31 @@ def main():
 				say("          one thing this target exists to find.")
 				for c in failing_checks(out)[:5]:
 					say("          (it did report: %s)" % c)
+				if "--diff" in sys.argv:
+					# The next question, asked here because this is the
+					# only branch where it has an answer: did the broken
+					# code change ANY observable the suite prints? An empty
+					# answer and a long one send a reader to different
+					# places -- the first says no assertion over the
+					# existing fixtures can catch this and the fixture is
+					# what must change, the second names the numbers a
+					# check could be aimed at.
+					moved = changed_lines(base_out, out, noise)
+					if not moved:
+						say("          --diff: NO line of the suite's"
+						    " output changed.")
+						say("          The suite cannot see this code at"
+						    " all. A re-aimed")
+						say("          assertion will not help; the FIXTURE"
+						    " has to reach it.")
+					else:
+						say("          --diff: %d line(s) changed:"
+						    % len(moved))
+						for l in moved[:12]:
+							say("            %s" % l)
+						if len(moved) > 12:
+							say("            ... and %d more"
+							    % (len(moved) - 12))
 				rc = 1
 	finally:
 		restorer.restore()

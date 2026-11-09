@@ -58677,3 +58677,114 @@ seen by the gate, and such a table keeps Qt's grid and its drift. Qt
 polishes on first show and a mode is normally set while the view is
 built, so the ordinary case is covered; the drift check builds its table
 that way and goes red if the takeover stops firing.
+
+### 8.715 Three of the eight were not dead checks but mis-aimed entries (2026-11-09)
+
+**`sabotage.py --diff` answers, in one run, the question every one of these
+diagnoses had been answering by hand: did the broken code change any
+observable the suite prints? Applied to the five entries still open, it
+settled all five -- and reframed what the eight were.**
+
+**THE LEDGER, measured rather than read.** Each line is the entry, what
+the sabotage moved in the suite's own output, and which check went red:
+
+    1  a run does not join the line it is drawn on
+       moved  the custom-widget contract promises 7 row(s); 0 -> 1
+       red    "and each row's OR ELSE happens: the consequence is
+               measured on a widget that breaks the rule ..."
+
+    2  a thin fill's sub-cell span is dropped again
+       moved  NOTHING -- the `3 px band at six slopes` line is identical
+       red    nothing
+
+    3  a tiled pixmap goes back to one placement per tile
+       moved  tiling keys -- same twice equal -> same twice DIFFER
+       red    "the same tiling twice is one placement identity ..."
+
+    4  a sub-control declines a part the base style claims, unpinned
+       moved  93 sub-control answers agree -> 85; 20 differ, 0 unpinned
+       red    two containment checks, neither the one named
+
+    5  a spin box keeps both arrows however narrow it is
+       moved  0 of 7 widths lost the value -> 2 lost the value
+       red    "and a spin box keeps a readable value at every width",
+               its right-to-left twin, and "every deliberate difference
+               still happens"
+
+**SO THREE OF THE FIVE ARE MISATTRIBUTION, NOT DEATH.** In 1, 3 and 5 the
+code is defended -- a check goes red, promptly and loudly -- by a check
+the entry does not name. The spec's unit is a break paired with the check
+that catches it, and in those three the pairing is wrong while both halves
+are sound. That is a different fault from an undefended guard, it is
+cheap to fix, and it has been counted as the expensive kind since 8.693.
+
+**Which means the headline figure was wrong in the direction that
+matters.** "Eight checks defend nothing" is a claim about the suite's
+coverage. At least three of the eight were claims about the SPEC's
+bookkeeping, and the suite was doing its job in each. The tally was
+produced by the harness reporting, correctly, that the named check stayed
+green -- and nobody asked the next question, which is whether anything
+else went red. The harness printed the answer all along, in the
+`(it did report: ...)` lines, and five sessions read past it.
+
+**5 IS THE SHARPEST, because the arrows check cannot be fixed into
+catching it.** Forcing both arrows on at every width puts them outside a
+one-cell widget -- and the complex-side funnel clamps an out-of-bounds
+rect to empty, while the check skips an empty arrow deliberately, an
+arrow being "either absent or wholly inside". So the break is real, the
+check's design is right, and the observable it produces is the VALUE
+losing its cell, which its sibling check asserts. Pointing the entry at
+the sibling is the whole fix.
+
+**4 IS THE ONE REAL DEFECT IN A CHECK, and the root is a missing
+dimension in a key.** `seen_diffs` is a set of `widget/part/claimed` or
+`/declined`, and the sweep runs every widget at several widths -- so a
+difference pinned legitimately at one width licenses the same difference
+at EVERY width, silently. The sabotage makes a group box's contents
+decline where it previously agreed; the key was already pinned from the
+narrow widths where declining is correct, so `unpinned` stayed empty.
+`agreed` fell from 93 to 85 and the only thing reading it is
+`agreed > 0`, the vacuous-pass guard. **The pin outlived its condition by
+being written without it**, which is the shelf-life rule applied to a
+pinned set rather than to a sentence.
+
+**2 IS 8.713 AGAIN, and that makes it a class rather than an instance.**
+The fixture's band is 3 pixels thick and the code under test is the
+fallback for a span narrower than a cell, so the fixture never reaches
+it. Same shape as the narrow item at three cells: a fixture chosen for
+being extreme, sitting outside the band where the code runs. Two of eight
+now, from unrelated subsystems.
+
+**THE INSTRUMENT, and why its control is not optional.** `--diff` prints
+the `info:` lines a sabotage moved. The first version printed 24 lines
+for one entry and **every one was noise** -- a temp directory with a
+random suffix, a widget's address, a frame budget off a millisecond, a
+present time off twelve. A tool whose output is entirely false positives
+is read once.
+
+It cannot be fixed by filtering what noise looks like, because that is a
+guess about the whole suite's output and goes stale the moment a check
+prints something new. So the noise is **measured**: the baseline is run
+twice and any line not identically present in both is excluded. Three
+refinements, each paid for by a measurement -- the control (24 to 8),
+then "not identically present in both" rather than "its figures moved",
+since a temp path's six random LETTERS make two different canonical forms
+and neither looks volatile (8 to 3), then canonicalising `/tmp/...` by
+name (3 to about 2).
+
+**Its known limit, stated because a reader will act on this output.** The
+control sees what moves between two runs of the same code, so a line that
+flips half the time survives half the time: `Qt's list: [early, late]`
+appeared in two different entries' diffs, in opposite directions, and is
+noise in both. The remedy is to read the lines rather than count them,
+which is why it prints them.
+
+**And `tools-check` now compares `sabotage.py`'s flags against its own
+`--help`, both directions**, the same shape as `profiles-check`,
+`fuzz-check` and `header-check`. A flag it accepts and does not document
+is a mode nobody can find; one it documents and rejects fails a reader
+doing what they were told. Proved by control: exit 1 with a flag added
+and not documented, 0 restored. The first version read the two set
+literals line by line and found three of six, because adding a flag wraps
+the literal -- a false failure, which is the one thing a gate must not
+produce, so it reads the whole function instead.
