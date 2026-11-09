@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2499 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2500 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -59148,3 +59148,59 @@ apart because it only ever asked whether the named check went red.
 be there. That one is still a reading, and the place to read is the
 sibling road's comment rather than the branch's own -- the branch
 explains why it was written and the road explains why it no longer is.
+
+### 8.721 The bound was reachable, and only a modal could reach it (2026-11-09)
+
+**8.719 found the horizontal half of `placed_at()`'s on-screen bound
+asserted by nothing, built a fixture for it, measured the fixture passing
+both ways, and removed it rather than keeping a check that passed for the
+wrong reason. The gap is closed now, and what stood in the way was the
+widget the fixture used.**
+
+    y upper bound dropped    1 check red
+    x upper bound dropped    0 checks red
+
+**`QMenu::popup()` clamps to the available screen itself.** So Qt has
+already moved a menu inside the terminal before the compositor sees it,
+and `placed_at()`'s own bound never decides anything for one. Measured
+twice, with the bound removed: a 25-cell menu anchored at 13 of 20 kept
+its name on screen, and a 34-cell menu anchored at 25 of 30 landed at
+column 0. Two fixtures, two widgets, and in both the thing being tested
+had been settled upstream.
+
+**A modal goes through the same function with `flip = false` and nothing
+clamps it first.** That is the layer whose placement this bound actually
+owns -- and it is the site whose comment explains why the position has to
+be real rather than drawn, since `InputRouter::on_mouse()` hit-tests a
+modal against its own `geometry()`. With the bound:
+
+    a 20-cell modal moved to 25 of 30 sits at x=10, its label on screen
+
+and without it:
+
+    a 20-cell modal moved to 25 of 30 sits at x=25, its label OFF SCREEN
+
+**The check reads the root as well as the modal**, and that half is not
+decoration. Showing the modal's own label can be satisfied by the follow
+rule scrolling the whole composition to chase a layer that has gone off
+screen, which is how 8.719's first attempt passed: what a person would
+then see is the window moving sideways because a dialog opened. So the
+check requires `row5` to still be at column 0.
+
+**And it reads a row the layer does not cover**, which cost one run. The
+first version read `row0` and failed on clean code, because a 34-cell menu
+covers the top three rows outright -- `row0` was absent for a reason
+having nothing to do with scrolling. A check on a cell the thing under
+test paints over is not a check on the thing under test.
+
+**THE SHAPE, which is this run's fourth instance and the one worth
+carrying.** Four times today a guard looked undefended because the
+fixture could not reach it, and each time the obstruction was different:
+a funnel that repaired the broken value (8.713, 8.717), a sibling road
+that covered the same cells (8.718, 8.720), and now **a toolkit that had
+already done the clamping upstream**. The common form is that *something
+between the break and the assertion was supplying the right answer* --
+and the thing to ask is not "is this code dead" but **"who else answers
+this question before my check reads it"**. The first two were found by
+reading our own code; this one needed Qt's behaviour, which is the part
+no amount of reading this tree would have given.

@@ -8927,3 +8927,18 @@ find = "\t\tif (tv->showGrid() && content_sized) {"
 into = "\t\tif (tv->showGrid()) {"
 count = 1
 check = "the grid is taken over only where a column's width comes from this style, a table the application sized itself keeping Qt's own"
+
+# The horizontal half of placed_at()'s bound, which nothing asserted until
+# 8.721. Dropping the Y upper bound reddens a check at once; dropping this
+# one reddened NOTHING, because every fixture that could have reached it
+# used a QMenu -- and QMenu::popup() clamps to the available screen itself,
+# so Qt has already moved a menu inside the terminal before the compositor
+# sees it. A modal goes through the same function with flip = false and
+# nothing clamps it first, which is why the check this names uses one.
+[[sabotage]]
+name = "a layer slides off the terminal's right edge"
+file = "src/runtime/compositor.cpp"
+find = "\tx = qBound(0, x, qMax(0, limit_x - g.width()));"
+into = "\tx = qMax(0, x);"
+count = 1
+check = "a modal moved past the terminal's right edge slides back onto it"

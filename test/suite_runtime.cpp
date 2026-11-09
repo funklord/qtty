@@ -3200,6 +3200,84 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// AND THE CASE WHERE THE CLAMP DOES FIRE, which the pair above is
+	// deliberately sized to avoid -- its own comment says so -- and which
+	// nothing else reached. project.md 8.721.
+	//
+	// placed_at() bounds a layer's x and its y to the terminal. Dropping
+	// the Y upper bound reddens a check at once; dropping the X upper bound
+	// reddened NOTHING, measured by doing exactly that, so a layer could
+	// slide off the right edge and no check would say so.
+	//
+	// It needs a layer that can neither fit at its anchor nor flip: wider
+	// than the room to its right AND wider than the room to its left.
+	// Anchored at 25 cells of 30 with a menu wider than 25, both hold, so
+	// sliding is the only answer left and the bound is what supplies it.
+	//
+	// ASSERTED ON THE ROOT AS WELL AS ON THE MENU, and the root half is the
+	// one with teeth. Showing the menu's own text is satisfied by the
+	// follow rule scrolling the whole composition to chase a layer that has
+	// gone off screen -- which is how the first attempt at this check
+	// passed with the bound removed. What a person would see then is the
+	// window moving sideways because a menu opened, so the check requires
+	// the root to be exactly where it was.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		for (int i = 0; i < 6; ++i)
+			v->addWidget(new QLabel(QStringLiteral("row%1").arg(i)));
+		win.show();
+		win.resize(GridMetrics::cells(30, 6));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		// A MODAL, not a menu, and that distinction is the finding.
+		// QMenu::popup() clamps to the available screen itself, so Qt has
+		// already moved a menu inside the terminal before the compositor
+		// sees it and placed_at()'s own bound never decides anything --
+		// measured, a 34-cell menu anchored at 25 lands at column 0 with
+		// the bound removed. A modal goes through the same function with
+		// flip = false and nothing clamps it first, so it is the layer
+		// whose placement this bound actually owns.
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.setModal(true);
+		auto *dv = new QVBoxLayout(&dlg);
+		dv->setContentsMargins(0, 0, 0, 0);
+		dv->addWidget(new QLabel(QStringLiteral("Discard changes")));
+		dlg.resize(GridMetrics::cells(20, 3));
+		dlg.show();
+		dlg.move(25 * cw, 1 * ch);
+		QCoreApplication::processEvents();
+		CellBuffer b(30, 6);
+		c.compose(b);
+		const auto lines = b.to_text().split(QLatin1Char('\n'));
+		int row5_at = -1;
+		for (const QString &l : lines)
+			if (l.contains(QStringLiteral("row5")))
+				row5_at = l.indexOf(QStringLiteral("row5"));
+		printf("info: a 20-cell modal moved to 25 of 30 sits at x=%d, 'row5'"
+		       " is at column %d and its label is %s\n",
+		       dlg.geometry().x() / cw, row5_at,
+		       b.to_text().contains(QStringLiteral("Discard"))
+		           ? "on screen" : "OFF SCREEN");
+		if (!b.to_text().contains(QStringLiteral("Discard")))
+			printf("info: the frame holds:\n%s", qPrintable(b.to_text()));
+		CHECK(b.to_text().contains(QStringLiteral("Discard"))
+		      && row5_at == 0,
+		      "a modal moved past the terminal's right edge slides back onto"
+		      " it, rather than off the screen or taking the window behind"
+		      " it sideways");
+		dlg.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// The control for the pair above: the same fixture on a terminal big
 	// enough that the root does not scroll at all. Without it, a compositor
 	// that subtracts a fixed offset from every popup passes the check above --
