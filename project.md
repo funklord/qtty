@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2493 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2496 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -57725,15 +57725,84 @@ alternative -- picking cell counts that "look right" -- would be this tree
 deciding what the application meant.
 
 **AND A SHORT LINE RENDERS SOLID, which is the one place N2 overrides
-faithfulness.** `DashDotDotLine` quantised to cells has a period of six
-cells at minimum; a four-cell line would show its first two and read as a
-line with most of itself missing, which is 8.658's "damage" objection
+faithfulness.** `DashDotDotLine` quantised to cells has a period of
+**seven** cells -- 2+1+1+1+1+1, computed rather than eyeballed, the first
+draft of this entry having said six and then eight in two places -- so a
+four-cell line would show its first two and read as a line with most of
+itself missing, which is 8.658's "damage" objection
 holding where the Unicode evidence does not reach it -- a dash needs room
 to be legible as a dash. So a line shorter than one full period is drawn
 solid. **This is the one part of 8.697 with no prior art behind it and it
 is named as such**: it is a legibility floor, it is this tree's own, and
 the figure follows from the pattern rather than from taste.
 
-**Not written yet.** The gate is running over the section-collection batch
-and a `cell_paint.cpp` edit during it would invalidate that verdict --
-which is the confounding this file has recorded twice this week.
+**AND THE FLOOR IS JUDGED ON WHAT IS VISIBLE, which is a deliberate
+difference from Qt.** On the rule road the span is clipped before the
+length is taken, so a forty-cell line clipped to three visible cells is
+drawn solid. Qt would dash the true geometry and let the clip hide part of
+it. The floor exists so that a short stroke is not mostly missing, and the
+stroke a reader sees is the clipped one -- so judging the visible span
+serves the reason the floor exists, where judging the true length would
+satisfy Qt and leave the reader with two inked cells out of three.
+
+### 8.701 The dash, implemented -- and three faults of mine on the way (2026-11-09)
+
+**8.697 decided it, 8.700 settled the shape, and this is the code with the
+measurement pinned.** `qtty` renders Qt's pen styles as skipped cells on
+both stroke roads, and the suite asserts the patterns rather than their
+mere difference. Three checks, 2493 to **2496**, taken from `count-check`
+and not from arithmetic.
+
+**WHAT IT RENDERS, on a twenty-cell rule:**
+
+    SolidLine        ────────────────────
+    DashLine         ── ── ── ── ── ── ──
+    DotLine          ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+    DashDotLine      ── ─ ── ─ ── ─ ── ─
+    DashDotDotLine   ── ─ ─ ── ─ ─ ── ─ ─
+
+Set beside 8.658's table, where all five were the solid line cell for
+cell. A nine-cell diagonal inks 9 cells solid and **6** dashed, which is
+`DashLine`'s 2-on-1-off over nine: on at 0, 1, 3, 4, 6, 7.
+
+**The patterns are PINNED as measured rather than asserted to differ**,
+because four styles that all came out as *some* broken line would satisfy
+inequality while carrying the wrong pattern, and the pattern is the whole
+of what the application expressed.
+
+**THREE FAULTS, each worth more than the feature.**
+
+**One: the first probe measured the library from before the change.** I
+compiled `cell_paint.cpp` syntax-only, confirmed it was clean, and linked a
+probe against the `libqtty.a` that was already on disk. Every style came
+out solid and I nearly recorded that the dash did not work.
+`build-and-commit.md` states this exactly -- *never conclude that a test
+passes or fails from a binary the build step did not rebuild* -- and 8.699,
+written an hour earlier in this same session, is about nothing else. **A
+syntax-only compile is not a build, and it is the most convincing kind of
+not-a-build** because it reports success over the file you just edited.
+
+**Two: the first implementation touched one of the two roads.** With the
+dash in `stroke_segment` alone, the diagonal dashed and every horizontal
+line stayed solid -- which is precisely the case 8.658 measured and the
+case a reader would try first. An axis-aligned line does not reach
+`stroke_segment`: `line()` has its own rule road with two write loops,
+`clear_run()` and all-or-nothing semantics. **The comment beside that road's
+write loop had already said why this matters**, about pen weight: *"Both
+roads must, or weight would appear on a diagonal and not on a rule --
+which is the angle-dependence that ruled out the heavy box-drawing family
+in the first place."* I had quoted that argument in 8.697 to justify
+rejecting the Unicode family, and then implemented half of it.
+
+**Three: `DashDotDotLine`'s period is seven and I wrote six, then eight.**
+`2+1+1+1+1+1`, asserted twice in prose before being computed. The measured
+glyph positions settle it -- 0, 1, 3, 5, then 7, 8, 10, 12, then 14, 15,
+17, 19 -- and the suite's four-cell check passes either way, which is what
+would have let the wrong figure stand.
+
+**The shape all three share is that the code was right and the claim about
+it was not.** A stale binary, a half-applied rule, an uncomputed sum: none
+would have failed a build, and two were caught only by measuring something
+I expected to confirm. That is the sixth, seventh and eighth instance this
+session of 8.689's family, and the only reliable move remains the one that
+entry names -- go and look at the thing the claim is about.

@@ -3877,6 +3877,113 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// A PEN STYLE REACHES THE CELLS AS SKIPPED CELLS, ON BOTH
+			// ROADS.
+			//
+			// 8.658 measured every style rendering identically -- five
+			// pens, one solid line, cell for cell -- and left the question
+			// open. 8.697 decided it from prior art once working-practice
+			// made it this tree's to decide: ncurses' ACS has no dashed
+			// member at all, Unicode box-drawing has twelve dashed and
+			// three diagonal with an EMPTY intersection, so a dashed cell
+			// line is a recognised form and an angle-dependent one is not.
+			// The pattern is Qt's own, quantised so each element takes at
+			// least one cell.
+			//
+			// BOTH ROADS, which is what this asserts and what the first
+			// attempt got wrong: it touched stroke_segment() alone, the
+			// diagonal dashed and every horizontal line stayed solid. The
+			// weight check above says why in its own comment -- both roads
+			// must carry a pen property or it appears on a diagonal and not
+			// on a rule.
+			{
+				const auto row_of = [&](Qt::PenStyle st, int len) {
+					Qtty::CellBuffer b(len + 2, 1);
+					{
+						Qtty::CellPaintDevice dev(b);
+						QPainter p(&dev);
+						QPen pen(Qt::white, 1.0);
+						pen.setStyle(st);
+						p.setPen(pen);
+						p.drawLine(0, ch / 2, cw * len, ch / 2);
+					}
+					return b.to_text().trimmed();
+				};
+				const QString solid = row_of(Qt::SolidLine, 20);
+				const QString dash = row_of(Qt::DashLine, 20);
+				const QString dot = row_of(Qt::DotLine, 20);
+				const QString dashdot = row_of(Qt::DashDotLine, 20);
+				const QString dashdotdot = row_of(Qt::DashDotDotLine, 20);
+				printf("info: 20 cells -- solid [%s] dash [%s] dot [%s]\n",
+				       qPrintable(solid), qPrintable(dash), qPrintable(dot));
+				// PINNED AS MEASURED rather than as "they differ": four
+				// styles that all came out as SOME broken line would
+				// satisfy inequality while carrying the wrong pattern, and
+				// the pattern is the whole of what Qt expressed.
+				{
+					const char *m = "a pen style reaches a rule as skipped cells, each of"
+					    " Qt's four patterns keeping its own shape";
+					if (solid == QStringLiteral("────────────────────")
+					    && dash == QStringLiteral("── ── ── ── ── ── ──")
+					    && dot == QStringLiteral("─ ─ ─ ─ ─ ─ ─ ─ ─ ─")
+					    && dashdot == QStringLiteral("── ─ ── ─ ── ─ ── ─")
+					    && dashdotdot
+					       == QStringLiteral("── ─ ─ ── ─ ─ ── ─ ─")) printf("PASS: %s\n", m);
+					else { printf("FAIL: %s\n", m);
+					       printf("      dashdot [%s] dashdotdot [%s]\n",
+					              qPrintable(dashdot), qPrintable(dashdotdot)); ++r; }
+				}
+				// THE SHORT-STROKE FLOOR, and it is per PATTERN rather than
+				// a fixed length: a four-cell line is longer than DotLine's
+				// period of two and DashLine's of three, and shorter than
+				// DashDotLine's five and DashDotDotLine's seven -- so the
+				// first two dash and the last two come out solid. That is
+				// 8.700's legibility floor, which is the one part of this
+				// with no prior art behind it.
+				const QString s4 = row_of(Qt::SolidLine, 4);
+				const QString dot4 = row_of(Qt::DotLine, 4);
+				const QString ddd4 = row_of(Qt::DashDotDotLine, 4);
+				{
+					const char *m = "and a stroke shorter than its own pattern period is"
+					    " drawn solid, which a dotted four-cell line is not"
+					    " and a dash-dot-dotted one is";
+					if (dot4 != s4 && ddd4 == s4) printf("PASS: %s\n", m);
+					else { printf("FAIL: %s\n", m); ++r; }
+				}
+				// AND THE DIAGONAL ROAD, so the dash does not depend on the
+				// angle. Counted rather than compared as text: a diagonal's
+				// glyphs sit at different columns per row, so the readable
+				// assertion is that fewer cells are inked than the solid
+				// pen inks over the same line.
+				const auto diag_inked = [&](Qt::PenStyle st) {
+					Qtty::CellBuffer b(10, 6);
+					{
+						Qtty::CellPaintDevice dev(b);
+						QPainter p(&dev);
+						QPen pen(Qt::white, 1.0);
+						pen.setStyle(st);
+						p.setPen(pen);
+						p.drawLine(0, 0, cw * 9, ch * 5);
+					}
+					int n = 0;
+					for (int y = 0; y < b.rows(); ++y)
+						for (int x = 0; x < b.cols(); ++x)
+							if (b.at(x, y).ch != QStringLiteral(" ")) ++n;
+					return n;
+				};
+				const int d_solid = diag_inked(Qt::SolidLine);
+				const int d_dash = diag_inked(Qt::DashLine);
+				printf("info: a diagonal inks %d cells solid and %d dashed\n",
+				       d_solid, d_dash);
+				{
+					const char *m = "and a sloped line dashes too, so the pattern does not"
+					    " depend on the angle the way the box-drawing family"
+					    " would have";
+					if (d_solid > 0 && d_dash > 0 && d_dash < d_solid) printf("PASS: %s\n", m);
+					else { printf("FAIL: %s\n", m); ++r; }
+				}
+			}
+
 			// A HATCH RESOLVES TO THE COLOUR THE AREA ACTUALLY IS.
 			//
 			// Section 6.1's fourth rule resolves a brush whose colour is

@@ -1948,7 +1948,17 @@ void CellPaintEngine::line(const QLineF &l) {
 		}
 		if (!clear_run(y, span.first, span.second, true)) return;
 		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
+		// THE PEN'S STYLE, on this road too, by the argument the weight line
+		// below makes: both roads must carry it or a dash would appear on a
+		// diagonal and not on a rule, which is the angle-dependence that
+		// ruled out the Unicode dashed family in the first place (8.697).
+		// Found by measuring rather than by reading: the first version of
+		// this change touched only stroke_segment(), the diagonal dashed and
+		// every horizontal line stayed solid -- which is the case 8.658
+		// measured.
+		dash_begin(span.second - span.first + 1);
 		for (int x = span.first; x <= span.second; ++x) {
+			if (!dash_step()) continue;
 			b.set_glyph(x, y, QStringLiteral("─"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 			// The pen's weight, as stroke_segment() carries it. Both roads
@@ -1968,7 +1978,9 @@ void CellPaintEngine::line(const QLineF &l) {
 		}
 		if (!clear_run(x, span.first, span.second, false)) return;
 		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
+		dash_begin(span.second - span.first + 1);
 		for (int y = span.first; y <= span.second; ++y) {
+			if (!dash_step()) continue;
 			b.set_glyph(x, y, QStringLiteral("│"));
 			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 			if (pen_.widthF() > 1.0) b.at(x, y).attrs |= Attr::Bold;
@@ -1981,6 +1993,11 @@ void CellPaintEngine::line(const QLineF &l) {
 		// clear cells, 8 on occupied ones, 426 partial, and 102 vertical --
 		// and a diagonal is a case they never saw rather than one they got
 		// wrong.
+		// Its own stroke, so its own phase: this is the third and last
+		// caller of the stroke road (8.700) and the only one that draws a
+		// single segment.
+		dash_begin(std::max(std::abs(m.dx()) / GridMetrics::cw(),
+		                    std::abs(m.dy()) / GridMetrics::ch()));
 		stroke_segment(m.p1(), m.p2(), clip);
 	}
 }
@@ -2184,6 +2201,68 @@ static void walk_segment(const QPointF &a, const QPointF &b, int cw, int ch,
 // half-cell test fill_rectf() applies across a thin rect and covered() applies
 // along a rule's length -- stated as a ratio here because a cell is 10 x 19 px
 // and comparing raw pixel spans would call every 45-degree line vertical.
+// A PEN STYLE AS SKIPPED CELLS. project.md 8.697 decided it and 8.700
+// settled the shape; both are summarised where the members are declared.
+//
+// THE PATTERN IS QT'S, QUANTISED, which is a derivation and not a choice.
+// Qt spells its styles as dash patterns in units of pen width -- DashLine
+// 4-2, DotLine 1-2, DashDotLine 4-2-1-2, DashDotDotLine 4-2-1-2-1-2 -- and
+// those are pixel units, where a four-pixel dash on a ten-pixel cell is
+// invisible. So each element takes at least one cell and the structure is
+// kept: the dot-dash alternation survives, the element count survives, and
+// nothing about the pattern is invented here. Picking cell counts that look
+// right would be this tree deciding what the application meant.
+static QVarLengthArray<int, 6> dash_cells(Qt::PenStyle style) {
+	switch (style) {
+	case Qt::DashLine:        return {2, 1};
+	case Qt::DotLine:         return {1, 1};
+	case Qt::DashDotLine:     return {2, 1, 1, 1};
+	case Qt::DashDotDotLine:  return {2, 1, 1, 1, 1, 1};
+	// A CUSTOM PATTERN IS DASHED AND NOT SOLID, which is the lesser of two
+	// wrongs rather than a reading of the pattern. An application that set
+	// one asked for a broken line, and showing it solid loses that outright;
+	// showing it as the middle density loses only the proportions. Reading
+	// QPen::dashPattern() and quantising it would be the faithful answer and
+	// is not attempted here, since every element of a Qt pattern can be
+	// under a cell wide and the result would be a pattern of this tree's
+	// invention wearing the application's numbers.
+	case Qt::CustomDashLine:  return {2, 1};
+	default:                  return {};
+	}
+}
+
+void CellPaintEngine::dash_begin(double cells) {
+	dash_at_ = 0.0;
+	dash_pattern_ = dash_cells(pen_.style());
+	// AND A STROKE SHORTER THAN ONE PERIOD IS SOLID, which is the one part
+	// of this with no prior art behind it and is named as such in 8.700. A
+	// DashDotDotLine period is six cells; a four-cell line would show its
+	// first two and read as a line with most of itself missing, which is
+	// 8.658's objection holding where Unicode's dashed family does not reach
+	// -- a dash needs room to be legible as a dash. The figure follows from
+	// the pattern rather than from taste.
+	int period = 0;
+	for (int n : dash_pattern_) period += n;
+	if (period == 0 || cells < period) dash_pattern_.clear();
+}
+
+// One cell of pattern, and the answer for THIS cell. Called once per cell
+// the stroke covers, including cells that are clipped away or already hold
+// a glyph: the phase measures distance along the line, not what got drawn,
+// so a line crossing a label keeps its dashes in step on the far side.
+bool CellPaintEngine::dash_step() {
+	if (dash_pattern_.isEmpty()) return true;
+	int period = 0;
+	for (int n : dash_pattern_) period += n;
+	int at = int(dash_at_) % period;
+	dash_at_ += 1.0;
+	for (int i = 0; i < dash_pattern_.size(); ++i) {
+		if (at < dash_pattern_[i]) return (i % 2) == 0;
+		at -= dash_pattern_[i];
+	}
+	return true;
+}
+
 static QString segment_glyph(double across, double down, double dx, double dy,
                              int cw, int ch) {
 	const double fx = across / cw, fy = down / ch;
@@ -2277,7 +2356,14 @@ void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
 	}
 	for (int i = 0; i < run.size(); ++i) {
 		if (kept > 0 ? run[i].share < 0.5 : i != best) continue;
+		// The pen's STYLE, one cell of pattern at a time. Placed after the
+		// trim and before the clip: a cell the trim rejected is a duplicate
+		// and was never on the line, while a cell clipped away or already
+		// occupied was -- so the first must not advance the phase and the
+		// others must, or a line crossing a label comes back out of step.
+		const bool inked = dash_step();
 		const int x = run[i].x, y = run[i].y;
+		if (!inked) continue;
 		if (clip && !clip->contains(x, y)) continue;
 		if (x < 0 || y < 0 || x >= buf.cols() || y >= buf.rows()) continue;
 		Cell &cell = buf.at(x, y);
@@ -2327,6 +2413,23 @@ void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
 
 void CellPaintEngine::stroke_polyline(const QPolygonF &pts, bool close,
                                       const std::optional<QRect> &clip) {
+	// THE WHOLE STROKE'S LENGTH IN CELLS, before any of it is drawn, because
+	// the short-stroke rule is about the stroke and not a segment: a curve is
+	// made of segments each shorter than any pattern, and asking per segment
+	// would leave every one of them "on". Measured the way walk_segment()
+	// counts -- a segment visits about max(dx/cw, dy/ch) cells -- which needs
+	// no walk.
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	double cells = 0.0;
+	const auto add = [&](const QPointF &a, const QPointF &b) {
+		cells += std::max(std::abs(b.x() - a.x()) / cw,
+		                  std::abs(b.y() - a.y()) / ch);
+	};
+	for (int i = 0; i + 1 < pts.size(); ++i) add(pts[i], pts[i + 1]);
+	if (close && pts.size() > 2 && pts.first() != pts.last())
+		add(pts.last(), pts.first());
+	dash_begin(cells);
+
 	for (int i = 0; i + 1 < pts.size(); ++i)
 		stroke_segment(pts[i], pts[i + 1], clip);
 	if (close && pts.size() > 2 && pts.first() != pts.last())

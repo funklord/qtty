@@ -8,6 +8,7 @@
 #include <QtPlugin>
 #include <QPaintEngine>
 #include <QPen>
+#include <QVarLengthArray>
 #include <QBrush>
 #include <QFont>
 #include <QTransform>
@@ -191,6 +192,24 @@ private:
 	                    const std::optional<QRect> &clip);
 	void stroke_polyline(const QPolygonF &device_px, bool close,
 	                     const std::optional<QRect> &clip);
+	// A PEN STYLE ON A CELL GRID, by skipping cells. project.md 8.697 for
+	// why skipping rather than Unicode's dashed box-drawing family, and
+	// 8.700 for where the phase lives: it resets per STROKE OPERATION and
+	// carries across a polyline's segments, so the three callers of the
+	// stroke road begin it and stroke_segment() only advances it.
+	//
+	// `cells` is how many cells the whole stroke will visit, which decides
+	// whether it is long enough to dash at all -- asked of the stroke and
+	// not of a segment, because a curve is made of segments each shorter
+	// than any pattern and dashing them individually would leave every one
+	// of them "on".
+	void dash_begin(double cells);
+	bool dash_step();
+	// Cells of pattern consumed so far, and the pattern this stroke is
+	// using. An empty pattern means solid, which is what a short stroke and
+	// Qt::SolidLine both reduce to, so the step function has one test.
+	double dash_at_ = 0.0;
+	QVarLengthArray<int, 6> dash_pattern_;
 	void fill_polygon(const QPolygonF &device_px, bool winding,
 	                  const std::optional<QRect> &clip);
 
