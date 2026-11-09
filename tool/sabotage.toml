@@ -8594,12 +8594,29 @@ check = "a vertical scroll bar's drawn thumb and its hit rectangle cover the sam
 # own indent answers a NEGATIVE width -- which lies about its area rather
 # than merely being empty, the family 8.477 found eighteen of. 8.566.
 [[sabotage]]
-name = "a narrow item's text rect goes negative"
+# RE-AIMED 8.717 from the GUARD to the ARITHMETIC. Inverting the guard --
+# `width() > in` to `>= 0`, so the subtraction always runs -- cannot be
+# caught through this surface on every Qt, and that was measured rather
+# than argued: valid_rect() clamps the negative side away, so the guard's
+# only effect is which rect a narrow item gets, and Qt 5.15 answers zero
+# wide for a four-cell checkable item exactly where Qt 6.8 answers eight.
+# A check that separates them pins the toolkit. The subtraction is the
+# half both versions agree on -- 150 for a twenty-cell item on each -- so
+# the break goes there and the check asserts it exactly.
+#
+# AND IT TAKES A CELL AWAY RATHER THAN GIVING ONE. Widening the rect is
+# repaired by the same funnel: valid_rect() intersects with the option's
+# own rect, so a text rect handed the item's whole width is clipped back
+# to exactly the right number and the check cannot tell. Measured -- the
+# first version of this entry did that and stayed green. Nothing repairs
+# a rect that is too SMALL, which is also the direction that costs a
+# label a cell.
+name = "an item's text rect keeps the cells its indent was to take"
 file = "src/grid/grid_style.cpp"
-find = "\t\tif (opt->rect.width() > in)\n"
-into = "\t\tif (opt->rect.width() >= 0)\n"
+find = "\t\t\t             opt->rect.width() - in, opt->rect.height());"
+into = "\t\t\t             opt->rect.width() - in - cw, opt->rect.height());"
 count = 1
-check = "an item narrower than its own indent still answers a text rect it can use, inside itself, with no negative dimension at the extreme, while a wide one gets the row less the indent"
+check = "an item narrower than its own indent answers no negative dimension and stays inside itself, while a wide one gets exactly the row less the indent"
 
 # The SS3 branch accepts two bytes and reads the third, which QByteArray's
 # NUL terminator supplies: the sequence decodes with a final of 0, is

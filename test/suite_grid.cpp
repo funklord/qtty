@@ -944,31 +944,74 @@ int suite_grid() {
 	// holds on Qt 5.15.15 and Qt 6.8.2 -- 93 agreements and these 20 on both
 	// -- so unlike the pixel metrics above this needs no conditional.
 	{
+		// PINNED BY WIDTH AS WELL AS BY PART, which is the whole of what
+		// 8.715 found wrong here. The key used to be widget/part/claimed
+		// with no width, and this sweep asks every widget at five -- so a
+		// difference pinned where it is CORRECT licensed the same difference
+		// at every other width, silently and for as long as the pin stood.
+		//
+		// Measured: making a group box's contents decline where it had
+		// agreed moved `agreed` from 93 to 85 and left `unpinned` empty,
+		// because "groupbox titled/contents/declined" was already pinned
+		// from width 1 where declining is right. The only thing reading the
+		// number that moved was `agreed > 0`, the vacuous-pass guard.
+		//
+		// The list is longer and says more. Three of these are STRUCTURAL
+		// rather than about narrowness and show it by appearing at every
+		// width -- a bare group box has no check box and no label at any
+		// size, a titled one has no check box -- and the rest sit at a
+		// prefix of the narrow widths, which is what "chrome goes where
+		// chrome fits" looks like written out.
 		static const char *const allowed[] = {
-			"combobox/field/claimed",
-			"groupbox bare/contents/declined",
-			"groupbox checkable/contents/declined",
-			"groupbox checkable/label/declined",
-			"groupbox titled/contents/declined",
-			"groupbox bare/checkbox/declined",
-			"groupbox bare/label/declined",
-			"groupbox titled/checkbox/declined",
-			"h scrollbar/addline/declined",
-			"h scrollbar/subline/declined",
-			"h scrollbar/thumb/claimed",
-			"spinbox/down/declined",
-			"spinbox/field/claimed",
-			"spinbox/up/declined",
-			"toolbutton/button/declined",
-			"toolbutton/menu/declined",
-			"v scrollbar/addline/declined",
-			"v scrollbar/subline/declined",
-			"v scrollbar/thumb/claimed",
-			"v scrollbar/thumb/declined",
+			"combobox/field/claimed@2",
+			"groupbox bare/checkbox/declined@1",
+			"groupbox bare/checkbox/declined@14",
+			"groupbox bare/checkbox/declined@2",
+			"groupbox bare/checkbox/declined@3",
+			"groupbox bare/checkbox/declined@6",
+			"groupbox bare/contents/declined@1",
+			"groupbox bare/label/declined@1",
+			"groupbox bare/label/declined@14",
+			"groupbox bare/label/declined@2",
+			"groupbox bare/label/declined@3",
+			"groupbox bare/label/declined@6",
+			"groupbox checkable/contents/declined@1",
+			"groupbox checkable/label/declined@1",
+			"groupbox checkable/label/declined@2",
+			"groupbox checkable/label/declined@3",
+			"groupbox titled/checkbox/declined@1",
+			"groupbox titled/checkbox/declined@14",
+			"groupbox titled/checkbox/declined@2",
+			"groupbox titled/checkbox/declined@3",
+			"groupbox titled/checkbox/declined@6",
+			"groupbox titled/contents/declined@1",
+			"h scrollbar/addline/declined@1",
+			"h scrollbar/subline/declined@1",
+			"h scrollbar/thumb/claimed@1",
+			"spinbox/down/declined@1",
+			"spinbox/down/declined@2",
+			"spinbox/field/claimed@1",
+			"spinbox/field/claimed@2",
+			"spinbox/up/declined@1",
+			"spinbox/up/declined@2",
+			"toolbutton/button/declined@2",
+			"toolbutton/menu/declined@1",
+			"v scrollbar/addline/declined@1",
+			"v scrollbar/subline/declined@1",
+			"v scrollbar/thumb/claimed@1",
+			"v scrollbar/thumb/declined@1",
 		};
 		QStyle *plain = QStyleFactory::create(QStringLiteral("Fusion"));
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QSet<QString> seen_diffs;
+		// The same differences keyed WITHOUT the width, for the rot test
+		// below. The two questions are not the same and want different
+		// keys: an unpinned difference is a fault at the width it happened
+		// at, while a pinned difference that has stopped happening is
+		// about the PART -- so asking the rot question per width would
+		// make it fail whenever a toolkit moved a threshold by one cell,
+		// which is not what it exists to catch.
+		QSet<QString> seen_keys;
 		int agreed = 0;
 		QStringList negative, overlapping, outside, offgrid;
 		int pairs = 0;
@@ -1001,9 +1044,12 @@ int suite_grid() {
 			const bool b = plain->subControlRect(cc, o, sc, w).isEmpty();
 			const bool g = gr.isEmpty();
 			if (b == g) { ++agreed; return; }
-			seen_diffs.insert(what + QLatin1Char('/') + part
-			                  + (b ? QStringLiteral("/claimed")
-			                       : QStringLiteral("/declined")));
+			const QString key = what + QLatin1Char('/') + part
+			    + (b ? QStringLiteral("/claimed")
+			         : QStringLiteral("/declined"));
+			seen_keys.insert(key);
+			seen_diffs.insert(key + QStringLiteral("@%1")
+			                           .arg(o->rect.width() / cw));
 		};
 		// AND NO TWO PARTS OF ONE CONTROL MAY CLAIM THE SAME CELL, which
 		// the sweep above cannot see: emptiness and overlap are different
@@ -1230,9 +1276,13 @@ int suite_grid() {
 				if (d == QLatin1String(a)) known = true;
 			if (!known) unpinned << d;
 		}
-		for (const char *a : allowed)
-			if (!seen_diffs.contains(QLatin1String(a)))
-				rotted << QString::fromLatin1(a);
+		for (const char *a : allowed) {
+			const QString pinned = QString::fromLatin1(a);
+			const QString bare = pinned.left(pinned.lastIndexOf(
+			    QLatin1Char('@')));
+			if (!seen_keys.contains(bare) && !rotted.contains(bare))
+				rotted << bare;
+		}
 		unpinned.sort();
 		rotted.sort();
 		printf("info: %d sub-control answer(s) agree with the base style and"
@@ -1466,26 +1516,32 @@ int suite_grid() {
 		// A wide item is the control: without it, a style that returned an
 		// empty rect for everything would satisfy the narrow case.
 		//
-		// FOUR CELLS, not three, and the width is the whole of what this
-		// check is worth. Both are narrower than the five-cell indent, so
-		// both put the guard in the condition it exists for -- but at
-		// three cells the rect Qt itself answers for a checkable item is
-		// already empty, so declining the subtraction and performing it
-		// land on the same 0x0 once valid_rect() has clamped the negative
-		// side away. The sign can never escape that funnel, which is what
-		// it is for, so a check asking the PUBLIC surface for a
-		// non-negative dimension asserts valid_rect() and nothing else.
+		// THE NARROW HALF CANNOT BE ASSERTED THROUGH THIS SURFACE, and
+		// one Qt 5 run is what established it -- see project.md 8.717.
 		//
-		// Measured one to eight cells with the guard inverted: only four
-		// and five differ, 8x19 and 18x19 becoming empty, and the check
-		// stood at three. So it could not have failed, and its sabotage
-		// entry was one of the eight the full sweep reported dead.
+		// The sign can never escape here: subElementRect() returns
+		// valid_rect(sub_element_rect(...), opt), which clamps each side
+		// and intersects with the option's own rect. So "no negative
+		// dimension" asserts that funnel and nothing about the guard
+		// behind it. The guard's only remaining effect is WHICH rect a
+		// narrow item gets -- Qt's own answer, or a negative width the
+		// funnel clamps to empty -- and whether those differ is a
+		// property of the toolkit, not of this code:
 		//
-		// The one-cell case is kept beside it. The non-negative property
-		// is still worth stating at the extreme, and stating it there
-		// rather than at four leaves four free to assert the stronger
-		// thing: that a squeezed item gets a text rect it can actually
-		// use, which is the guard's real output.
+		//     cells             1    2    3    4      5       6
+		//     Qt 6.8, clean     0x0  0x0  0x0  8x19   18x19   10x19
+		//     Qt 5.15, clean    0x0  0x0  0x0  0x19   0x19    10x19
+		//
+		// A check asserting a USABLE rect at four cells passes on Qt 6 and
+		// fails on Qt 5, because Qt 5's own answer for a four-cell
+		// checkable item is zero wide. 8.713 asserted exactly that and the
+		// version arm caught it; the band that separated was the toolkit's,
+		// not this library's, and pinning it pinned Qt 6.
+		//
+		// So the narrow half states only what holds on both -- no negative
+		// dimension, and containment where the rect is real -- and the
+		// TEETH move to the wide half below, which both versions agree on
+		// exactly and which the arithmetic cannot survive being wrong.
 		{
 			QStyle *st = QApplication::style();
 			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -1505,18 +1561,28 @@ int suite_grid() {
 			const QRect room =
 			    st->subElementRect(QStyle::SE_ItemViewItemText, &wide,
 			                       nullptr);
+			// EXACTLY the row less the indent, rather than merely less
+			// than the row. The indent is read from the delegate's own
+			// published constants, so this is the arithmetic asserted
+			// against its own definition rather than against a number
+			// written here -- and both Qt versions answer 150 for a
+			// twenty-cell checkable item, which is what makes it the half
+			// with teeth.
+			const int indent = (Qtty::CellItemDelegate::indent_cells()
+			                    + Qtty::CellItemDelegate::check_cells()) * cw;
 			printf("info: an item 4 cells wide with a check box gives a text"
 			       " rect %dx%d at x=%d, one cell wide gives %dx%d, and one"
-			       " 20 cells wide gives %dx%d\n",
+			       " 20 cells wide gives %dx%d against an indent of %d\n",
 			       thin.width(), thin.height(), thin.x(), squeezed.width(),
-			       squeezed.height(), room.width(), room.height());
-			CHECK(!thin.isEmpty() && narrow.rect.contains(thin)
+			       squeezed.height(), room.width(), room.height(), indent);
+			CHECK(thin.width() >= 0 && thin.height() >= 0
+			      && (thin.isEmpty() || narrow.rect.contains(thin))
 			      && squeezed.width() >= 0 && squeezed.height() >= 0
-			      && room.width() > 0 && room.width() < wide.rect.width(),
-			      "an item narrower than its own indent still answers a text"
-			      " rect it can use, inside itself, with no negative"
-			      " dimension at the extreme, while a wide one gets the row"
-			      " less the indent");
+			      && room.width() == wide.rect.width() - indent
+			      && wide.rect.contains(room),
+			      "an item narrower than its own indent answers no negative"
+			      " dimension and stays inside itself, while a wide one gets"
+			      " exactly the row less the indent");
 		}
 		overlapping.sort();
 		overlapping.removeDuplicates();

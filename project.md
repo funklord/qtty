@@ -58587,11 +58587,17 @@ no observable effect.
 
 So the fixture moved to four cells and the assertion to the stronger
 property the guard actually produces: a squeezed item gets a text rect it
-can **use**, inside itself, rather than one that is merely not negative.
-The one-cell case is kept beside it for the non-negative half, which is
-still worth stating at the extreme and which leaves four free to say the
-stronger thing. Proved by the mechanism: the entry now reddens the check
-it names.
+can **use**, inside itself.
+
+**That fix was wrong and the Qt 5 arm said so within the hour -- see
+8.717.** Qt 5.15 answers zero wide for a four-cell checkable item where
+Qt 6.8 answers eight, so the separating band belonged to the toolkit
+rather than to this library and asserting it pinned Qt 6. The check now
+states only what both versions agree on in the narrow half and carries
+its teeth in the wide one, and the entry was re-aimed from the guard to
+the arithmetic. **What survives from this entry is the lens, not the
+fix:** a fixture chosen for being extreme can sit outside the band where
+the code shows. What it got wrong is that it measured that band once.
 
 **The lens.** 8.712's five classes gain a sixth, and it is narrower than
 any of them: *a fixture chosen for being the most extreme case can be
@@ -58834,3 +58840,94 @@ not "a fixture outside the band", it is "a fixture on a different road",
 and the two have different remedies. So two of eight are 8.713's class --
 the narrow item and nothing else yet -- rather than two of eight being so
 because entry 2 resembled one.
+
+### 8.717 A pin without its width, and a check that pinned Qt 6 (2026-11-09)
+
+**Two faults, found an hour apart, with the same shape: a condition left
+out of the thing that records it. One was in a pinned set, the other in
+my own fix from 8.713, and the second was caught by the Qt 5 arm within
+minutes of the first being fixed.**
+
+**THE PIN WITHOUT ITS WIDTH, which is the one real check defect of the
+eight.** The sub-control sweep asks every widget at five widths and
+records each disagreement with the base style as
+`widget/part/claimed` or `/declined`. **The width is not in the key.** So
+a difference pinned where it is correct -- a one-cell group box declining
+its contents, which is "chrome goes where chrome fits" -- licensed the
+same difference at **every** width, silently, for as long as the pin
+stood. Making a group box's contents decline where it had agreed moved
+`agreed` from 93 to 85 and left `unpinned` empty, and the only thing
+reading the number that moved was `agreed > 0`, the vacuous-pass guard.
+
+Measured, the 20 keys expand to 37 (key, width) pairs, and the expansion
+says something the keys could not:
+
+    groupbox bare/checkbox/declined       1 2 3 6 14
+    groupbox bare/label/declined          1 2 3 6 14
+    groupbox titled/checkbox/declined     1 2 3 6 14
+    groupbox checkable/label/declined     1 2 3
+    spinbox/{up,down}/declined            1 2
+    spinbox/field/claimed                 1 2
+    combobox/field/claimed                2
+    toolbutton/button/declined            2
+    toolbutton/menu/declined              1
+    groupbox */contents/declined          1
+    {h,v} scrollbar/*                     1
+
+**Three are STRUCTURAL and show it by appearing at every width** -- a bare
+group box has no check box and no label at any size, a titled one has no
+check box -- and the rest sit at a prefix of the narrow widths, which is
+that convention written out rather than asserted. The pairs are pinned
+now, and the entry that was dead reddens the check it names.
+
+**The rot test keeps the old key deliberately.** "Every pinned difference
+still happens" is a question about the PART, and asking it per width
+would fail whenever a toolkit moved a threshold by one cell -- which is
+not what it exists to catch. So one list, two keys, two questions.
+
+**AND THE PIN LIST IS NOT VERSION-FRAGILE, which was the risk and is now
+measured rather than feared.** Qt 5.15.15 reports
+`93 agree and 37 differ; 0 unpinned, 0 pinned but gone` -- identical to Qt
+6.8.2, figure for figure.
+
+**THE SECOND FAULT IS MINE, FROM 8.713, AND THE ARM CAUGHT IT.** That
+entry moved the narrow-item fixture from three cells to four because four
+separated: with the guard inverted, Qt 6 turned `8x19` into empty. On Qt
+5.15 the same item answers **zero wide**, so the new assertion failed
+there and the version arm reported it with one failure of 2498.
+
+    cells             1    2    3    4      5       6
+    Qt 6.8, clean     0x0  0x0  0x0  8x19   18x19   10x19
+    Qt 5.15, clean    0x0  0x0  0x0  0x19   0x19    10x19
+
+**The band that separated was the toolkit's, not this library's.** 8.713
+measured one Qt and called the result a property of the code. It is a
+property of `QCommonStyle`'s answer for a four-cell checkable item, and
+asserting it pinned Qt 6 -- the exact hazard `working-practice.md` names:
+a rule written under one configuration, carrying an undeclared dependency
+on it.
+
+**So the narrow half states only what both versions agree on** -- no
+negative dimension, containment where the rect is real -- **and the teeth
+move to the wide half**, which both answer 150 for a twenty-cell item.
+The check now asserts that number exactly, derived from the delegate's own
+published `indent_cells()` and `check_cells()` rather than written out, so
+the arithmetic is checked against its own definition.
+
+**And the entry moved from the guard to the arithmetic, which took two
+attempts and the second is the instructive one.** Widening the rect --
+handing the text the item's whole width -- **stayed green**, because
+`valid_rect()` intersects with the option's own rect and clipped 200 back
+to exactly the 150 the check wanted. The funnel repairs a rect that is too
+big. Nothing repairs one that is too SMALL, which is also the direction
+that costs a label a cell, so the break takes a cell away instead. Both
+arms green after it: 2499 checks on each, no failures.
+
+**The transferable rule, and it is the second half of 8.716's.** 8.716
+said a lens that has just paid out twice is applied without checking. This
+says where to check: **a separating measurement taken under one
+configuration is a claim about that configuration until a second one
+agrees.** The remedy is not more care in reading -- it is the arm, run
+before the entry is written up rather than after. 8.713 was committed and
+recorded before anything asked Qt 5, and the record had to be amended
+rather than written once.
