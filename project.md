@@ -58138,9 +58138,89 @@ same silence an unquoted heredoc gives, which `running-code.md` gained a
 rule about on 2026-11-05. **Quote the argument, or keep apostrophes out of
 it.**
 
+**A SECOND ATTEMPT WITH THE MAP MADE IT WORSE, AND THAT IS THE USEFUL
+RESULT.** The seven sites were done in one pass, with the rule put in
+`cell_geometry.h` as `grid_sep_cells()` and `draw_grid_separator()` so that
+both writers call one function rather than four spellings of one condition
+-- which is what that file is for, and reading `CellItemDelegate` first
+made it smaller than feared: the delegate already calls the style's
+`CE_ItemViewItem` for the frame, so the style is the one writer of the
+glyph and the delegate needs only to keep its content out of the reserved
+cell.
+
+It went from **three failures to four**, and the diagnostic line was
+**byte-identical** across both attempts:
+
+    info: header ltr AlignRight shares the trailing edge: head 7..10 data 10..11 -> 0
+
+**The symptom did not move when the thing believed to cause it was
+changed.** That is the evidence that matters: the model of how a heading
+shares an edge with its data is WRONG, not merely missing a site. Adding a
+seventh site to a wrong model produced a fourth failure, and two of the
+four are checks that were passing before -- *"AlignRight lands against the
+column's far edge"* and *"a table's grid leaves its labels' own spaces
+alone"*, the second of which is a check about this very interaction that
+the first attempt never reached.
+
+**So the next attempt does not start from the site list.** It starts by
+establishing, read-only and before any edit, what `head 7..10 data 10..11`
+means -- which cell each writer believes is the column's far edge, and
+whether `leading_edge()`'s right argument is even consulted in the
+left-to-right case it is failing on. The site list in this entry is still
+correct and still necessary; it is not sufficient, and believing it was is
+what cost the second attempt.
+
 **Why this is a revert rather than a fifth fix.** Each of the four faults
 was found by a failure, and each one revealed a site the plan did not have
 -- which is a map being wrong four times running, not a change converging.
 A subtly wrong item-view renderer is worse than a known one-pixel drift,
 and the attempt is cheap to resume from here: `git stash` holds it, and the
 seven sites above are what it was missing.
+
+### 8.707 The eight dead checks were recorded by position in a list I then shortened (2026-11-09)
+
+**8.693 named the eight by entry number. 8.702 retired entry 339 the same
+day. Every one of the eight above 339 has been off by one ever since, and
+nothing said so.**
+
+    entry (by name)                                  8.693    now
+    the cursor record survives a handover              167    167
+    a run does not join the line it is drawn on        446    445
+    a thin fill's sub-cell span is dropped again       548    547
+    a tiled pixmap goes back to one placement          554    553
+    a sub-control declines a part the base style ...   708    707
+    a spin box keeps both arrows                       713    712
+    a narrow item's text rect goes negative            785    784
+
+**The numbers now address different entries entirely**, which is the part
+that would have cost somebody a day: index 446 is *"the line rule has no
+lower bound"*, 548 is *"a shape between two row samples is nothing
+again"*, 713 is *"the tool button's own part is left to the base style"*.
+A session following 8.693 would have read a plausible, well-formed entry
+that has nothing to do with the finding, and nothing in the spec or the
+record would have contradicted it.
+
+**AND I MISDIAGNOSED IT AN HOUR BEFORE FINDING IT.** Looking up the
+tiled-pixmap entry, I found it at 553 where 8.693 says 554, wrote that the
+difference was "the sweep's 1-based print versus the spec index", and moved
+on. It was the retirement. **A plausible explanation for an off-by-one is
+the easiest thing in the world to accept**, and the one that was true was
+in a commit I had made myself two hours earlier.
+
+**THE FIX IS TO STOP REFERRING TO ENTRIES BY POSITION.** An entry's
+`name` is unique, is what `--only` matches, and does not move when a
+neighbour is retired -- so it is the stable reference and the number never
+was. `sabotage.py --only "a tiled pixmap goes back to one placement"`
+addresses the thing; `--from 554` addresses whatever is 554th today.
+
+The numbers above are kept beside the names rather than corrected in
+place, because the point is not that 8.693 should have said 553: it is
+that **any** number there was going to rot, and a reader who sees both
+columns knows not to trust a third.
+
+**This is the shelf-life rule in its sharpest form yet.** `evidence.md`
+says a fact recorded without its method has a shelf life; here the fact
+was recorded with its method and the method's INDEX SPACE changed
+underneath it. The record was accurate when written, the change that
+invalidated it was correct and deliberate, and the two were made by the
+same session an hour apart.
