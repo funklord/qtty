@@ -57915,3 +57915,79 @@ Beginning, Middle, End or OnlyOne, so a trailing separator is drawn except
 at End and OnlyOne, with no geometry guessed. **The two halves must land
 together**, because either alone is a regression -- the grid off without
 separators loses them, and separators without the grid off doubles them.
+
+### 8.704 Entry 167 traced to three sites, none of which explains it (2026-11-09)
+
+**The method that closed 339 was applied to 167 and did not close it --
+which is worth recording, because what it ruled out is most of the search
+space and the sweep's bare "FAILED" ruled out nothing.**
+
+**THE ENTRY.** `if (false) last_cursor_.clear();` at
+`ansi_backend.cpp:518`, on the handover path, against the check *"but
+asking again after a handover writes it"*.
+
+**WHAT IT REPRODUCES AS.** `sabotage.py --only` on that entry alone, from
+a green baseline of 2496: `FAILED: the named check PASSED against broken
+code`. So the sweep's finding is current and not an artifact of the long
+run.
+
+**THE THREE SITES, enumerated rather than sampled.** `last_cursor_` is
+touched in exactly four places: cleared at 518 (the sabotage), cleared at
+1268 inside `write_out()`, compared at 2145 and assigned at 2147 inside
+`set_cursor()`.
+
+- **`write_out()` clears it on every raw write**, and its comment says why
+  that is deliberate: *"set_cursor() compares BEFORE it writes and
+  re-establishes the record AFTER, which is what makes this correct by
+  construction rather than by a list of the calls that matter."* So any
+  write on the handover path covers 518.
+- **The handover path makes exactly one `write_out()` call**, and it is
+  guarded: `if (!last_title_.isEmpty()) write_out(last_title_)`.
+- **The fixture already accounts for that**, and was fixed for it on
+  2026-09-13 in `24d05e4` -- two months before the sweep. Its comment is
+  explicit: *"A backend that was never given a TITLE, which is the fixture
+  this needs and the first version got wrong ... the check passed with the
+  clear sabotaged away, and the sabotage run said so."* The backend is
+  `plain`, with no title, and it is the **only** backend alive in that
+  scope -- the `live` the comment mentions belongs to the version that fix
+  replaced.
+
+**So the obvious explanation is excluded by measurement**: a title-less
+backend makes exactly no `write_out()` call on the handover, 518 is the
+only clear, and the check still passes. With the record unchanged,
+`set_cursor()` with identical arguments must hit `want == last_cursor_`
+and return without writing -- and the check asserts that something WAS
+written.
+
+**ONE CANDIDATE REMAINS AND IS NOT YET SETTLED.** `kLeave` carries
+`\033[?25h`, so the handover's own sequences contain the bytes the check
+looks for; whether any of them land in the capture the check reads is the
+open question, and the fixture drains the stream once between the signal
+and the assertion precisely to stop that.
+
+**AND THE OBVIOUS WAY TO SETTLE IT DOES NOT WORK, which is this entry's
+most useful line.** An `info:` print of the captured bytes inside a
+`--only` run produced **zero output**: `sabotage.py` reports its own
+verdict lines and does not surface the suite's stdout at all, keeping only
+`build/sabotage-reddened.txt` and `build/sabotage-green.txt` -- check
+NAMES, not check output. The entry still reported FAILED, so the run
+worked and the probe was simply invisible.
+
+So the probe has to be run the long way: apply the entry's edit by hand,
+build, run the suite directly, read, revert. That is what `sabotage.py`
+does with the output hidden, and it is the next step for whoever takes
+this. The instrumentation is reverted with
+`git stash push -- test/suite_backend.cpp`, the form `CLAUDE.md` now
+prefers over a discard, after reading the three-line diff rather than its
+`--stat`.
+
+**AND THE TOOL REFUSED THAT RUN THE FIRST TIME, CORRECTLY.** `sabotage.py`
+declines to start with `test/` dirty, because *"in a tree more than one
+session works in, the file it would restore may be somebody else's work in
+progress"* -- and the dirty file was this session's instrumentation.
+`--dirty-ok` is the sanctioned route once the diff has been read and is
+one's own, which is a guard working as designed rather than an obstacle.
+
+**What this entry is for**: 339 took reading four code paths and closed;
+167 has taken four and has not. That is the honest rate, and it is the
+figure to price the remaining six by.
