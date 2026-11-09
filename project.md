@@ -58413,3 +58413,183 @@ newlines -- so the recipe had bare lines in it and `make` answered
 quoted probes, which needs no escape at all. A recipe that embeds a
 multi-line literal is a recipe whose quoting has two layers and no
 reader.
+
+### 8.711 Entry 167 closed: the same two-guard shape as 339, measured (2026-11-09)
+
+**8.704 traced this entry to three sites, ruled the obvious explanation
+out, and said the next step was to run the suite the long way because
+`sabotage.py` hides its stdout. Done, and it closes.**
+
+**THE METHOD, which is the part 8.704 could not supply.** The sabotage was
+applied by hand, `make tests-build` run, and the suite run directly with
+stdout separated -- four builds in all. `sabotage.py` reports verdict lines
+and keeps only check NAMES in `build/sabotage-reddened.txt`, so an `info:`
+line added inside a `--only` run goes nowhere a reader sees; run the suite
+yourself and it prints.
+
+**FIRST MEASUREMENT: the guard changes nothing observable.** With
+`last_cursor_.clear()` disabled, the bytes the check reads are
+
+    %1B%5B6%3B5H%1B%5B6%20q%1B%5B%3F25h
+
+-- `ESC[6;5H`, `ESC[6 q`, `ESC[?25h`, the whole cursor write. With the
+guard restored they are **byte-identical**. The entry breaks real code and
+nothing can see it.
+
+**SECOND MEASUREMENT: why.** Instrumenting the comparison inside
+`set_cursor()` gives the fixture's three calls:
+
+    want=[ESC[6;5H ESC[6 q ESC[?25h]  last=[]     equal=0   writes
+    want=[same]                       last=[same] equal=1   no-op
+    want=[same]                       last=[]     equal=0   writes
+
+**At the third call the record is empty -- in both runs.** So it is
+emptied by something that is not line 518, and `write_out()` is that
+something: it clears the record on every raw write, and its comment says
+the choice is deliberate -- *"set_cursor() compares BEFORE it writes and
+re-establishes the record AFTER, which is what makes this correct by
+construction rather than by a list of the calls that matter: a write site
+added later is simply not on such a list, and nothing would say so."*
+
+**So the handover writes SOMETHING through `write_out()` and the record
+goes with it.** The explicit clear at 518 is belt and braces, exactly as
+339's cache key was, and this is the second of the eight to close that
+way -- a property with two guards where one is a by-construction
+invariant covering every case, which makes the other unobservable.
+
+**ONE EDGE IS LEFT OPEN HONESTLY.** The clear WOULD matter on a handover
+that writes nothing through `write_out()` at all -- no title to restore,
+no pictures to forget, no ground to republish. Whether such a handover
+exists is not established here, and if it does, a fixture could reach the
+guard and the entry would be live again. What is established is that the
+handover this fixture produces is not one.
+
+**The entry is therefore left in the spec rather than retired**, which is
+the opposite of 8.702's decision about 339 and the difference is the open
+edge: there, every route that moved the cell provably reached the flush,
+so the guard was unreachable by construction. Here the covering write is
+incidental to what a handover happens to do, and an emptier handover is a
+plausible future rather than an impossibility. **An entry that cannot
+redden today but could tomorrow is worth more in the spec than out of
+it** -- it costs one `--only` run in a sweep and it is the only thing
+that would notice.
+
+### 8.712 The lens I proposed after three cases was an overgeneralisation (2026-11-09)
+
+**After tracing 339, 167 and 553 I wrote that the pattern was consistent
+and sharper than 8.696's four-cause split: "each check asks whether an
+observable appeared, and the sabotage changes only which code path
+produced it." Tested against the four entries not yet traced, it does not
+hold -- and the three it was drawn from are not one class either.**
+
+**WHAT THE THREE ACTUALLY WERE.** 339 and 167 are the same class and it is
+not the one I named: **a property with two guards, one of them a
+by-construction invariant that covers every case.** 339's cache key beside
+the explicit flush; 167's `write_out()` clearing the cursor record on every
+raw write beside the explicit clear. In neither does the sabotage change
+which path produces an observable -- it removes a guard that another guard
+already covers. Only **553** fits the sentence I wrote: it substitutes
+`QPaintEngine::drawTiledPixmap` for this engine's own, and the tiles land
+either way.
+
+**So the lens was built from one instance and asserted of three.** That is
+the scope error `evidence.md` names -- a count inheriting the first thing
+anyone looked at -- applied to a taxonomy rather than a number, and I made
+it in the same session that recorded eight others.
+
+**THE FOUR UNTRACED, read against it, give two more classes rather than
+confirming one:**
+
+- **`a thin fill's sub-cell span is dropped again`** -- fits. The check's
+  own words are *"whether it appeared at all"*, and the sabotage changes
+  the fill's extent, not its existence.
+- **`a spin box keeps both arrows however narrow it is`** -- probably
+  fits. The check asks whether the arrows stay inside the widget and clear
+  of each other; the sabotage changes how many are asked for.
+- **`a narrow item's text rect goes negative`** -- a different class: **a
+  guard no fixture reaches.** The sabotage widens a threshold, and the
+  check passes because nothing in the suite is narrow enough to cross it.
+  The check is right and the input is missing, which wants a fixture
+  rather than a better assertion.
+- **`a sub-control declines a part the base style claims, unpinned`** --
+  different again: **a sweeping invariant with an exception list.** The
+  check is *"no sub-control claims a part the base style declines ...
+  except where this style does so deliberately and says which"*, asserted
+  across every sub-control; changing one `SC_GroupBoxContents` case keeps
+  it true.
+
+**FIVE CLASSES ACROSS SEVEN ENTRIES, which is the honest shape** -- two
+guards, an equivalent fallback, whether-not-how, a guard nothing reaches,
+and a sweeping invariant. 8.696 guessed four from reading and was closer
+than my three-case generalisation was.
+
+**And the remedies differ by class, which is why the taxonomy is worth
+more than a count.** Two guards: establish whether the covering invariant
+is total (339 was, so its entry retired; 167's is incidental, so its entry
+stays). An equivalent fallback: count HOW rather than whether. A guard
+nothing reaches: write the fixture. A sweeping invariant: assert the
+member, not the set. **A single lens would have sent four of them to the
+wrong fix.**
+
+
+### 8.713 The narrow case was the one width where both answers agree (2026-11-09)
+
+The sixth of the eight dead checks, and the first whose root is a
+**fixture width** rather than anything about the check's shape.
+
+`SE_ItemViewItemText` subtracts an indent from the item's width -- one
+cell, five when the item carries a check indicator -- behind a guard,
+`if (opt->rect.width() > in)`, that declines the subtraction when it
+would go negative. The sabotage inverts that guard to `>= 0` so the
+subtraction always runs. The check handed the style an item **three**
+cells wide with a check indicator, which is narrower than the five-cell
+indent, and asserted the text rect came back with no negative dimension.
+It passed with the guard inverted.
+
+**Two things were wrong and only the second is the fixture's.**
+
+The first is that the property asserted cannot fail at the surface it was
+asked at. `GridStyle::subElementRect()` returns
+`valid_rect(sub_element_rect(...), opt)`, and `valid_rect()` clamps each
+side with `qMax(0, ...)` before intersecting with the option's own rect.
+That funnel is 8.477 and 8.576, installed precisely so a negative
+dimension cannot reach a caller. So *no* sabotage upstream of it can
+produce one, and a check asking the public surface for a non-negative
+dimension is asserting `valid_rect()` and nothing else. The funnel has
+its own entry, which removes the wrapper and does redden its check.
+
+The second is the one that made the whole entry dead. The guard is not
+redundant behind the funnel -- it chooses WHICH rect a narrow item gets:
+declined, the item keeps Qt's own answer; performed, it gets a negative
+width the funnel then clamps to empty. Those differ. They just do not
+differ at three cells, because at three cells Qt's own answer is already
+empty, so both roads end at `0x0`.
+
+Measured one to eight cells with the guard inverted, clean beside
+sabotaged:
+
+    cells   1    2    3      4       5       6      7      8
+    clean   0x0  0x0  0x0    8x19    18x19   10x19  20x19  30x19
+    broken  0x0  0x0  0x0    0x0     0x0     10x19  20x19  30x19
+
+**Only four and five separate.** Six and up take the guard either way;
+one to three agree on empty. The check stood at three -- inside the
+condition the guard exists for, and inside the band where the guard has
+no observable effect.
+
+So the fixture moved to four cells and the assertion to the stronger
+property the guard actually produces: a squeezed item gets a text rect it
+can **use**, inside itself, rather than one that is merely not negative.
+The one-cell case is kept beside it for the non-negative half, which is
+still worth stating at the extreme and which leaves four free to say the
+stronger thing. Proved by the mechanism: the entry now reddens the check
+it names.
+
+**The lens.** 8.712's five classes gain a sixth, and it is narrower than
+any of them: *a fixture chosen for being the most extreme case can be
+extreme enough to leave the band where the defect is visible.* Three
+cells was picked because it is comfortably narrower than the indent, and
+being comfortably past the boundary is exactly what put it past the
+region where the two behaviours differ. The remedy is not a better
+assertion -- it is to measure the separating band before choosing the
+fixture, which costs one sweep and is what the table above is.

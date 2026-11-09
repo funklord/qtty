@@ -1465,28 +1465,58 @@ int suite_grid() {
 		//
 		// A wide item is the control: without it, a style that returned an
 		// empty rect for everything would satisfy the narrow case.
+		//
+		// FOUR CELLS, not three, and the width is the whole of what this
+		// check is worth. Both are narrower than the five-cell indent, so
+		// both put the guard in the condition it exists for -- but at
+		// three cells the rect Qt itself answers for a checkable item is
+		// already empty, so declining the subtraction and performing it
+		// land on the same 0x0 once valid_rect() has clamped the negative
+		// side away. The sign can never escape that funnel, which is what
+		// it is for, so a check asking the PUBLIC surface for a
+		// non-negative dimension asserts valid_rect() and nothing else.
+		//
+		// Measured one to eight cells with the guard inverted: only four
+		// and five differ, 8x19 and 18x19 becoming empty, and the check
+		// stood at three. So it could not have failed, and its sabotage
+		// entry was one of the eight the full sweep reported dead.
+		//
+		// The one-cell case is kept beside it. The non-negative property
+		// is still worth stating at the extreme, and stating it there
+		// rather than at four leaves four free to assert the stronger
+		// thing: that a squeezed item gets a text rect it can actually
+		// use, which is the guard's real output.
 		{
 			QStyle *st = QApplication::style();
 			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 			QStyleOptionViewItem narrow;
 			narrow.features |= QStyleOptionViewItem::HasCheckIndicator;
-			narrow.rect = QRect(0, 0, cw * 3, ch);   // 3 cells, indent is 5
+			narrow.rect = QRect(0, 0, cw * 4, ch);   // 4 cells, indent is 5
 			const QRect thin =
 			    st->subElementRect(QStyle::SE_ItemViewItemText, &narrow,
+			                       nullptr);
+			QStyleOptionViewItem tiny = narrow;
+			tiny.rect = QRect(0, 0, cw, ch);
+			const QRect squeezed =
+			    st->subElementRect(QStyle::SE_ItemViewItemText, &tiny,
 			                       nullptr);
 			QStyleOptionViewItem wide = narrow;
 			wide.rect = QRect(0, 0, cw * 20, ch);
 			const QRect room =
 			    st->subElementRect(QStyle::SE_ItemViewItemText, &wide,
 			                       nullptr);
-			printf("info: an item 3 cells wide with a check box gives a text"
-			       " rect %dx%d, and one 20 cells wide gives %dx%d\n",
-			       thin.width(), thin.height(), room.width(), room.height());
-			CHECK(thin.width() >= 0 && thin.height() >= 0
+			printf("info: an item 4 cells wide with a check box gives a text"
+			       " rect %dx%d at x=%d, one cell wide gives %dx%d, and one"
+			       " 20 cells wide gives %dx%d\n",
+			       thin.width(), thin.height(), thin.x(), squeezed.width(),
+			       squeezed.height(), room.width(), room.height());
+			CHECK(!thin.isEmpty() && narrow.rect.contains(thin)
+			      && squeezed.width() >= 0 && squeezed.height() >= 0
 			      && room.width() > 0 && room.width() < wide.rect.width(),
 			      "an item narrower than its own indent still answers a text"
-			      " rect with no negative dimension, while a wide one gets"
-			      " the row less the indent");
+			      " rect it can use, inside itself, with no negative"
+			      " dimension at the extreme, while a wide one gets the row"
+			      " less the indent");
 		}
 		overlapping.sort();
 		overlapping.removeDuplicates();
