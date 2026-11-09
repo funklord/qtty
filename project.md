@@ -57303,12 +57303,18 @@ by writing 1020 entries -- most checks are asserted by construction and a
 sabotage for each would be ceremony -- but it is the honest scope of what
 the sweep proves, and it was previously unstated in either direction.
 
-**The eight that did not redden, by entry number so the next session can
-`--only` each**: 167 the cursor record across a handover, 339 the encode
-cache keyed without the cell, 446 a run joining the line it is drawn on,
-548 a thin fill's sub-cell span, 554 a tiled pixmap's placement per tile,
-708 a sub-control declining a part the base style claims, 713 a spin box's
-two arrows however narrow, 785 a narrow item's text rect going negative.
+**The eight that did not redden. ~~By entry number so the next session can
+`--only` each~~ -- BY NAME, because these numbers are stale: 8.702 retired
+entry 339 later the same day and every number above it shifted down one.
+8.707 has the mapping and the reason a position was never the right
+reference.** The names, which do not move: *the cursor record survives a
+handover* (167, unchanged, being below the retirement), *the encode cache
+is keyed without the terminal's cell* (339, now retired and explained in
+8.702), *a run does not join the line it is drawn on* (now 445), *a thin
+fill's sub-cell span is dropped again* (547), *a tiled pixmap goes back to
+one placement per tile* (553), *a sub-control declines a part the base
+style claims* (707), *a spin box keeps both arrows however narrow it is*
+(712), *a narrow item's text rect goes negative* (784).
 8.692 diagnoses 339 and the answer there is not a weak check: the property
 has two guards and the suite cannot tell them apart.
 
