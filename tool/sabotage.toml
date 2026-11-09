@@ -4800,12 +4800,17 @@ check = "a spell-check squiggle marks the word it is under"
 # state a subscript and any mixed-size line were in: one sentence
 # broken across two rows, reading as a missing character and a stray
 # line. 8.280.
+# RE-POINTED 8.715. This named "a subscript stays on the line it belongs
+# to", which stays green -- and the break is caught at once by the row
+# contract's consequence check, whose own measurement moves from "0 did
+# not hold" to 1. Measured with --diff, which is what told the two apart:
+# the code was defended all along and the pairing was wrong.
 name = "a run does not join the line it is drawn on"
 file = "src/render/cell_paint.cpp"
 find = "\tif (last_row_ >= 0 && clip_cells() == last_clip_\n\t    && q.y() - fm.ascent() < last_baseline_\n\t    && q.y() > last_baseline_ - GridMetrics::ch())\n\t\trow = last_row_;"
 into = "\tif (false)\n\t\trow = last_row_;"
 count = 1
-check = "a subscript stays on the line it belongs to"
+check = "and each row's OR ELSE happens"
 
 [[sabotage]]
 # The lower bound widened past any real line spacing, so a run drawn
@@ -5938,12 +5943,16 @@ count = 1
 check = "a fill whose edge stops part way into a pixel never claims more cells than raster, at any fraction"
 
 [[sabotage]]
+# RE-POINTED 8.715. This named the placement-coverage check, which stays
+# green; what the break actually moves is the tiling KEY -- "same twice
+# equal" becomes "same twice DIFFER" -- so the identity check is what
+# catches it, and promptly. Measured with --diff.
 name = "a tiled pixmap goes back to one placement per tile"
 file = "src/render/cell_paint.cpp"
 find = "\tdrawPixmap(rn, composed, QRectF(composed.rect()));"
 into = "\tQPaintEngine::drawTiledPixmap(r, pm, offset);"
 count = 1
-check = "a tiled pixmap is placed over the cells raster paints it in, partial tiles included"
+check = "the same tiling twice is one placement identity"
 
 [[sabotage]]
 name = "a tiling is composed fresh on every frame again"
@@ -7799,12 +7808,19 @@ check = "and a spin box keeps a readable value at every width, the arrows being 
 [[sabotage]]
 # And the arrows stop yielding, so below three cells they are placed where
 # the widget is not. 8.479.
+# RE-POINTED 8.715, and this one cannot be fixed the other way. Forcing
+# both arrows on at every width puts them outside a one-cell widget, the
+# complex-side funnel clamps an out-of-bounds rect to empty, and the
+# arrows check skips an empty arrow deliberately -- an arrow is "either
+# absent or wholly inside". So the break is real, that check's design is
+# right, and the observable it produces is the VALUE losing its cell:
+# 0 of 7 widths lost it becomes 2. Its sibling asserts exactly that.
 name = "a spin box keeps both arrows however narrow it is"
 file = "src/grid/grid_style.cpp"
 find = "\tconst int arrows = cells - 2 * edge >= want_arrows + 1 ? want_arrows : 0;"
 into = "\tconst int arrows = want_arrows;"
 count = 1
-check = "a spin box's arrows stay inside the widget and clear of each other and the value at every width"
+check = "and a spin box keeps a readable value at every width"
 
 [[sabotage]]
 # The tool button's own part goes back to the base style's rect less a

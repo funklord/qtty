@@ -58748,12 +58748,13 @@ narrow widths where declining is correct, so `unpinned` stayed empty.
 being written without it**, which is the shelf-life rule applied to a
 pinned set rather than to a sentence.
 
-**2 IS 8.713 AGAIN, and that makes it a class rather than an instance.**
-The fixture's band is 3 pixels thick and the code under test is the
-fallback for a span narrower than a cell, so the fixture never reaches
-it. Same shape as the narrow item at three cells: a fixture chosen for
-being extreme, sitting outside the band where the code runs. Two of eight
-now, from unrelated subsystems.
+**2 LOOKED LIKE 8.713 AGAIN AND IS NOT -- see 8.716, which measured it.**
+The reading here was that the fixture's 3-pixel band is too thick to
+produce the sub-cell span the fallback exists for, making it the narrow
+item's shape in another subsystem. Swept over six thicknesses from 0.4 to
+3.0, clean beside broken, every pair is identical: the branch is not
+reached by that shape at any thickness. It is a fixture on a different
+ROAD, not one outside the band, and the two have different remedies.
 
 **THE INSTRUMENT, and why its control is not optional.** `--diff` prints
 the `info:` lines a sabotage moved. The first version printed 24 lines
@@ -58788,3 +58789,48 @@ and not documented, 0 restored. The first version read the two set
 literals line by line and found three of six, because adding a flag wraps
 the literal -- a false failure, which is the one thing a gate must not
 produce, so it reads the whole function instead.
+
+### 8.716 The thin fill's remedy was guessed wrong, and one sweep said so (2026-11-09)
+
+**8.715 read entry 2 as 8.713's shape -- a fixture outside the band where
+the code runs -- and named the remedy: a thinner band. That was inference,
+it was wrong, and the measurement that falsified it cost two builds.**
+
+The fallback under test fires when a row's span contains no cell centre:
+`if (last < first)`. The fixture draws a 3-pixel diagonal band at six
+slopes, so the obvious reading is that 3 pixels is too thick to produce a
+sub-cell span. Swept over six thicknesses from 0.4 to 3.0 pixels, clean
+beside the fallback disabled:
+
+    thick    0.4   0.7   1.0   1.5   2.0   3.0
+    clean    0/20  0/20  0/20  0/29  0/29  0/29     blank / fewest cells
+    broken   0/20  0/20  0/20  0/29  0/29  0/29
+
+**Byte-identical at every thickness.** Not one of the eighteen
+clean-versus-broken pairs differs, so the branch is not reached by this
+SHAPE at any thickness -- it is not a thickness problem and the remedy
+named in 8.715 would have changed nothing.
+
+**What makes it worth an entry rather than a correction in place.** The
+guess was reasonable, and it was reasonable in the specific way that is
+dangerous: it fitted a shape the same session had just established from
+two unrelated subsystems, and a lens that has just paid out twice is the
+one that gets applied without checking. 8.713's class is real and entry 2
+looked exactly like a member of it. Being a member of a class is not
+evidence about the mechanism, and the per-instance measurement is what
+separates them -- one sweep, which is cheaper than the two builds spent
+proving the inference wrong after writing it down.
+
+**The question is now narrower and is what the next attempt starts
+from.** The function has more than one road, and a row-centre test
+(`if (!inside) continue;`) sits above the scanline arithmetic that holds
+the fallback. So the open question is not what thickness reaches the
+branch but **which shapes enter that road at all** -- the fixture's long
+diagonal band apparently does not, at any thickness, at any of six
+slopes. Read the roads before choosing another fixture.
+
+**And 8.715's ledger is corrected rather than appended to**: entry 2 is
+not "a fixture outside the band", it is "a fixture on a different road",
+and the two have different remedies. So two of eight are 8.713's class --
+the narrow item and nothing else yet -- rather than two of eight being so
+because entry 2 resembled one.
