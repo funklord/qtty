@@ -5895,12 +5895,30 @@ count = 1
 check = "a translucent wash tints the ground and leaves the glyph, up to the alpha at which the image takes the cell"
 
 [[sabotage]]
-name = "a thin fill's sub-cell span is dropped again"
+# RE-AIMED 8.718, from the fallback's EXISTENCE to its CHOICE of cell.
+#
+# Removing it entirely is invisible, and that took four measurements to
+# establish rather than to guess. Instrumented, the branch fires about
+# twenty times per suite run and every one comes from the unfilled-polygon
+# EDGE fixtures -- so it is reached -- and removing it changes no line of
+# the suite's output, because in every one of those cases another road
+# marks the same cell. Two fixtures were built to isolate it, a band swept
+# over six thicknesses from 0.4 to 3.0 px and a seven-pixel sliver placed
+# between two cell centres, and both came out byte-identical with the
+# branch gone.
+#
+# What IS defended is which cell it picks. Marking three cells to the
+# right is caught at once by the blank-cell check, since nothing else can
+# explain ink in a cell raster leaves empty -- the fallback's upper bound
+# has a guard and its lower bound does not. Whether the branch still earns
+# its place at all is a question about the engine's roads and is recorded
+# rather than answered.
+name = "the sub-cell span fallback picks the wrong cell"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\tif (last < first) {\n\t\t\t\tfirst = last = int(std::floor((lo + hi) / 2 / cw));\n\t\t\t}"
-into = "\t\t\tif (false) { first = last = 0; }"
+find = "\t\t\t\tfirst = last = int(std::floor((lo + hi) / 2 / cw));"
+into = "\t\t\t\tfirst = last = int(std::floor((lo + hi) / 2 / cw)) + 3;"
 count = 1
-check = "a thin fill is drawn at every slope, where whether it appeared at all used to depend on one"
+check = "and no fill marks a cell raster leaves blank, which holds for the thin ones too"
 
 [[sabotage]]
 name = "a shape between two row samples is nothing again"

@@ -58931,3 +58931,73 @@ agrees.** The remedy is not more care in reading -- it is the arm, run
 before the entry is written up rather than after. 8.713 was committed and
 recorded before anything asked Qt 5, and the record had to be amended
 rather than written once.
+
+### 8.718 The last of the eight, and the branch is reached but unasserted (2026-11-09)
+
+**All eight entries the full sabotage sweep reported dead now redden the
+check they name. This was the last, and it took four measurements to
+establish what no amount of reading had.**
+
+**IT IS REACHED.** Instrumented at the branch, `if (last < first)` fires
+around twenty times per suite run, with spans like `lo=16.50 hi=23.50` --
+seven pixels lying strictly between the cell centres at 15 and 25. Every
+one of them comes from the **unfilled-polygon edge** fixtures, located by
+merging the suite's streams and reading which check the hits land in. So
+this was never dead code, which is what 8.715's reading and 8.716's
+correction had both assumed in different ways.
+
+**AND REMOVING IT IS STILL INVISIBLE**, because in every case the suite
+exercises, another road marks the same cell. Four measurements, each
+falsifying the remedy the previous one suggested:
+
+    the band at six thicknesses, 0.4 to 3.0 px     all 18 pairs identical
+    a 7 px sliver between two cell centres         identical, 12 cells
+    the whole suite's output, branch removed       no line changed
+    the branch instrumented                        ~20 hits, all polygons
+
+The sliver is the instructive failure. It was built precisely so the
+fallback's cell would be the only thing marking it -- near-vertical, one
+pixel of drift over six rows, every row's span between two centres, and
+not axis-aligned so the bounding-rectangle road could not take it. It
+marked 12 cells over 6 of 6 rows **with the branch gone**. Something else
+covers that geometry, and three fixtures in a row have now failed to
+isolate this branch.
+
+**WHAT IS DEFENDED IS THE CHOICE OF CELL, NOT THE EXISTENCE OF ONE.**
+Making the fallback mark three cells to the right is caught immediately
+-- *"and no fill marks a cell raster leaves blank, which holds for the
+thin ones too"* -- because nothing else can explain ink in a cell raster
+leaves empty. So the branch's **upper** bound has a guard and its
+**lower** bound does not, and the entry is aimed at the half that can be
+broken visibly.
+
+**THE OPEN QUESTION, recorded rather than answered.** Whether the branch
+still earns its place is a question about the engine's roads: it was added
+when a shape whose span is sub-cell in every row vanished entirely, and
+something added since appears to cover the same cases. Establishing that
+means reading the roads above it -- the row-centre test
+`if (!inside) continue;` and whatever marks a partially covered cell --
+and it is a design question about `CellPaintEngine` rather than about this
+entry. It is NOT closed by the measurements above: three fixtures failing
+to isolate a branch is evidence about the fixtures as much as about the
+branch, which is the same asymmetry 8.716 records.
+
+**THE LEDGER OF THE EIGHT, closed.** Of the eight the sweep reported:
+
+    339  retired, every route to the guard reaches the flush    8.702
+    167  kept deliberately, an emptier handover could matter    8.711
+    784  re-aimed from the guard to the arithmetic              8.713, 8.717
+    445  re-pointed, the row contract's consequence catches it  8.715
+    553  re-pointed, the placement-identity check catches it    8.715
+    712  re-pointed, the value check and its RTL twin catch it  8.715
+    707  the one real check defect: a pin without its width     8.717
+    547  re-aimed from the fallback's existence to its choice   8.718
+
+**Four of eight were mis-aimed bookkeeping and the code was defended all
+along.** One was a real defect in a check. One was retired, one kept on
+purpose, and one needed its break moved because the funnel above it
+repairs the direction the break went in. **"Eight checks defending
+nothing" was a claim about the suite's coverage, and it was mostly a claim
+about the spec's.** The thing that separated them is `--diff`, and the
+thing that made it readable is its control; neither existed when the tally
+was written, and the tally stood for five sessions.
