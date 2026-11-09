@@ -8942,3 +8942,17 @@ find = "\tx = qBound(0, x, qMax(0, limit_x - g.width()));"
 into = "\tx = qMax(0, x);"
 count = 1
 check = "a modal moved past the terminal's right edge slides back onto it"
+
+# F4'S OLDEST PROMISE, named by no entry until 8.722. A typed character
+# reaches the focus widget as an event carrying its TEXT -- drop the text
+# and the key code still arrives, so focus moves and shortcuts fire while
+# nothing a person types lands in a field. That is the shape a key-code
+# check cannot see, which is why the break is the text rather than the
+# delivery.
+[[sabotage]]
+name = "a typed key arrives with its text stripped"
+file = "src/runtime/input_router.cpp"
+find = "\tQKeyEvent press(QEvent::KeyPress, k.qt_key, mods, text);"
+into = "\tQKeyEvent press(QEvent::KeyPress, k.qt_key, mods, QString());"
+count = 1
+check = "text keys reach focus widget (F4)"

@@ -467,6 +467,58 @@ int suite_router() {
 	CHECK(win.focusWidget() == before_tab,
 	      "and Shift+Tab walks it back to where Tab came from");
 
+	// AND THE DIRECTION, which neither check above can see. project.md
+	// 8.722.
+	//
+	// The fixture they use has exactly TWO focusable widgets, so forward
+	// and backward are the same move and a router that walked the chain
+	// the wrong way would satisfy both: measured, reversing the router's
+	// own `move_focus(scope, !k.shift)` to `(scope, k.shift)` leaves every
+	// check in this suite green. Three widgets is the smallest chain on
+	// which "advances" means anything.
+	//
+	// ITS OWN WINDOW, deliberately. The fixture above is read by dozens of
+	// checks below -- tab-stop reports, reachability lists, repeated Tab
+	// walks -- and giving it a third focusable widget would change what
+	// every one of them is about. A direction question needs three widgets
+	// and nothing else needs them, so it gets a window of its own.
+	{
+		QWidget three;
+		three.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *one = new QLineEdit(&three);
+		auto *two = new QLineEdit(&three);
+		auto *tri = new QLineEdit(&three);
+		one->setGeometry(0, 0, 10 * GridMetrics::cw(), GridMetrics::ch());
+		two->setGeometry(0, GridMetrics::ch(), 10 * GridMetrics::cw(),
+		                 GridMetrics::ch());
+		tri->setGeometry(0, 2 * GridMetrics::ch(), 10 * GridMetrics::cw(),
+		                 GridMetrics::ch());
+		three.resize(GridMetrics::cells(10, 3));
+		three.show();
+		QCoreApplication::processEvents();
+		InputRouter tr(&three);
+		one->setFocus(Qt::OtherFocusReason);
+		set_focus_widget(three.focusWidget());
+		tr.on_key({Qt::Key_Tab, QString(), false, false, false});
+		QWidget *after_tab = three.focusWidget();
+		tr.on_key({Qt::Key_Tab, QString(), false, false, true});
+		QWidget *after_back = three.focusWidget();
+		const auto name = [&](QWidget *w) {
+			return w == one ? "one" : w == two ? "two"
+			     : w == tri ? "three" : "elsewhere";
+		};
+		printf("info: in a three-field chain, Tab from the first lands on"
+		       " '%s' and Shift+Tab then returns to '%s'\n",
+		       name(after_tab), name(after_back));
+		// BOTH halves, because either alone is direction-blind: "Tab
+		// reached two" is also true of a router that always moves to the
+		// next widget regardless of the modifier, and "Shift+Tab returned"
+		// is the relationship the two-widget fixture already asserts.
+		CHECK(after_tab == two && after_back == one,
+		      "Tab moves FORWARD along a chain of three and Shift+Tab back,"
+		      " which a chain of two cannot tell apart");
+	}
+
 	// The router's OWN fallback, which the check above does not reach.
 	//
 	// `focusNextPrevChild(!k.shift)` runs only when the target did not

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2500 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2501 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -59204,3 +59204,89 @@ and the thing to ask is not "is this code dead" but **"who else answers
 this question before my check reads it"**. The first two were found by
 reading our own code; this one needed Qt's behaviour, which is the part
 no amount of reading this tree would have given.
+
+### 8.722 The goal gap walked from the aims, and what it found (2026-11-09)
+
+**Walked from the project description rather than from the roadmap, which
+is a different walk and the one the stop hook asks for. The aims
+themselves are served; the gap is in what guards them.**
+
+**WHAT THE AIMS PROMISE AND THE CODE DELIVERS**, checked rather than
+assumed. design.md 8.4's support matrix names 18 widgets as Channel A,
+and all 18 are exercised -- thinnest `QTreeView` at 9 uses, `QLineEdit`
+at 332. The **Unsupported** row promises "a labelled placeholder box" and
+`draw_placeholder()` delivers it for seven classes. 8.6's icon
+substitution registry exists, both routes, as `set_icon_glyph()` and the
+`qtty.glyph` property. Section 9's **differential test** -- the same model
+through GUI and TUI builds -- exists at `suite_render.cpp:5163`. 7.5's
+"absent entirely" list is done or retired but for the bundled font, which
+is a licence and not this library's to choose. **No aim has a user-facing
+gap.**
+
+**WHAT DOES HAVE A GAP is the evidence, and it is now measured per
+suite.** Of 2499 passing checks, **747 are named by some sabotage entry
+and 1752 by none**:
+
+    suite_router.cpp     447        suite_theme.cpp       84
+    suite_backend.cpp    357        suite_cells.cpp       63
+    suite_widgets.cpp    201        suite_grid.cpp        25
+    suite_graphics.cpp   143        suite_budget.cpp      20
+    suite_runtime.cpp    141        suite_loops.cpp       13
+    suite_render.cpp      93        suite_placements.cpp  11
+
+Unnamed is **not** unguarded -- an entry reddens its named check and
+usually others with it, and the last full sweep found 1473 of 2493
+reddened by something. But nobody had the clustering, and it says where
+to look: the router and the backend hold 46 per cent of it.
+
+**AND THE ROUTER'S TWO OLDEST PROMISES WERE AMONG THE UNNAMED**: *"text
+keys reach focus widget (F4)"* and *"Tab advances focus chain"*. They are
+F4 itself, the thing G1 is for.
+
+**One is now guarded and the entry is a strong one.** Stripping the text
+from the delivered key -- `QKeyEvent(..., mods, text)` to `QString()` --
+leaves the key code arriving, so focus still moves and shortcuts still
+fire while nothing a person types lands in a field. It reddens **64
+distinct checks**, which says both that it is load-bearing and that those
+64 were among the collaterally guarded.
+
+**The other could not be guarded, and the reason is this run's fourth
+instance of one shape.** Reversing the chain's direction --
+`move_focus(scope, !k.shift)` to `(scope, k.shift)` -- leaves every check
+in the suite green. Two causes, found in order:
+
+- **The fixture had two focusable widgets**, so forward and backward are
+  the same move. That is 8.713's lens again, and it was the obvious
+  reading.
+- **And fixing it was not enough.** A three-field chain in its own window
+  still showed no difference, because `move_focus()` is a FALLBACK: the
+  code calls it only `if ((!target || !press.isAccepted()) &&
+  scope->focusWidget() == before)`, and Qt's own `QWidget::event()`
+  handles a Tab by moving the focus and accepting it first. So the line
+  reversed is not the line that moved the focus.
+
+**So the entry is removed rather than left unprovable**, and the
+three-field check is kept, because the direction of a focus walk is worth
+asserting whether or not this particular break can reach it. It is in a
+window of its own: the fixture those two checks share is read by dozens
+below -- tab-stop reports, reachability lists, repeated Tab walks -- and
+giving it a third focusable widget would change what every one of them is
+about.
+
+**THE SHAPE, fourth time today.** A funnel that repaired the broken value
+(8.713, 8.717), a sibling road that covered the same cells (8.718,
+8.720), a toolkit that clamped upstream (8.721), and now **a toolkit
+handler that acted before our fallback could**. Each time a guard looked
+undefended and each time something between the break and the assertion
+was supplying the right answer. The question that finds it is not "is this
+code dead" but **"who else answers this before my check reads it"** -- and
+twice now the answer has been Qt, which no amount of reading this tree
+would give.
+
+**What remains open is the 1752, and it is not a thousand entries to
+write.** The valuable subset is the checks reddened by *nothing at all*,
+because those are where a vacuous check could hide -- and this run found
+that four of eight suspected dead checks were bookkeeping, one was dead
+code and one was a real defect. Identifying the rest needs a full sweep,
+which is nine and a half hours, and the clustering above is what would
+make that run worth its cost rather than a re-confirmation.
