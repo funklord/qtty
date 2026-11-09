@@ -57806,3 +57806,52 @@ would have failed a build, and two were caught only by measuring something
 I expected to confirm. That is the sixth, seventh and eighth instance this
 session of 8.689's family, and the only reliable move remains the one that
 entry names -- go and look at the thing the claim is about.
+
+### 8.702 One of the eight closed, by tracing who can reach the guard (2026-11-09)
+
+**8.692 diagnosed check 339 as a property with two guards where breaking
+either leaves the other covering. That was right about the tested path and
+it left the real question open: is there a route to the cache key alone?
+Traced today, and the answer is no -- by construction.**
+
+`caps_.cell_px` is written in **exactly one place**: `scan_winop()`,
+parsing a `CSI ... t` window-op report. Two code paths call `scan_caps()`,
+and they differ in what can reach them:
+
+- `decode_one()` dispatches a **CSI** to `dispatch_csi()` before anything
+  else, and the window-op branch there flushes the upload cache outright
+  when the cell has moved.
+- The other call is for **string sequences only** -- OSC, DCS, APC, PM,
+  SOS, selected by `strchr("]P_^X", pending_[1])` -- and it has no flush,
+  checking only the palette and the ground after parsing. A cell-size
+  report is a CSI and never arrives there.
+
+**So every route that moves the cell reaches the flush, and the key's
+`cell_px` component cannot be observed by any input the backend can
+receive.** The sabotage breaks real code; nothing can see it.
+
+**THE COMMENT ABOVE THAT FLUSH SAID THE OPPOSITE AND IS CORRECTED.** It
+read that the cache carrying `cell_px` in its key meant a stale entry was
+*"already unreachable"* and that the flush was *"no longer what keeps the
+picture honest"*. It is the only thing that does. The claim was plausible,
+written at the moment the key was added, and **unfalsifiable by this suite
+-- which is exactly why a sabotage entry was the thing that exposed it**:
+the check could not fail, and the only reason to look was that the sweep
+said so.
+
+**The entry is retired rather than contorted, and the spec is 804.**
+Writing a fixture to reach a case no input produces would be a check about
+nothing, and `sabotage.py` has no state for "breaks real code that nothing
+can observe" -- only `expect = "crash"`. Adding one was considered and
+declined for 8.682's reason: a verdict meaning *"this cannot be seen"*
+hands any later session the power to silence a dead check by asserting
+unobservability, which is the power this target exists to remove.
+
+**The guard stays in the code.** The key is belt and braces, it costs a
+`QSize` in a hash key, and the next route that moves the cell without
+coming through `dispatch_csi` is covered by it for free. What is removed is
+a *test* of a case no input reaches, not the defence.
+
+**Seven of the eight remain**, and this one took reading four code paths to
+close -- which is the measure of what the other seven cost, and why 8.696's
+four-cause split matters more than its count.

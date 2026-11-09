@@ -2542,11 +2542,24 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			const QSize was = caps_.cell_px;
 			scan_caps(QStringLiteral("\033[%1;%2;%3t").arg(what)
 			              .arg(param(1, 0)).arg(param(2, 0)).toLatin1(), caps_);
-			// Everything already uploaded was scaled by the OLD cell. The
-			// upload cache carries cell_px in its key now, so a stale entry
-			// is already unreachable and this is no longer what keeps the
-			// picture honest -- what it does is hand the ids back and stop
-			// the map holding uploads nothing can ever hit again.
+			// Everything already uploaded was scaled by the OLD cell, so
+			// this is what keeps the picture honest, and it hands the ids
+			// back besides -- stopping the map holding uploads nothing can
+			// ever hit again.
+			//
+			// AND IT IS THE ONLY THING THAT DOES, which this comment used to
+			// deny: it said the cache carrying cell_px in its key meant a
+			// stale entry was "already unreachable" and that this flush was
+			// "no longer what keeps the picture honest". Traced 2026-11-09
+			// after a sabotage of that key failed to redden the check that
+			// names it. `cell_px` is written in exactly one place,
+			// scan_winop() parsing a `CSI ... t`, and a CSI is dispatched to
+			// this branch before it can reach the general caps parse in
+			// decode_one() -- which has no flush of its own and takes only
+			// string sequences. So every route that moves the cell arrives
+			// here. The key is belt and braces, worth keeping and not worth
+			// a check: project.md 8.702 retires the entry rather than
+			// contorting a fixture to reach a case no input produces.
 			// read_winch() asks for the geometry on every SIGWINCH
 			// precisely because a font-size change moves this without moving
 			// the cell COUNT, so this is the arrival it was asking for.

@@ -3554,19 +3554,6 @@ count = 1
 check = "and one image over two cell extents is two"
 
 [[sabotage]]
-# The terminal's cell out of the key. for_terminal() scales by it, and it
-# MOVES: a font-size change in the terminal answers CSI 16t with a new
-# one, which is why dispatch_csi() drops the kitty upload cache at the
-# same arrival. Without it in the key a picture goes on being sent at the
-# old scale for as long as it stays on the screen. 8.242.
-name = "the encode cache is keyed without the terminal's cell"
-file = "src/backend/ansi/ansi_backend.cpp"
-find = "\tk.cell_px = caps_.cell_px;"
-into = "\tk.cell_px = QSize();"
-count = 1
-check = "and the same picture is re-encoded at the terminal's new cell"
-
-[[sabotage]]
 # The bound. Nothing is wrong on the wire and nothing is ever wrong on
 # the wire: the cache simply keeps an entry per picture the program has
 # ever drawn, tens of kilobytes each, for the life of the run. A leak
