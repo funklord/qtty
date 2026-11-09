@@ -59001,3 +59001,76 @@ nothing" was a claim about the suite's coverage, and it was mostly a claim
 about the spec's.** The thing that separated them is `--diff`, and the
 thing that made it readable is its control; neither existed when the tally
 was written, and the tally stood for five sessions.
+
+### 8.719 Two lenses from the eight, one productive and one not (2026-11-09)
+
+**The eight closed, so the next question is what shape they were. Two
+lenses came out of them; one was tested and does not generalise, and the
+other found a real gap it could not isolate. Both are written down,
+because a lens that failed is what stops the next session re-deriving
+it.**
+
+**LENS ONE: a check asserting a property that a clamp guarantees.** It
+came from `valid_rect()`, which produced the vacuity twice -- once on the
+sub-element surface (8.713) and once on the complex side (8.715's spin
+box). The reading was that any clamp in the tree makes the property it
+guarantees unassertable from outside.
+
+**It does not generalise, and the test was cheap.** Five clamps in the
+library, four with no sabotage entry. Removing the compositor's on-screen
+clamp in `placed_at()` reddens **three** checks at once -- a menu's item
+names, keyboard reach to the last item, and a modal that fits again. So
+the clamp is well defended, and the lens is wrong as stated.
+
+**What was special about `valid_rect()` is narrower and worth keeping:**
+it does not merely bound a value, it **repairs the very value a check
+reads**, and in the direction the break went in. A clamp that bounds
+something a check reads is fine; a clamp that turns a wrong answer back
+into the right one is what makes a check unable to fail. That is why the
+narrow-item entry had to break the arithmetic *downward* -- the funnel
+clips a too-wide rect back to exactly the number the check wanted (8.717)
+-- and it is the property to look for rather than "is there a clamp".
+
+**LENS TWO: a pinned set keyed without a dimension it varies over.** From
+8.717's sub-control pin. Three pinned sets in the suite, and the other two
+are already right: `askew_pinned` keys the full geometry
+(`checkbox/contents -> 100x19+39+0` beside `20x19+39+0`, the same part at
+two widths), and `fixed_pixels` keys a binary property that does not vary
+by width and is explicitly version-aware. So the fault was one instance,
+not a family -- which is itself worth recording, since the lens looked
+like it would pay out and did not.
+
+**WHAT THE FIRST LENS DID FIND, as a by-product.** Taking the on-screen
+clamp apart line by line rather than as a block:
+
+    both lines removed       3 checks red  -- the LOWER bounds
+    y upper bound dropped    1 check red
+    x upper bound dropped    0 checks red
+
+**So the horizontal half of the clamp is asserted by nothing**, and the
+three failures that removing the block produces are all about letting a
+layer go negative. A layer could slide off the right edge unnoticed.
+
+**And a fixture built for it did not isolate it either.** A menu 25 cells
+wide in a twenty-cell terminal, anchored at thirteen cells so it can
+neither fit at its anchor nor flip, was placed off the right edge with the
+bound gone -- and its name was still on screen, because the rule that
+scrolls a too-wide menu to show its item names follows the layer and
+compensates. The check was written, measured passing both ways, and
+removed rather than kept: a check that passes for a reason other than the
+one it states is the thing this run has spent itself removing.
+
+**So the gap stands, with its reason.** It is the same shape as 8.718's
+span fallback -- a guard whose effect another road compensates for in
+every case the suite can currently produce -- and the same question
+follows: whether the bound is load-bearing at all, or whether the follow
+rule has made it redundant. That is about the compositor's placement and
+scrolling together, not about one line, and it is recorded rather than
+guessed.
+
+**THE METHOD NOTE, which is the run's.** Both lenses were cheap to test
+and one paid nothing. Deriving a lens from the last bug is worth doing --
+`working-practice.md` says so and this run's own sweep is why -- but the
+derivation is a hypothesis and the test is a measurement. Writing down
+the lens that failed costs three lines and saves the next session the
+five builds this took.
