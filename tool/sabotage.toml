@@ -8956,3 +8956,27 @@ find = "\tQKeyEvent press(QEvent::KeyPress, k.qt_key, mods, text);"
 into = "\tQKeyEvent press(QEvent::KeyPress, k.qt_key, mods, QString());"
 count = 1
 check = "text keys reach focus widget (F4)"
+
+# A TRUST BOUNDARY, unnamed until 8.723. The terminal reports its own size
+# and a program cannot refuse to read it, so zero rows is untrusted input
+# that would give a zero-row grid.
+#
+# IN read_winch(), AND THAT TOOK A SECOND AIM. The first version broke the
+# CSI 8 escape-reply parser's identical guard and the check stayed green --
+# because this fact arrives by TWO doors and the check drives the ioctl
+# one, through TIOCSWINSZ and a raised SIGWINCH. Two guards for one
+# untrusted fact, and only one of them is what the fixture reaches.
+#
+# The CSI-8 door's own lower bound is still named by nothing: 8.723.
+#
+# The check it names has a history of not RUNNING rather than failing when
+# the suite's order moved -- see suite_backend.cpp, which records that and
+# says the cause is unestablished -- so an INCONCLUSIVE verdict here means
+# the ordering, not the guard.
+[[sabotage]]
+name = "a terminal reporting zero rows is believed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0 || ws.ws_row <= 0) return;"
+into = "\tif (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0) return;"
+count = 1
+check = "a terminal reporting zero rows is refused"

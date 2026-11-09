@@ -59290,3 +59290,59 @@ that four of eight suspected dead checks were bookkeeping, one was dead
 code and one was a real defect. Identifying the rest needs a full sweep,
 which is nine and a half hours, and the clustering above is what would
 make that run worth its cost rather than a re-confirmation.
+
+### 8.723 One untrusted fact, two doors, and a check at only one (2026-11-09)
+
+**Continuing 8.722's walk into the backend, which holds 357 of the 1752
+unnamed checks. The entry written is proved; what it found on the way is
+the better half.**
+
+**THE FACT IS UNTRUSTED AND THE PROGRAM CANNOT DECLINE IT.** A terminal
+reports its own size, and zero rows would give a frame with no cells --
+whose rasterisation is a null `QImage` that `QPainter` refuses to open and
+warns about once per call. `stty rows 0` produces it. The guard exists;
+what did not exist was an entry proving anything defends it.
+
+**IT ARRIVES BY TWO DOORS AND I AIMED AT THE WRONG ONE FIRST.**
+
+    read_winch()         ioctl TIOCGWINSZ    ws.ws_row <= 0  -> return
+    the CSI 8 handler    an escape reply     rows > 0 && ...  -> ignore
+
+The check -- *"a terminal reporting zero rows is refused, as zero columns
+already was"* -- drives the **ioctl** door, through `TIOCSWINSZ` and a
+raised `SIGWINCH`. The first version of the entry broke the **escape
+reply** door's identical guard, and the check stayed green. Re-aimed at
+`read_winch()`, it reddens.
+
+**So this is my own misattribution, the class 8.715 found four of**, and
+it is worth saying rather than quietly fixing: the two guards are one line
+apart in character and a world apart in which fixture reaches them. Having
+just written up four of these did not stop me making a fifth.
+
+**AND THE OTHER DOOR IS ASSERTED BY NOTHING.** Breaking the CSI 8
+handler's lower bound reddens **no check at all** -- not the named one and
+not a collateral. The neighbouring checks that look like they cover it do
+not: *"a zero dimension is refused rather than stored"* and *"a cell no
+terminal could have is refused"* drive `CSI 6` and `CSI 4` through
+`caps_of()`, which is `term_caps.cpp`'s parser and a different guard
+again. Three guards for one shape of nonsense, and checks at two.
+
+**What writing it needs, stated because the next session should not have
+to re-derive it.** `caps_of()` cannot reach this one: the CSI 8 window
+operation is handled by a LIVE backend in its input path, so the fixture
+needs bytes written to a pty master while a backend reads the slave. The
+block holding the ioctl check has the slave and the event loop already.
+**The hazard is in that file's own record**: a fixture written between the
+resize checks once made a check stop RUNNING rather than failing -- 2441
+where 2442 was due, no FAIL line anywhere -- and the cause is recorded as
+unestablished with three comfortable explanations disproved. That failure
+mode is detectable now, because `count-check` asserts the total, so the
+work is safe to attempt; it is not safe to attempt carelessly.
+
+**The run's tally of this shape, which is now five.** A funnel repairing
+the broken value, a sibling road covering the same cells, a toolkit
+clamping upstream, a toolkit handler acting before our fallback, and now
+**a second door to the same fact with the fixture at the first**. The
+question that finds all five is the same one: *who else answers this
+before my check reads it* -- and the fifth adds that "who else" can be
+another copy of the same guard in your own tree.
