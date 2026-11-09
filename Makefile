@@ -924,7 +924,21 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 	@test -n "$(strip $(BUILD_DIR))" || { \
 		echo "test-install: BUILD_DIR is empty, refusing to stage" >&2; exit 1; \
 	}
-	@stage="$(BUILD_DIR)/stage"; \
+	@# A DRY RUN OF THIS PRINTED A FALSE VERDICT, which is why the guard
+	@# below exists. make executes a recipe line holding $(MAKE) even under
+	@# -n, and the SUB-make inherits -n as well -- so the install produced
+	@# nothing, the verification loop on this same continued line measured
+	@# the absence, and `make -n test-install` announced that the packaging
+	@# rules do not agree with the file list. They do. It removed the
+	@# staging tree on the way, too.
+	@# project.md 8.705.
+	@case "$(firstword $(MAKEFLAGS))" in -*) ;; *[ntq]*) \
+		echo "test-install: -n, -t and -q cannot run this -- the sub-make"; \
+		echo "              below would dry-run too, produce nothing, and the"; \
+		echo "              check after it would report a failure that is not"; \
+		echo "              there. project.md 8.705."; \
+		exit 0 ;; esac; \
+	stage="$(BUILD_DIR)/stage"; \
 	rm -rf "$$stage"; \
 	$(MAKE) --no-print-directory install DESTDIR="$$PWD/$$stage" PREFIX=/usr \
 		> /dev/null || exit 1; \
@@ -1027,8 +1041,18 @@ probe-style: $(LIB)
 	}; \
 	echo "probe-style: setup() keeps the application's style as the proxy base"
 
+# The same false verdict, guarded the same way: under -n the sub-make
+# installs nothing into the temporary prefix and the probe then reports
+# "pkg-config could not answer for the install", which it can.
+# project.md 8.705.
 probe-install:
-	@test -n "$(strip $(BUILD_DIR))" || { \
+	@case "$(firstword $(MAKEFLAGS))" in -*) ;; *[ntq]*) \
+		echo "probe-install: -n, -t and -q cannot run this -- the sub-make"; \
+		echo "               below would dry-run too, produce nothing, and the"; \
+		echo "               check after it would report a failure that is not"; \
+		echo "               there. project.md 8.705."; \
+		exit 0 ;; esac; \
+	test -n "$(strip $(BUILD_DIR))" || { \
 		echo "probe-install: BUILD_DIR is empty, refusing to install" >&2; \
 		exit 1; \
 	}; \
@@ -1587,6 +1611,11 @@ test-valgrind:
 # 0 of 99 while thirteen checks pass over there. Read a zero as "not in this
 # binary" and go and find out which one it is in.
 COV_DIR = build-cov
+# A dry run of this dry-runs its sub-make and so builds nothing, but prints
+# no false verdict: the checks after it are SEPARATE recipe lines with no
+# $(MAKE), so -n only prints them. That is the distinction -- the hazard
+# needs the write and the claim on one logical line with the recursion --
+# and it is why this target is left unguarded. project.md 8.705.
 coverage:
 	@test -n "$(F)" || { echo "coverage: name the file, e.g. make coverage F=term_caps" >&2; exit 1; }
 	$(MAKE) test BUILD_DIR=$(COV_DIR) \

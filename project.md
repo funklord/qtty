@@ -57991,3 +57991,72 @@ one's own, which is a guard working as designed rather than an obstacle.
 **What this entry is for**: 339 took reading four code paths and closed;
 167 has taken four and has not. That is the honest rate, and it is the
 figure to price the remaining six by.
+
+### 8.705 Every recipe line that recurses make and writes a file, counted (2026-11-09)
+
+**The 28 guideline commits read as a requirements list rather than as
+advice, which is a goal-gap instrument this session had not used.** One of
+them is concretely checkable and names this tree's own shape:
+`makefile-hazards` gained the state-write half of the dry-run hazard on
+the strength of **qtty's own incident of 2026-10-08**, where a stamp
+holding a sentinel came back `FAIL <hash>` under `make -n`. Its scope
+sentence is the question to ask: *"which recipe lines holding `$(MAKE)`
+also write a file, not which ones read what it printed"* -- and it adds
+that a tree with no hook reading a file and no stamp under `.git` cannot
+have the variant at all. **This tree has both, so the question is live
+here and was asked.**
+
+**FOUR of fifteen.** Of the fifteen recipe lines holding `$(MAKE)`, four
+also write a file, enumerated by reassembling continuation lines rather
+than by eye:
+
+- **`check`** -- writes `.git/qtty-check-stamp`, which **is a verdict** and
+  which the pre-commit hook reads. **Guarded**, at the head of the same
+  continued line, and with `*[ntq]*` rather than the guideline's `*[nt]*`
+  -- broader, covering `make -q` as well.
+- **`test-install`** -- `rm -rf`s its staging tree and installs into it.
+- **`probe-install`** -- installs into a temporary prefix and writes
+  `install-probe.cc` and `install-probe.err`.
+- **`coverage`** -- builds and runs the whole suite into `$(COV_DIR)`.
+
+**~~So three of the four do real work under `-n` and none of them is
+guarded, which is the right answer rather than an omission ... a comment
+saying so is what a reader needs.~~ THAT WAS WRONG, AND RUNNING THE THING
+IS WHAT SHOWED IT.** The three unguarded targets were about to be given a
+comment each and left alone, on the reasoning that they write only scratch
+their own targets recreate and emit no verdict. Then `make -n
+test-install` was run to check the comment was true, and it printed:
+
+    /bin/sh: 24: cd: can't cd to build/stage
+    test-install: the packaging rules do not agree with the list
+    make: *** [Makefile:932: test-install] Error 1
+
+**A dry run deleted the staging tree and then reported that this
+project's packaging rules disagree with its file list, which they do
+not.** The mechanism is the one the rule names, one step further on: the
+sub-make inherits `-n` too, so the install produced nothing, and the
+verification loop -- on the same continued line, so also executed --
+measured the absence and declared it a failure.
+
+`probe-install` does the same: *"probe: pkg-config could not answer for
+the install"*, which it can. **`coverage` is the mild one** and the
+distinction is instructive: its verification sits on SEPARATE recipe lines
+with no `$(MAKE)`, so `-n` only prints them. The hazard needs the write and
+the claim to share a logical line with the recursion.
+
+**So two of the four now carry the guard**, at the head of the same
+continued line and with `*[ntq]*` as `check` has, and each says why rather
+than exiting silently: *"the sub-make below would dry-run too, produce
+nothing, and the check after it would report a failure that is not
+there."* Verified both ways -- `make -n` on each now explains and stops,
+and `make test-install probe-install` for real still reports
+*"22 file(s) installed and removed"* and the probe's rendered line.
+
+**What this cost and what it bought.** The first conclusion was reasoned
+from reading, was plausible, and would have committed a comment asserting
+something false at two sites. What caught it was running `make -n` on a
+target to confirm the comment I had just written about it -- and the
+guideline's scope sentence asks which lines write a file, which is the
+question that found the targets but not the question that found the
+fault. **A dry run that prints a verdict is not discoverable by reading
+for writes; it is discoverable by doing the dry run.**
