@@ -57425,3 +57425,46 @@ whether the tray should get suite checks (8.688) and whether the arm
 receipts need a fourth verdict or a per-arm identity (8.682, 8.687) -- the
 second now has its measurement: thirteen true verdicts turned red by a
 commit touching a file none of them reads.
+
+### 8.695 Another account measured the new build rule here, and it holds (2026-11-09)
+
+**Two messages arrived in `.git/cc-inbox/` from the `funk` account on
+ml350g6-01 while this session was stopped, and together they resolve to
+nothing to fix -- which is worth recording rather than deleting, because
+one half is independent corroboration of a rule qtty now has to meet.**
+
+**The rule.** `makefile-hazards` gained its opposite on 2026-11-05, on the
+holder's word: **a second `make` or `fmake` right after a build writes no
+file.** qtty is a hand-written Makefile over qmake subdirs, so it is in
+scope.
+
+**The measurement, taken by somebody else, on another machine, in fresh
+clones of qtty HEAD**: `make` is clean, and a second and third `make`
+write no file. **That is corroboration this session could not have
+given itself** -- a different account, a different host, a clone rather
+than this working tree, which is the independence `evidence.md` asks for
+and which a re-run here would not have had.
+
+**The other half was a real failure and is not qtty's.** A fresh `fmake`
+(at `8b4f5b9`) exited 1, 1, then 0 on this tree: runs 1 and 2 compiled
+`tool/fuzz/input_fuzz.cpp` and failed on `ansi_backend.h: No such file`,
+and run 3 decided nothing reaches that file and was up to date. The
+sender signalled it to fmake with the reproduction rather than patching
+qtty, which is `harmonization.md`'s rule working in the direction this
+tree is usually on the other end of; the follow-up records it fixed in
+fmake's own tree at `7a1a730`, a fresh clone exiting 0, 0, and the
+suggested `include-dirs` workaround not needed.
+
+**What is left is transient and deliberately not acted on.** The README
+tells a newcomer that `fmake` builds the tools, and the **installed**
+`/usr/bin/fmake` -- the 2026-09-04 deb -- still fails until it is
+updated. Naming a version in the README would fix today and be wrong next
+week, which is exactly what the holder's README rule forbids: *describe
+the software it is meant to be, not today's snapshot*. So the claim
+stands, because it is true of fmake at HEAD and will be true of the
+package shortly.
+
+**And the messages are deleted only now that this is committed.** The
+inbox lives inside `.git`: nothing tracks it, nothing pushes it, and a
+fresh clone has none of it, so a message removed before its record is
+committed is gone with no copy anywhere.
