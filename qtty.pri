@@ -33,6 +33,27 @@ QMAKE_CFLAGS_RELEASE   += -Os
 QMAKE_CXXFLAGS_DEBUG -= -O0
 QMAKE_CXXFLAGS_DEBUG += -Og
 
+# AND LET THE LINKER DROP WHAT NOTHING CALLS. Set by the copyright holder
+# 2026-11-05 beside -Os, and said explicitly here for the same reason -Os is
+# rather than left to a qmake CONFIG switch: without the flags the linker
+# keeps every object on the link line WHOLE, so each unused function in this
+# library rides along in every binary that links one of its objects -- which
+# -Os cannot see, working one function at a time.
+#
+# In both flavours and not only the release one: the debug build links the
+# same archive, and a figure measured on one configuration is a figure about
+# that configuration.
+#
+# WHAT HAD TO BE CHECKED HERE, because both ways of getting this wrong fail
+# quietly. Code reached only BY NAME is not "called", and this library is
+# full of exactly that: a QStyle is reached through Qt's metaobject system,
+# a QPaintEngine through virtuals, and the backends through an interface. So
+# the suite was run against the COLLECTED binaries rather than the flags
+# being trusted -- see project.md 8.696 for the figures and the run.
+QMAKE_CXXFLAGS += -ffunction-sections -fdata-sections
+QMAKE_CFLAGS   += -ffunction-sections -fdata-sections
+QMAKE_LFLAGS   += -Wl,--gc-sections
+
 # The version is stated in one place, the VERSION file, and read from it.
 # Stating it here as well is how the two drift; `make version-check` asserts
 # this line still reads the file.

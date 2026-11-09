@@ -213,6 +213,36 @@ $(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS) $(TOOL_HEADERS) \
                        $(EXAMPLE_HEADERS)
 	mkdir -p $(BUILD_DIR)
 	rm -f $(SUBDIR_MAKEFILES)
+	@# AND THE OBJECTS, WHEN A PROFILE OR THE VERSION MOVED, because nothing
+	@# else makes them stale. Measured 2026-11-09: adding
+	@# -ffunction-sections and -Wl,--gc-sections to qtty.pri re-ran qmake --
+	@# this recipe fired, and both generated Makefiles carried the new flags
+	@# -- and every binary came out BYTE-IDENTICAL, because no object
+	@# depends on a compiler flag and no binary on a link flag. A warm tree
+	@# gets the flags configured and absent from the artifact, and identical
+	@# sizes are the only tell. project.md 8.698.
+	@#
+	@# ONLY when a profile or VERSION moved, which is what `$$?` is for: a
+	@# changed HEADER fires this recipe too, and qmake's generated depend
+	@# rules already rebuild exactly the objects that include it. Clearing
+	@# on a header would turn every header edit into a full rebuild.
+	@# `$$?` is every prerequisite when the target does not exist, so a
+	@# first configure takes this branch and removes nothing.
+	@moved='$(filter $(PROFILES) VERSION,$?)'; \
+	if [ -n "$$moved" ]; then \
+		case "$(BUILD_DIR)" in \
+		""|/*|*..*) echo "configure: refusing to clear objects in" \
+		            "'$(BUILD_DIR)'" >&2; exit 1 ;; \
+		esac; \
+		n=0; for d in $(dir $(SUBDIR_MAKEFILES)); do \
+			for o in "$$d"*.o; do \
+				[ -f "$$o" ] || continue; \
+				rm -f "$$o"; n=$$((n + 1)); \
+			done; \
+		done; \
+		[ "$$n" -eq 0 ] || echo "configure: $$moved moved, so $$n object(s)" \
+			"built with the old settings were removed"; \
+	fi
 	cd $(BUILD_DIR) && $(QMAKE) $(CURDIR)/qtty.pro $(QMAKE_CONFIG) QMAKE_CXX=$(CXX)
 
 # FORCE, and it is load-bearing rather than belt-and-braces. A rule listing

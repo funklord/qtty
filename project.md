@@ -57468,3 +57468,272 @@ package shortly.
 inbox lives inside `.git`: nothing tracks it, nothing pushes it, and a
 fresh clone has none of it, so a message removed before its record is
 committed is gone with no copy anywhere.
+
+### 8.696 The eight dead checks are not one bug, and they are longer than average (2026-11-09)
+
+**8.693 recorded eight checks the sweep proved cannot fail. Read side by
+side, they have at least four different causes -- so this is eight pieces
+of work and not one fix.** The classes, with the entry numbers:
+
+- **A property with two guards** (339, and 167 on the same evidence).
+  8.692 has it worked out: the image-encode cache is protected both by
+  `cell_px` in its key and by an outright `forget_uploads()` on the
+  cell-change path, so breaking either leaves the other covering and the
+  suite reports both tested when neither is.
+- **A fallback that is observably equivalent** (554). The sabotage
+  replaces this engine's `drawTiledPixmap` with
+  `QPaintEngine::drawTiledPixmap`, and the base implementation reaches
+  the same cells by repeated `drawPixmap`. The check asks whether the
+  tiles landed, which they did, by another route.
+- **The check names a narrower thing than the break touches** (446, 548).
+  446 disables the row-join condition entirely and a **different** check
+  failed while the named one passed -- so the break is noticed, and not
+  by the check that claims to be about it.
+- **A sweeping invariant insensitive to one member** (708, 785, 713).
+  708's check is *"no sub-control claims a part the base style declines,
+  or declines one it claims, except where this style does so deliberately
+  and says which"*, asserted across every sub-control; changing one
+  `SC_GroupBoxContents` case keeps the invariant true.
+
+**AND THERE IS A MEASURABLE SIGNAL, STATED WITH ITS WEAKNESS BECAUSE n IS
+8.** The eight have a median check text of **17 words against 10** for the
+797 that reddened (means 16.4 and 11.8), and **4 of the 8 carry a
+universal word** -- every, all, no, any, each, never, always -- against
+**188 of 797, so 50 per cent against 24**. The length gap is the stronger
+of the two; the quantifier gap is about twice the base rate on eight
+samples, which is suggestive and not significant, and saying otherwise
+would be this file's own scope-number trap.
+
+**What it is good for is a lens and not a law.** Breadth alone does not
+kill a check: 188 checks carry a universal word and redden fine. The
+reading that fits both the classes above and the figures is that **a check
+phrased as a long sweeping invariant is harder for any ONE narrow break to
+redden**, because the assertion survives the member that changed. That is
+worth knowing when writing a check -- the specific claim discriminates and
+the grand one reassures -- and it is worth re-measuring when the next
+sweep gives a second sample rather than treating 8 as settled.
+
+**None of the eight is fixed here.** Each needs a check made to fail and
+then watched failing, which is a build and a suite run each, and the
+diagnosis above is what makes those attempts cheap rather than
+exploratory.
+
+### 8.697 Dashed pens: decided, and the first answer contradicted a comment thirty lines away (2026-11-09)
+
+**8.658 recorded this as a decision rather than a defect and put it in
+§0b as the holder's. It is no longer: `working-practice.md` gained
+`16be76c` on 2026-11-05 -- decide a UI question yourself, from how
+similar software solved it, preferring OLDER software, and name what you
+followed.** The same file carries the rule that caught the first attempt,
+and the two together are what make the answer defensible.
+
+**THE PRIOR ART, measured on this machine rather than recalled.**
+
+- **ncurses' alternate character set has no dashed member at all.**
+  `grep -ciE 'ACS_[A-Z]*DASH' /usr/include/curses.h` returns 0, against
+  fifteen line-drawing members: `ACS_HLINE`, `ACS_VLINE`, `ACS_PLUS`, the
+  four corners, the four tees and the `S1`/`S3`/`S7`/`S9` scan lines. That
+  is the VT100 special graphics set of 1978 and the terminal lingua franca
+  since.
+- **Unicode box-drawing DID formalise a dashed line, and only
+  axis-aligned.** Of U+2500..U+257F, **twelve members carry DASH** -- light
+  and heavy in three densities, double (`╌ ╎`), triple (`┄ ┆`) and
+  quadruple (`┈ ┊`) -- and **three carry DIAGONAL** (`╱ ╲ ╳`). The
+  intersection is **empty**.
+
+**What the prior art settles, and it is half the question.** 8.658's
+argument against dashing was that removing ink *"reads as a line with
+pieces missing, which on a character grid is what damage looks like"*.
+Unicode contradicts that: the body that formalised character-cell line art
+added a dashed line in three densities on purpose. **So a dashed cell line
+is a recognised form, and qtty should express pen style rather than
+flattening every style to solid.**
+
+**THE FIRST ANSWER WAS "USE THE UNICODE FAMILY, AXIS-ALIGNED ONLY, AND THE
+ANGLE-DEPENDENCE IS THE CONVENTION'S" -- AND THIS TREE HAD ALREADY DECIDED
+AGAINST THAT, IN A COMMENT THIRTY LINES FROM THE FUNCTION I WAS ABOUT TO
+EDIT.** `stroke_segment` carries pen WEIGHT as `Attr::Bold`, and says why:
+
+    // Attr::Bold carries it. It is the one expression of weight that
+    // works on ALL FOUR segment glyphs: the heavy box-drawing family has
+    // no diagonals, so a heavy line would change weight with its angle,
+    // which is worse than one weight throughout.
+
+That is the same glyph family, the same missing diagonals, and the
+opposite conclusion -- reached deliberately, with its reason, by whoever
+wrote the weight path. **The entry this replaces had argued that an
+angle-dependent dash was acceptable because it was inherited rather than
+invented. The precedent says the inheritance is exactly what was
+declined**: the heavy family was available and was turned down for having
+no diagonals, and something that works at every angle was found instead.
+
+**So the answer is dashing expressed UNIFORMLY, by skipping cells, which
+is what 8.658 costed at about twenty-five lines and named.** It works at
+every angle, it carries a density distinction for Qt's four styles, and it
+follows the weight path's rule rather than contradicting it from the next
+function along. The Unicode dashed family is rejected for precisely the
+reason the heavy family was.
+
+**WHAT THIS IS AN INSTANCE OF, and it is why the correction is worth more
+than the decision.** `working-practice.md` says that before treating
+anything as open, look for where the project has settled it under another
+name -- *"a sibling in the tree doing the same job whose comment says
+why"*. The sibling was pen weight, in the same function, thirty lines
+away, and reading it was not part of deciding a question about pen STYLE
+until the mapping had to be written. **A prior-art answer and a
+project-precedent answer can both be well-founded and disagree**, and when
+they do the precedent wins, because it is this tree's own and the next
+reader will meet it in the code rather than in a record.
+
+**The two now agree about what matters**: prior art says express the dash,
+precedent says express it at every angle, and cell-skipping is the only
+option that does both. Implementation is the next piece of work.
+
+### 8.698 Collecting unused sections, and the measurement that had to be re-taken (2026-11-09)
+
+**`build-and-commit.md` gained this on 2026-11-05 on the holder's word,
+beside `-Os`: compile with `-ffunction-sections -fdata-sections`, link with
+`-Wl,--gc-sections`, and in a qmake project say it in `QMAKE_CFLAGS`,
+`QMAKE_CXXFLAGS` and `QMAKE_LFLAGS` explicitly as `-Os` is.** Measured
+absent here before anything else: neither flag appeared in the Makefile,
+`qtty.pro`, `qtty.pri` or any subdir `.pro`. They are in `qtty.pri` now,
+beside the `-Os` block and in both flavours, since the debug build links
+the same archive.
+
+**THE FIGURES, clean build against clean baseline:**
+
+    qtty-tray-check   880,184 -> 321,296   -63.5%
+    qtty-inspect      792,904 -> 322,280   -59.4%
+    qtty-negotiate    792,576 -> 542,480   -31.6%
+    qtty-replay       814,744 -> 668,936   -17.9%
+    chat (example)    837,136 -> 696,576   -16.8%
+    libqtty.a       1,829,050 -> 2,121,890  +16.0%
+
+The archive grows because per-function sections need per-function section
+headers; it is not a shipped artifact. **The binaries are what the rule is
+about, and the reason they gain so much more than the holder's own
+fuzznet case (6.7%) is the rule's own sentence**: without the flags the
+linker keeps every object on the link line whole, and each helper links
+the entire library to use a fraction of it. `qtty-tray-check` talks to a
+session bus and draws nothing; it was carrying the paint engine, the
+style and the backends.
+
+**THE CHECK THAT MATTERED, because this library is the awkward case for
+it.** The rule warns that code reached only by name or by section is not
+"called" -- and here a `GridStyle` is reached through Qt's metaobject
+system, a `CellPaintEngine` through virtuals, and the backends through an
+interface. So the suite was run against the collected binaries:
+**2493 PASS, 0 FAIL, 0 SKIP**, identical to the uncollected build. Nothing
+reached by name was collected.
+
+**AND THAT FIGURE HAD TO BE TAKEN TWICE, which is the sixth detector
+failure of this session and the only one this tree had already named.**
+The first run reported **2491** passes with exit 0 -- a clean run with two
+checks missing, which is the shape 8.693's entry 17 has. It was my
+redirection: `make ... test > log 2>&1` merges the streams, and the
+offscreen platform writes notices while the suite prints, so a notice
+lands mid-line and `grep -c '^PASS:'` undercounts. `tool/version-matrix`
+says so in its own comment -- *"STDERR TO ITS OWN FILE, not merged ... a
+merged stream splits PASS lines in half, so `^PASS:` undercounts, which is
+the instrument fault 8.465 spent a round on"* -- and I merged them anyway.
+Re-run with the streams apart: 2493, 0, 0.
+
+**What saved it was the count disagreeing with the exit code**, which
+`evidence.md` calls two halves of one result. Exit 0 and 2491 cannot both
+be the whole answer, and the two-check gap was small enough to look like a
+real finding about section collection -- which is what would have been
+recorded had the suite's own `OK (0 failures)` line not been there to
+disagree with my grep.
+
+### 8.699 A flag change rebuilt nothing, which the flags themselves exposed (2026-11-09)
+
+**Adding the flags to `qtty.pri` and running `make` produced
+BYTE-IDENTICAL binaries.** qmake re-ran -- `build/Makefile` and
+`build/src/Makefile` both moved, and both carried `-ffunction-sections` --
+and not one object recompiled, because **no object depends on a compiler
+flag and no binary on a link flag.** The configure step had done its job
+and the artifacts did not have the flags.
+
+**A warm tree therefore gets a setting configured and absent, and
+identical sizes are the only tell.** Nobody measures sizes. Had the
+figures above been taken from that build rather than a clean one, the
+entry would have reported that `--gc-sections` gains nothing here --
+confidently, with numbers, and wrongly.
+
+**THE FIX IS THE CONFIGURE STEP CLEARING WHAT IT INVALIDATED.** It already
+removes the generated subdir Makefiles; it now also removes the objects in
+those same directories -- derived from the same list, so no wildcard over
+a path this Makefile has not computed, guarded on `BUILD_DIR` being
+non-empty, relative and free of `..`, and printing what it removed.
+
+**ONLY when a profile or `VERSION` moved, which is what `$?` is for.** A
+changed HEADER fires the same rule, and qmake's generated depend rules
+already rebuild exactly the objects that include it; clearing on a header
+would turn every header edit into a full rebuild. `$?` is every
+prerequisite when the target is missing, so a first configure takes the
+branch and removes nothing.
+
+**Three properties, each measured rather than reasoned about** -- the
+`makefile-hazards` skill asks for the second and third by name, and the
+second is what an over-eager version of this would fail:
+
+- A profile change clears and rebuilds: *"configure: qtty.pri moved, so 22
+  object(s) built with the old settings were removed"*, and the recompile
+  carries `-ffunction-sections`.
+- A header change clears **nothing** -- zero messages, object count
+  unchanged at 16 -- and recompiles exactly the eleven dependents of
+  `include/qtty/cell.h`.
+- A second `make` right after a build writes **no file**, which is the
+  holder's rule of 2026-11-05 and was true here before this change and is
+  true after it.
+
+### 8.700 Where the dash phase lives, settled before writing it (2026-11-09)
+
+**8.697 decided dashing by cell-skipping; 8.658 named the one thing that
+makes it more than twenty-five lines -- the phase must carry across a
+polyline's segments rather than restarting each one, "which for a chart's
+many short segments would otherwise leave every segment on".** That is a
+design question with a right answer in this code, and it was settled by
+reading rather than by writing and seeing.
+
+**THREE ENTRY POINTS reach the stroke road**, found by grep rather than
+assumed: `drawPath` loops `stroke_polyline` once per subpath polygon
+(1124), the polygon road calls it once (1343), and the rule road calls
+`stroke_segment` directly for a diagonal (1984).
+
+**So the phase resets per STROKE OPERATION and carries within a
+polyline**: `stroke_polyline` zeroes it before its loop, and the direct
+caller at 1984 zeroes it for its single segment. `stroke_segment` cannot
+decide this for itself -- it has no way to know whether it is the whole
+stroke or the third segment of one -- so the reset belongs to the callers,
+and there are exactly three.
+
+**Restarting per SUBPATH is correct rather than a shortcut.** `drawPath`
+calls `stroke_polyline` per subpath, so each subpath begins "on". That is
+what Qt's own rasteriser does with a dash pattern, so following it keeps
+the terminal's rendering the same shape as the desktop's -- which is G1's
+whole claim.
+
+**THE PATTERN IS QT'S, QUANTISED TO CELLS, which is a derivation rather
+than a choice.** Qt's styles are dash patterns in units of pen width:
+`DashLine` 4-2, `DotLine` 1-2, `DashDotLine` 4-2-1-2,
+`DashDotDotLine` 4-2-1-2-1-2. Those are pixel units and a 4-pixel dash on
+a 10-pixel cell is invisible, so each element takes a minimum of one cell
+and the structure is kept: dot-dash alternation survives, the number of
+elements survives, and nothing about the pattern is invented here. The
+alternative -- picking cell counts that "look right" -- would be this tree
+deciding what the application meant.
+
+**AND A SHORT LINE RENDERS SOLID, which is the one place N2 overrides
+faithfulness.** `DashDotDotLine` quantised to cells has a period of six
+cells at minimum; a four-cell line would show its first two and read as a
+line with most of itself missing, which is 8.658's "damage" objection
+holding where the Unicode evidence does not reach it -- a dash needs room
+to be legible as a dash. So a line shorter than one full period is drawn
+solid. **This is the one part of 8.697 with no prior art behind it and it
+is named as such**: it is a legibility floor, it is this tree's own, and
+the figure follows from the pattern rather than from taste.
+
+**Not written yet.** The gate is running over the section-collection batch
+and a `cell_paint.cpp` edit during it would invalidate that verdict --
+which is the confounding this file has recorded twice this week.
