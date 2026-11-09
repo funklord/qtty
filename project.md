@@ -58060,3 +58060,87 @@ guideline's scope sentence asks which lines write a file, which is the
 question that found the targets but not the question that found the
 fault. **A dry run that prints a verdict is not discoverable by reading
 for writes; it is discoverable by doing the dry run.**
+
+### 8.706 The table separator attempted, reverted, and mapped (2026-11-09)
+
+**8.652 said this path "deserves a fresh attempt rather than a tenth
+iteration, and the specification above is what makes that attempt cheap".
+This was the fresh attempt. It is reverted, and the specification is now an
+order of magnitude sharper -- which is the thing worth having, because the
+old one was wrong about the shape of the change.**
+
+**THE APPROACH WORKS, measured end to end before it was given up.** With
+`polish()` taking the grid over and `sizeFromContents()` widening each
+column by one cell to pay for the separator, a three-column
+`ResizeToContents` table went from sections **31@0 31@31 31@62** -- every
+one off a 10-pixel cell -- to **40@0 40@40 40@80**, and twelve
+one-character columns from 21 each drifting to position 168, nine of twelve
+off the grid, to **30 each at 0, 30, 60 ... 330, none off it.** Rendered,
+content intact and a separator after every column: `│.ab│.ab│.ab│`. So the
+design is sound and the drift is closed by it.
+
+**WHAT DEFEATED IT WAS THE MAP, NOT THE IDEA. Four faults, each found by
+the suite or by reading, and each revealing another site:**
+
+1. **`viewItemPosition` is `Invalid` for a `QTableWidget`.** The planned
+   "draw a separator except at End and OnlyOne" rests on it, and Qt sets it
+   for a tree only -- probed before writing, so it cost nothing. It also
+   turned out unnecessary: Qt's grid draws at the right edge of **every**
+   column including the last, measured cell by cell.
+2. **The separator had no ink.** `set_glyph()` leaves a cell's foreground
+   alone, so it sat on whatever the fill had put there -- and the suite's
+   **contrast floor** caught it as a pair of the library's own colours
+   failing the minimum.
+3. **The label is drawn before the separator**, so reserving the cell in
+   `sizeFromContents()` alone let the label reach the last cell and the
+   separator then overwrote its last character. Content loss, which is
+   what the extra cell exists to prevent.
+4. **`CellItemDelegate` is a second writer of the same layout** -- 240
+   lines with the same three `leading_edge()` calls as the style -- and the
+   suite asserts the two agree. Fixing the style alone made them disagree,
+   which is the check that said so: *"two writers of one rule having twice
+   disagreed about a field"*.
+
+**THE MAP, which is what the next attempt needs.** Seven sites across two
+files, and every one of them must move together:
+
+- `polish()` -- record `showGrid` and turn it off, so an application that
+  turned its own off is not given separators it never asked for.
+- `sizeFromContents(CT_ItemViewItem)` -- `++cells`, but only for such a
+  view; a list or a tree has no grid to take over and must not widen.
+- `CE_ItemViewItem` -- shrink the content rect by one **after the fill**,
+  so the row's background still spans the separator cell and a selected
+  row shows no gap, and keep the original right edge for the glyph.
+- `CE_ItemViewItem` -- the glyph, carrying the item's own text colour.
+- `CE_HeaderLabel` -- the elide budget and the `leading_edge()` right edge,
+  both reduced by the same cell, reading the property off `parentWidget()`
+  since the header is the view's child.
+- `CellItemDelegate::paint` -- the same shrink, at its own three
+  `leading_edge()` calls.
+- `CellItemDelegate::sizeHint` -- the same `++cells`.
+
+**TWO INVARIANTS CONSTRAIN IT, both already asserted in the suite**, which
+is why they are the budget rather than a risk: a heading shares an edge
+with its data *in four direction-and-alignment configurations*, and the
+style and the delegate draw an item identically.
+
+**AND A FIFTH FAULT, in the shell rather than the code, which cost a gate
+run and is worth a line because the guidelines just grew its cousin.** The
+gate was launched as
+
+    ~/.claude/tool/running 35m gate for the reverted attempt's record && (...)
+
+and the **apostrophe in `attempt's` opened a single-quoted string in an
+unquoted argument**, swallowing the `&&` and the `make check` after it. The
+declaration was made, the gate never ran, no log was written, and the only
+tell was the commit hook reporting a stamp for different content -- the
+same silence an unquoted heredoc gives, which `running-code.md` gained a
+rule about on 2026-11-05. **Quote the argument, or keep apostrophes out of
+it.**
+
+**Why this is a revert rather than a fifth fix.** Each of the four faults
+was found by a failure, and each one revealed a site the plan did not have
+-- which is a map being wrong four times running, not a change converging.
+A subtly wrong item-view renderer is worse than a known one-pixel drift,
+and the attempt is cheap to resume from here: `git stash` holds it, and the
+seven sites above are what it was missing.
