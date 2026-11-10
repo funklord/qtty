@@ -59361,3 +59361,51 @@ clamping upstream, a toolkit handler acting before our fallback, and now
 question that finds all five is the same one: *who else answers this
 before my check reads it* -- and the fifth adds that "who else" can be
 another copy of the same guard in your own tree.
+
+### 8.724 The other two thirds of one sentence had no instrument (2026-11-10)
+
+**design.md 10.1 and the README state the public hygiene contract in one
+sentence -- "everything in `namespace Qtty`, no public macros, inert in
+GUI builds". The suite asserts inertness and `private-check` covers G5's
+private-header half. The two named here were asserted by nothing.**
+
+Found by walking the goal gap from the description rather than from the
+roadmap, which is where 8.710 found G5 in the same state: an aim held by
+habit, true for years, with no instrument that would notice it stopping.
+
+**IT MATTERS MORE HERE THAN FOR A LIBRARY PEOPLE LINK.** qtty is
+**vendored** -- fuzzypickles carries it as a submodule and builds it into
+its own translation units -- so a macro or a global that escapes these
+headers lands in somebody else's code, and the first they know of it is a
+collision in a file that has nothing to do with this project. A linked
+library's symbols are at least namespaced by the linker; a vendored
+header's are not.
+
+**Measured, and the promise holds:** 18 public headers, **zero
+`#define`** -- not even include guards, which are `#pragma once` -- and
+nothing declared outside the namespace.
+
+**IT TRACKS BRACES, NOT COLUMNS, and that is the whole of the design.**
+Declarations inside `namespace Qtty {` sit at column 0 in this tree, and
+Qt's own forward declarations -- `class QWidget;` -- sit at column 0
+**outside** the namespace and must, a header that needs the name
+declaring it rather than including the world. So a column test would call
+every legitimate class a leak and every forward declaration one too. The
+check strips comments and string literals in one pass (a `//` inside a
+string and a quote inside a comment each defeat the naive order), tracks
+namespace depth, and reports a declaration at depth zero that is not a
+`class Q...;` forward declaration.
+
+**Three controls, on a copy so the tree was untouched:**
+
+    a public macro added                 caught, exit 1
+    a name declared outside the namespace caught, exit 1
+    a Qt forward declaration added        NOT flagged, exit 0
+
+**The third is the one that pays for the brace tracking.** A column-based
+check passes the first two and fails the third, and it would fail it on
+code that is correct -- which is the one thing a gate must not do.
+
+**Both counts are asserted**, so a gate over an empty header list cannot
+report success: it refuses when `include/qtty` is not a directory and when
+it holds no header.

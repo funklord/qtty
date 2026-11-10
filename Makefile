@@ -1670,7 +1670,7 @@ record: tests-build
 # layout, test, test-tools, test-install, probe-style), because a convention
 # is what a new part will follow.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              arms-check profiles-check private-check fuzz-check header-check sabotage-check test test-tools \
+              arms-check profiles-check private-check hygiene-check fuzz-check header-check sabotage-check test test-tools \
               test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
@@ -1816,6 +1816,18 @@ arms-check:
 # this tree's vacuous pass, met often enough to be the default suspicion. So
 # the three shapes a private include takes are fed to the same expression
 # and it must match all three before the tree's own count is believed.
+# THE OTHER TWO THIRDS OF THE SAME SENTENCE. design.md 10.1 and the README
+# state one hygiene contract -- everything in namespace Qtty, no public
+# macros, inert in GUI builds -- and private-check below covers the Qt
+# private-header half of G5 while the suite covers inertness. These two had
+# no instrument at all: 8.724.
+#
+# It matters more here than for a library people link against, because qtty
+# is VENDORED by its consumers, so a macro or a global that escapes these
+# headers lands in somebody else's translation units.
+hygiene-check:
+	@python3 tool/hygiene_check.py
+
 private-check:
 	@pat='^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^>"]*(private/|_p\.h)'; \
 	ctl=0; for probe in '#include <private/qwidget_p.h>' \
