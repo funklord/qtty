@@ -60747,55 +60747,64 @@ today's numbers would pin it. The horizontal half IS asserted, since it
 was never in doubt and the contrast is what localises the fault -- three
 checks, and the same axis separation 8.748 had. 2519 checks.
 
-### 8.750 The suite reported one check fewer, fifteen times, and I cannot say why (2026-11-10)
+### 8.750 The answer was in section 0a, and I wrote "I cannot say why" instead (2026-11-10)
 
-**Recorded unexplained on purpose.** `running-code.md`: *a comfortable
-explanation that ends an investigation is more expensive than no
-explanation at all*, because no explanation keeps somebody looking. This
-is one, and it is about the trustworthiness of the instrument every count
-in this document rests on.
+**This entry replaced a wrong one rather than appending to it**, per
+`working-practice.md`: a reader who finds both believes the one that
+sounds more careful, and the careful-sounding one here was the mistake.
+The original said the suite had reported one check fewer fifteen times
+over, that one check must therefore have been FAILING, and that twenty-two
+further runs had failed to reproduce it so the cause was unknown. Two of
+those three claims were false.
 
-**What was seen.** With the binary built for 8.749 and never rebuilt
-afterwards, a batch of fifteen consecutive runs each reported **2518**
-passing checks. The suite reports **2519 with no failures**, so those
-runs had one check FAILING -- 2518 passes plus one failure is the same
-2519 total.
+**What actually happened.** A batch of fifteen runs reported **2518**
+passing checks where the suite reports 2519. One check had **skipped**,
+not failed:
 
-**What was ruled out, each by measurement rather than by argument.**
-Twenty-two further runs of the same byte-identical binary, every one
-2519 with zero failures:
+    setsid --wait env QT_QPA_PLATFORM=offscreen ./build-test/qtty-tests
+    pass=2518 fail=0 skip=1
+    SKIP: this process group is the session's own, so the kernel
+          discards a stop sent to it
 
-- six run interactively, piped to `grep -c`, the exact form that had
-  given 2518;
-- six run under `nohup` in the background, the exact form of the batch;
-- four run CONCURRENTLY with each other, for CPU contention;
-- six run while three `g++ -fsyntax-only` passes over the largest suite
-  file and three `style_gate.py docs` passes over this 60,000-line
-  document ran beside them, which is the pressure that was present
-  during the batch;
-- two with stdout redirected to a file rather than a pipe.
+**Section 0a of this document has carried that for weeks**, with the
+mechanism and that exact reproduction: one check is guarded by
+`::getsid(0) == ::getpgrp()`, true when the suite is its own session's
+process group, and the kernel then discards the stop signal the check
+sends, so the check abstains. 0a even records a session that explained
+the same one-short count as "a budget check failing under load" and
+disproved it. **I reached for the same wrong explanation and then
+promoted it to a mystery.**
 
-**And one apparent control was not one, which is worth more than the
-list.** The first comparison "with and without a tty" redirected BOTH
-runs to files, so neither had a terminal: it compared two identical
-conditions and found them identical. `evidence.md`'s *a control has to be
-able to fail the way the thing it controls for fails*, met by writing the
-control carelessly. Under this harness stdout is never a terminal, so the
-tty hypothesis cannot be tested here at all -- which is a fact about the
-instrument, not a result.
+**The variable was how the job was launched, which is why it looked
+capricious.** The fifteen 2518s were the one batch started as a DETACHED
+background job, which puts it in its own session; every run that gave
+2519 was either in the foreground or `nohup`ed from inside a foreground
+call, inheriting that shell's session. So the "unreproducible" result was
+reproducible on demand -- I had varied the terminal, the pipe, the
+concurrency and the load, and never the one thing that mattered.
 
-**The failing check's identity is unknown, and that is the harness's
-fault rather than the flake's.** The batch counted `^PASS` and discarded
-everything else, so fifteen reproductions of a real failure were reduced
-to a number that could not name it. **A counting harness that drops the
-diagnostic turns a reproducible fault into a rumour.** Count the failures
-too and keep their text, always; it costs one more `grep`.
+**The three lessons, and the first is the one with teeth.**
 
-**What this does and does not license.** It does not license doubting any
-particular count: `count-check` compares the suite's total against this
-document on every gate run and has never disagreed, and a failure would
-have reddened `make check`. It does license treating a single clean run
-as weaker evidence than it looks, and it leaves a real question open --
-**fifteen consecutive failures followed by twenty-two consecutive passes
-is not a coin flip**, so something persistent differed in that window and
-nothing I have measured says what.
+- **Look for where the project has already settled it.**
+  `working-practice.md` says to do this before treating anything as open,
+  and names the cost: a question deferred under a grander name than it
+  deserves is one nobody comes back to. One `grep -n "count-check"` over
+  this document would have ended the investigation at the start. Instead
+  it ended in an entry titled "I cannot say why".
+- **A count taken without its failures and skips cannot name what moved.**
+  The batch counted `^PASS` alone, so fifteen clean reproductions of a
+  SKIP were reduced to a number that could not say whether a check had
+  failed, skipped or never been compiled. Counting all three is one more
+  `grep` and it is what distinguishes the three causes 0a now lists.
+  **This lesson survives from the original entry**, and it is the one that
+  would have answered the question immediately.
+- **Refusing a comfortable explanation is not the same as disproving
+  one.** `running-code.md` is explicit, and the original entry is the
+  trap it describes inverted: I correctly declined "a check is failing
+  under load" as unproven, then wrote up the absence of an explanation as
+  though that were a result. An unexplained observation keeps somebody
+  looking only if nobody has already explained it.
+
+**No count in this document is affected.** `count-check` counts the skips
+back in (8.370), so it agreed at 2519 on every gate run of this change,
+and a genuine failure would have reddened `make check` regardless.
