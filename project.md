@@ -59465,3 +59465,56 @@ looked undefended because something between the break and the assertion
 supplied the right answer; this is the same question asked of an
 identity -- **what does this id NOT distinguish** -- and the answer was a
 file the build compiles.
+
+### 8.726 An entry that broke its own check's precondition (2026-11-10)
+
+**One of the full sweep's two INCONCLUSIVE results, and it cannot be
+fixed by re-aiming: the entry breaks the exact condition its check tests
+for before deciding whether to run.**
+
+The entry turns `prepare_environment()`'s offscreen screen request from
+10000x10000 into 800x800. The check it names -- *"a menu opens where it
+was asked to, past the 80 columns the offscreen platform defaults to"* --
+asks a runtime precondition first:
+
+    if (!avail.contains(want)) { SKIP ... } else { CHECK(got == asked ...) }
+
+and that precondition is false exactly when the screen is small. So the
+sabotage makes the check **skip**, the run reports 2501 passes and 0
+failures, and the pairing is impossible by construction.
+
+**THE SKIP IS RIGHT AND THE ENTRY IS WRONG, which is the unusual part.**
+Qt 5.15's offscreen plugin ignores `configfile=` silently and keeps its
+own default (8.466), so on that arm the clamp Qt applies is not this
+library's to undo and a check asserting otherwise would be asserting a
+platform it is not running on. The check's comment argues against
+`#if QT_VERSION` for three reasons and they hold: the behaviour is
+correct under xcb on both versions, a version test would still fire if a
+Qt 6 plugin stopped honouring the option, and the precondition states
+what the check actually needs. **Retired rather than re-aimed**, the way
+339 was, because there is nothing to re-aim it at.
+
+**AND THE SWEEP SAID SOMETHING LARGER WHILE SAYING THAT.** With the
+screen shrunk to 800x800, **nothing failed** -- 0 of 2502. So the
+10000x10000 request is load-bearing for no assertion the suite makes. It
+is not useless: it exists so Qt's own clamp never moves a popup the
+compositor placed, and 8.721 is this run's own evidence that such a
+clamp is real and reachable. What is true is narrower and worth having
+written down: **the one check that would notice is the one that skips**,
+so on the platform the gate runs on, that request is protected by
+nothing.
+
+**Why no check can close that today.** The sabotage changes what we ASK
+for, so any assertion comparing what we got against what we asked passes.
+Distinguishing "the plugin ignored us" from "we asked for the wrong
+thing" needs a fact about the plugin, and the only version-free source of
+that fact is the screen size itself -- which is the thing under test. The
+honest state is a gap with its reason, not a check that restates the
+request.
+
+**Sixth of a kind in one run.** A funnel that repaired the value, a
+sibling road that covered the cells, a toolkit clamping upstream, a
+toolkit handler acting first, a second door to one fact, an identity that
+could not see a file -- and now a precondition that the break removes.
+Each time something between the break and the assertion decided the
+answer first.
