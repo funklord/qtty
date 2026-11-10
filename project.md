@@ -59799,3 +59799,61 @@ rather than *what was learned* -- and `evidence.md` names that exactly:
 ask the object you mean, not something correlated with it. Eight earlier
 instances were a guard something upstream answered first; this is the
 same question asked of an assertion rather than of a guard.
+
+### 8.732 Thirteen of fourteen arms had no verdict about this tree (2026-11-10)
+
+**`make arms` says so in its own words -- "a verdict against different
+content is not a verdict about this tree" -- and on arriving this run it
+read 13 of 14 last run against different content, most of them on
+2026-11-03.** Twenty-five commits had landed since, including the table
+separator (compositor), the sub-cell span rescue's removal (paint
+engine) and the receipt ids. The arms are out of `make check` on purpose
+because they cost minutes; the cost of that is exactly this, and nothing
+but running them answers it.
+
+**Run against this tree, and clean:**
+
+    test-sanitize   2502 checks under ASan/UBSan, leak detection on
+    test-compilers  g++ 2502 pass, 36 files, 0 warnings; clang likewise
+    fuzz            60s against scan_caps(), no crash
+    fuzz-input      60s against the input decoder, no crash
+
+The sanitizer arm is the one worth naming. It ran the **whole** suite --
+2502 checks, not a subset -- with `detect_leaks=1`, over a paint engine
+that had a branch removed from it the day before, and reported nothing.
+That is the verdict 8.720's removal wanted and could not have from the
+gate, which builds without sanitizers.
+
+**The receipts are what make it durable.** Each arm writes one on success,
+so `make arms` now answers *yes* for these against this content rather
+than *no* against content six days old. A receipt is not a formality
+here: the question it answers -- was this checked, or something else --
+is the same one 8.725 found the stamp answering about a smaller object
+than the tree.
+
+**ALL FOURTEEN, and the remaining ten were run after the first four.**
+`test-pty`, `test-tray`, `test-negotiate`, `test-consume`,
+`test-overlay-z`, `test-screen`, `test-platforms` and `test-valgrind`
+all pass. Two are worth naming beyond the verdict: **`test-screen`
+SKIPPED on 2026-11-03 and RAN this time**, measuring xterm, halfblocks
+and kitty placements against predictions; and `test-platforms` put the
+suite through a hostile environment -- `QT_SCALE_FACTOR=2`,
+`QT_SCREEN_SCALE_FACTORS=2`, `QT_QPA_PLATFORMTHEME=gtk3` -- and reports
+"the pins absorbed it (2502 checks)".
+
+**AND THE RECEIPTS WENT STALE WHILE THE RUN WAS STILL GOING, which is
+the mechanism rather than a fault.** `make arms` reads 7 of 14 against
+different content again, because 8.733's fix landed in `term_caps.cpp`
+after the first four arms had run. A receipt answers *was this content
+checked*, and committing anything invalidates every receipt taken
+before it. The right moment to take them is therefore the end of a
+piece of work, not the middle -- which is what these arms being outside
+`make check` already implies and what this run learned by doing it the
+other way round.
+
+**One entry written here could not be proved and was removed**, the same
+shape as 8.729's F7: `read_winch()`'s `if (!active_) return;` is the
+guard whose comment records ten bytes reaching an editor, and bypassing
+it changes nothing the suite can see, so something further down guards
+`query_geometry()` as well. Over-determined, and not falsifiable by one
+line.
