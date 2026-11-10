@@ -744,7 +744,7 @@ public:
 In the GUI build the same class renders through an ordinary top-level
 `Qt::WA_TranslucentBackground` widget, so shared code manipulates one object in both
 targets. Widgets that *contain* pixel content (plots, meters, video stills) get
-`qtty::PixelSurface : QWidget` — paint into it with QPainter as usual; in the TUI build
+`Qtty::PixelSurface : QWidget` — paint into it with QPainter as usual; in the TUI build
 the compositor harvests its `QImage` and hands it to the GraphicsPlane with the
 widget's cell geometry instead of letting Channel B mangle it through `drawPixmap`.
 
@@ -816,8 +816,9 @@ end to end — resource loading (`QTextBrowser::loadResource`), caching, and mod
 all upstream of paint and untouched; `QPixmap::cacheKey()` supplies `imageKey`.
 The single discipline is the grid: images embedded in the *text flow* must have
 cell-multiple sizes or subsequent lines leave the cell rows (the inverse of F8). Two
-GUI-invisible accommodations cover it: size assets via `qtty::cells(w,h)` (just a
-`QSize` on the desktop), or run documents through `qtty::alignTextDocument()`, which
+GUI-invisible accommodations cover it: size assets via `Qtty::GridMetrics::cells(w,h)`
+(just a `QSize` on the desktop), or run documents through `Qtty::align_text_document()`,
+which
 rounds every `QTextImageFormat` up to cell multiples. Delegate-based views need only
 scroll discipline (per-item, or per-pixel with a CH step), which `GridStyle` pushes as
 the default. For shared chat implementations the delegate route is preferred: its
@@ -905,10 +906,21 @@ with no code change. This covers the majority of simple forms.
 **Tier 2 — declarative hints.** Shared code annotates intent without branching on target:
 
 ```cpp
-qtty::setPriority(advancedGroup, qtty::Priority::Optional);   // dropped if space-poor
-qtty::setCompact(toolbar, qtty::Compact::IconsToLetters);
+Qtty::set_priority(advancedGroup, Qtty::Priority::Optional);  // dropped if space-poor
 w->setProperty("qtty.cells", QSize(20, 1));
 ```
+
+**Spelled as the headers spell it**, which this block did not until 2026-11-10: the
+namespace is `Qtty`, and the function is `set_priority()` rather than `setPriority()`
+because a name qtty introduces is snake_case while only a Qt name or a reimplemented Qt
+virtual keeps Qt's. `include/qtty/grid.h` carries that note at the declaration and
+project.md section 8 records it as a divergence from this document; the example here was
+the last place still showing the old spelling, and it is the first code a reader copies.
+
+**`setCompact(toolbar, Compact::IconsToLetters)` was the third hint and is not built.**
+project.md section 8.8 carries the argument -- its effect is unconditional on a terminal,
+so the enum would have one value that switches nothing. The intent stays specified here;
+what is removed is the suggestion that there is a call to make.
 
 `GridStyle` and a `CompactionPass` consume these during layout activation. Hints are
 no-ops in the GUI build, so shared code stays honest.

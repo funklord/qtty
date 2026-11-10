@@ -59909,3 +59909,47 @@ fact. The same reasoning leaves §13's risk register alone: R1's trigger
 fired and passed at Phase 0 gate 2, but a risk table with mitigations and
 triggers is a planning artifact and marking entries retired is a
 judgement the permission does not cover.
+
+### 8.735 The first code a reader copies did not compile (2026-11-10)
+
+**design.md's Tier-2 example is the block somebody adopting qtty types
+first, and every line of it was wrong.** Found by walking the
+specification rather than the roadmap, the same walk that produced 8.734.
+
+    qtty::setPriority(advancedGroup, qtty::Priority::Optional);
+    qtty::setCompact(toolbar, qtty::Compact::IconsToLetters);
+    w->setProperty("qtty.cells", QSize(20, 1));
+
+The namespace is `Qtty`, not `qtty`. The function is `set_priority()`,
+not `setPriority()` -- a name qtty introduces is snake_case while only a
+Qt name or a reimplemented Qt virtual keeps Qt's. And `setCompact()` was
+never built: §8.8 carries the argument that its effect is unconditional
+on a terminal, so the enum would have one value switching nothing. Only
+the property line was right.
+
+**THE HEADERS SAID SO ALL ALONG, IN TWO PLACES.** `grid.h` at the
+declaration: *"design.md spells this setPriority(). It is set_priority()
+here... Recorded in section 8 as a divergence rather than resolved
+silently."* And `graphics.h`: *"Named align_text_document rather than
+design.md's alignTextDocument."* The divergence was noticed, recorded,
+and left in the one document a reader copies from. **Recording a
+divergence is not the same as correcting the copy that misleads**, which
+is `working-practice.md`'s rule about a claim living in more than one
+place, met from the side nobody checks.
+
+**Three more API references carried the same fault** and are corrected
+with it: `qtty::PixelSurface`, `qtty::cells(w,h)` -- which is
+`Qtty::GridMetrics::cells()` -- and `qtty::alignTextDocument()`.
+
+**What was NOT corrected.** Six `qtty::` spellings remain and are right
+to: three quote `class qtty::Application` as the specification once named
+it, a class struck by the holder in 8.644, and three are prose about
+chat code containing *zero* qtty types. Neither is API anybody copies.
+
+**And `guide_check.py` cannot catch this class**, which is why it
+persisted. It compiles a translation unit against the public headers for
+every `Qtty::` symbol named in `README.md` and `doc/keyboard-first.md`,
+and design.md is deliberately outside that set: a specification may name
+things not yet built, and `setCompact` is exactly such a thing. So the
+document most likely to name a symbol wrongly is the one nothing checks,
+by a decision that is correct for the reason it was taken.
