@@ -60005,6 +60005,27 @@ emergency terminal restore is never exercised" as a finding. The caveat
 is in the Makefile beside the target, because that is where the next
 reader will be when they meet it.
 
+**AND THE WHOLE RESIDUE IS ACCOUNTED FOR, so the next run need not
+re-take these.** After 8.737 to 8.741 closed five of them, what is left
+uncovered is four kinds and none is a gap:
+
+    fork-and-die       leave_terminal(), the fatal and stop handlers, and
+                       application.cpp's fatal message handler -- all
+                       exercised through fatal_child(), all invisible to
+                       gcov for the reason above
+    font failure       the qWarning and qFatal strings for a font that is
+                       not monospaced or not integral, on a machine whose
+                       fonts are
+    debug defaults     a `return "?"` and a few switch arms in the
+                       name-a-thing functions
+    tray.cpp           0 of 139, covered only by test-tray, and the
+                       holder's question rather than a defect
+
+**The lens produced five findings and is spent.** It is worth re-taking
+when a subsystem is added or a fixture is deleted, and not before: the
+measurement is cheap, but a second reading of the same residue is the
+re-running `working-practice.md` warns about.
+
 ### 8.737 The sizing surface had a fallback arm nothing had ever taken (2026-11-10)
 
 **8.736's first whole-tree coverage put three `return QSize(...)` lines
