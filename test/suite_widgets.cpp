@@ -81,6 +81,81 @@ public:
 
 int suite_widgets() {
 	fails = 0;
+	// A TITLED GROUP BOX'S CONTENTS MARGINS ARE COMPUTED ONCE, FROM A
+	// WIDGET THAT IS STILL 100x30. QGroupBox asks this style for
+	// SC_GroupBoxContents in its constructor -- from setTitle(), by way of
+	// calculateFrame() -- and turns the answer into contents margins it
+	// caches for the widget's whole life. Nothing asks again on a resize.
+	//
+	// At that moment the box has a fresh widget's default 100x30: one and a
+	// half rows, too short to hold a title row, the frame's top row and a
+	// row of contents. The rectangle this style computes therefore lies
+	// entirely BELOW the option's rect, subControlRect()'s funnel
+	// intersects the two, and the result is empty -- which QGroupBox reads
+	// as margins of (0, 0, width, height).
+	//
+	// Measured on netcfgd's own nesting, a 48x11-cell box: margins
+	// (0, 0, 100, 30) where (10, 38, 10, 19) was due. The contents then
+	// start on the title's own row and lose ten columns at the right, so
+	// the child's frame paints over the title -- "interface" rendered as a
+	// bare "i" -- and over the frame's top row, which turned the header
+	// into "|-network|-security|". The child's own bottom rule went with
+	// it, which is the stray rule netcfgd reported under the last row.
+	//
+	// 8.476's sweep could not see it: it resizes each box to four rows,
+	// where the rectangle is comfortably inside the option's rect, so the
+	// funnel never fires. The same shape as every other hole this run has
+	// found -- something between the break and the assertion supplies the
+	// right answer, here the size the question is asked at.
+	//
+	// So this asks the widget what it CACHED, at a real size, which is the
+	// only question whose answer an application depends on.
+	{
+		const int ch = GridMetrics::ch(), cw = GridMetrics::cw();
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		auto *g = new QGroupBox(QStringLiteral("interface"), &win);
+		v->addWidget(g);
+		auto *gv = new QVBoxLayout(g);
+		auto *t = new QTableWidget(2, 3, g);
+		t->horizontalHeader()->setSectionResizeMode(
+		    QHeaderView::ResizeToContents);
+		t->verticalHeader()->hide();
+		t->setHorizontalHeaderLabels({QStringLiteral("network"),
+			QStringLiteral("security"), QStringLiteral("credential")});
+		t->setItem(0, 0, new QTableWidgetItem(QStringLiteral("Cafe")));
+		gv->addWidget(t);
+		show(win, 50, 11);
+		const QMargins m = g->contentsMargins();
+		CHECK(m.top() == 2 * ch,
+		      "a titled group box keeps a title row and a frame row above "
+		      "its contents, at the size it is shown rather than the size "
+		      "it was born");
+		CHECK(m.left() == cw && m.right() == cw,
+		      "and one column of frame on each side of them");
+		CHECK(m.bottom() == ch,
+		      "and one row of frame below them");
+		CHECK(t->y() == 2 * ch,
+		      "so the first child of a titled group box starts two rows "
+		      "below the box's own top");
+		CellBuffer b(50, 11);
+		render_once(win, b);
+		CHECK(findText(b, QStringLiteral("interface")).y() >= 0,
+		      "and the title survives whole, rather than being painted "
+		      "over by the child's frame");
+		// The control that separates the two reserved rows: an untitled box
+		// has no title row to spend, so a top margin of one row is the
+		// right answer there and the wrong one above.
+		QWidget bare_win;
+		auto *bv = new QVBoxLayout(&bare_win);
+		auto *bare = new QGroupBox(&bare_win);
+		bv->addWidget(bare);
+		auto *bgv = new QVBoxLayout(bare);
+		bgv->addWidget(new QLabel(QStringLiteral("x"), bare));
+		show(bare_win, 50, 11);
+		CHECK(bare->contentsMargins().top() == ch,
+		      "while an untitled group box reserves the frame row alone");
+	}
 	// A STYLE SHEET TAKES A CONTROL'S TERMINAL AFFORDANCE AWAY. Nothing
 	// in this tree mentioned style sheets before 8.86, and they are a
 	// very common way a Qt application styles itself.

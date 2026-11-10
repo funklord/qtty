@@ -1837,7 +1837,39 @@ static int title_rows(const QStyleOptionComplex *opt) {
 // returned before reaching it.
 QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
                                 SubControl sc, const QWidget *w) const {
-	return valid_rect(sub_control_rect(cc, opt, sc, w), opt);
+	const QRect r = sub_control_rect(cc, opt, sc, w);
+	// ONE SUB-CONTROL'S ANSWER OUTLIVES THE QUESTION, so the funnel cannot
+	// have its vertical axis.
+	//
+	// QGroupBox asks for SC_GroupBoxContents exactly once, from
+	// calculateFrame() by way of setTitle(), and turns the answer into
+	// contents margins it caches for the widget's whole life; no resize
+	// asks again. In a constructor the box is still a fresh widget's
+	// 100x30 -- one and a half rows, too short for a title row, the
+	// frame's top row and a row of contents -- so the rectangle lies
+	// entirely BELOW opt->rect and the intersection empties it. QGroupBox
+	// reads an empty rect as margins of (0, 0, width, height).
+	//
+	// Measured on netcfgd's reported nesting, a 48x11-cell titled box:
+	// margins (0, 0, 100, 30) where (10, 38, 10, 19) was due. Its child
+	// then started on the title's own row and lost ten columns at the
+	// right, so the child's frame painted over the title -- "interface"
+	// rendering as a bare "i" -- over the frame's top row, and over its
+	// own bottom rule.
+	//
+	// 8.476 added the funnel for a NARROW box, where it is right and where
+	// the pins record its answers, so the horizontal axis keeps it. The
+	// vertical axis is handed back raw: clamping a rectangle against a
+	// transient size poisons a value that outlives it, and a collapsed
+	// width still answers QRect() so a declined part stays declined.
+	if (cc == CC_GroupBox && sc == SC_GroupBoxContents
+	    && opt && !opt->rect.isEmpty()) {
+		const int left = qMax(r.left(), opt->rect.left());
+		const int right = qMin(r.right(), opt->rect.right());
+		if (right < left) return QRect();
+		return QRect(left, r.top(), right - left + 1, r.height());
+	}
+	return valid_rect(r, opt);
 }
 
 QRect GridStyle::sub_control_rect(ComplexControl cc,
@@ -2229,10 +2261,18 @@ QRect GridStyle::sub_control_rect(ComplexControl cc,
 		case SC_GroupBoxFrame:
 			return QRect(r.left(), r.top() + title * ch,
 			             r.width(), qMax(2 * ch, r.height() - title * ch));
+		// NO FLOOR ON THE HEIGHT, deliberately, and it is the one place in
+		// this function where a negative dimension is the correct answer.
+		// QGroupBox converts this rectangle into contents MARGINS -- four
+		// differences between it and opt->rect -- and a margin is constant
+		// across sizes only if the height is allowed to go negative. A
+		// qMax(ch, ...) here made the bottom margin a function of the box's
+		// height at the moment it was asked, and the moment it is asked is
+		// the constructor's. See subControlRect() below for what that cost.
 		case SC_GroupBoxContents:
 			return QRect(r.left() + cw, r.top() + (title + 1) * ch,
 			             qMax(cw, r.width() - 2 * cw),
-			             qMax(ch, r.height() - (title + 2) * ch));
+			             r.height() - (title + 2) * ch);
 		default:
 			break;
 		}

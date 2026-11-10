@@ -7843,10 +7843,12 @@ check = "and no two parts of one complex control that are meant to be disjoint c
 # The sub-control funnel is removed, so a group box narrower than five cells
 # answers its indicator, its title and its contents outside itself again --
 # and the contents rect is what QGroupBox turns into contents margins. 8.480.
+# Re-aimed at the final return when 8.747 gave subControlRect() a body: the
+# funnel is still the thing removed, one line further down.
 name = "a sub-control rect is handed out unclipped"
 file = "src/grid/grid_style.cpp"
-find = "\treturn valid_rect(sub_control_rect(cc, opt, sc, w), opt);"
-into = "\treturn sub_control_rect(cc, opt, sc, w);"
+find = "\treturn valid_rect(r, opt);"
+into = "\treturn r;"
 count = 1
 check = "and no sub-control rect names cells outside the control it is part of, which is neither empty nor negative nor overlapping and is still not an answer"
 
@@ -9313,3 +9315,17 @@ find = "\t\t\treturn QSize(qMax(width, label_floor((across ? 1 : 0) + sep)),"
 into = "\t\t\treturn QSize(qMax(width, label_floor(across ? 1 : 0)),"
 count = 1
 check = "a column sized by a header longer than its cells draws that header in full"
+
+# THE FUNNEL TAKING BACK THE AXIS IT MUST NOT HAVE. QGroupBox asks for
+# SC_GroupBoxContents once, in a constructor, when the box is still a fresh
+# widget's 100x30 -- too short for a title row, a frame row and a row of
+# contents -- and caches the answer as margins for the widget's life. An
+# intersection against that transient rect empties the rectangle, and
+# QGroupBox reads an empty rect as margins of (0, 0, width, height). 8.747.
+[[sabotage]]
+name = "a cached margin clamped against the size it was born at"
+file = "src/grid/grid_style.cpp"
+find = "\t\treturn QRect(left, r.top(), right - left + 1, r.height());"
+into = "\t\treturn valid_rect(r, opt);"
+count = 1
+check = "a titled group box keeps a title row and a frame row above its contents, at the size it is shown rather than the size it was born"

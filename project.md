@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2507 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2513 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60467,3 +60467,74 @@ the eleven `set[A-Z]` matches in the document are Qt's own names --
 `QPainter::setOpacity` -- and keeping Qt's spelling is the rule, so the
 filter is "ours or theirs" and the answer is in the headers. `grep -nE
 '\bset[A-Z]'` over `doc/` is the whole instrument.
+
+### 8.747 A cached margin computed from a 100x30 widget (2026-11-10)
+
+**Every titled `QGroupBox` with a layout in it had nonsense contents
+margins, and had since the funnel was added in 8.476.** Found by building
+netcfgd's own nesting -- a group box inside a tab page inside a tab
+widget -- which is what their 20261110T2049Z report was a capture of. The
+two faults I could not reproduce from the capture alone both came out of
+this one cause.
+
+**The mechanism.** `QGroupBox` asks this style for `SC_GroupBoxContents`
+exactly once, from `calculateFrame()` by way of `setTitle()`, and turns
+the answer into contents margins it caches for the widget's whole life.
+No resize asks again. In a constructor the box is still a fresh widget's
+**100x30** -- one and a half rows, too short to hold a title row, the
+frame's top row and a row of contents -- so the rectangle this style
+computes lies entirely BELOW `opt->rect`, `subControlRect()`'s funnel
+intersects the two, and the result is empty. `QGroupBox` reads an empty
+rect as margins of `(0, 0, width, height)`.
+
+Measured on a 48x11-cell titled box: margins **(0, 0, 100, 30)** where
+(10, 38, 10, 19) was due. `(0, 0, w, h)` is the signature of a null rect
+converted to margins, and 100x30 is the default size, which is what
+dated the computation to the constructor.
+
+What an application saw, all three from that one number:
+
+- the contents started on the **title's own row**, so the child's frame
+  painted over the title -- `interface` rendering as a bare `i`;
+- and over the frame's **top row**, so a table header came out as
+  `|-network|-security|`, the group box's rule showing through the
+  header's spaces;
+- and the child, ten columns wider than its parent's remaining width,
+  lost its **own bottom rule** -- which is the stray rule under the last
+  row that their fault 3 reported, and why it would not reproduce from a
+  flat fixture.
+
+**The fix is that one sub-control's answer outlives the question, so the
+funnel cannot have its vertical axis.** That caller wants four INSETS,
+not a rectangle inside the box, and an inset is constant across sizes
+only if the height may go negative -- so the `qMax(ch, ...)` floor on the
+height is gone, and `subControlRect()` clamps this sub-control
+horizontally only. 8.476 added the funnel for a NARROW box, where it is
+right and where the pins record its answers, so that axis keeps it; a
+collapsed width still answers `QRect()`, so a declined part stays
+declined and 8.476's own sabotage still reddens.
+
+**Why 8.476's sweep could not see it, which is this run's recurring
+shape for the twelfth time.** That sweep asks every group box
+sub-control against the base style, with pins, across widths -- and
+resizes each box to **four rows**, where the rectangle is comfortably
+inside `opt->rect` and the funnel never fires. The check was real, the
+code was wrong, and **the size the question was asked at supplied the
+right answer**. Every hole this run has found has had something between
+the break and the assertion doing that.
+
+So the new check asks the widget what it **cached**, at the size it is
+shown rather than the size it was born, which is the only question whose
+answer an application depends on. Six checks: the four margins, the first
+child's top, and the title surviving whole in the buffer -- with an
+untitled box as the control, which passes before the fix and after it,
+since with no title row its rectangle still overlaps a 30-pixel box.
+
+Five of the six failed before the fix and all six pass after. 2513
+checks.
+
+**And the residue is a question, not a defect.** With the margins right,
+the group box's title row lands on the tab pane's own top rule, and three
+concentric frames eat six columns of a hundred. That is 0b's
+NESTED-FRAMES ROW, now sighted a fourth time, and it is the holder's to
+decide rather than mine.
