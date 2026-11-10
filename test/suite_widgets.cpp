@@ -10313,6 +10313,56 @@ int suite_widgets() {
 		      " each column's right edge as Qt's own grid drew them");
 	}
 
+	// AND A HEADER WIDER THAN ITS CELLS KEEPS ITS LABEL, which netcfgd
+	// reported from a real window. project.md 8.744.
+	//
+	// resizeColumnsToContents() takes each section's width from the wider
+	// of the header's size hint and the cells', so a column whose heading
+	// is longer than anything under it is sized BY THE HEADING. The
+	// heading is then drawn with a budget of width less the indent less
+	// the separator cell -- and CT_HeaderSection counted the indent and
+	// not the separator, so every such column came back one cell short
+	// and the label was elided while its cells had room to spare.
+	//
+	// Reported as `network securi... credential metr... autoconne...
+	// in ran...` over cells `HomeFiber psk **** yes`, with ninety columns
+	// unused to the right. (The capture's ellipses and bullets are written
+	// out here: a comment is prose and this tree's prose is ASCII.)
+	{
+		const int cw = Qtty::GridMetrics::cw();
+		QTableWidget t(1, 2);
+		t.horizontalHeader()->setSectionResizeMode(
+		    QHeaderView::ResizeToContents);
+		t.verticalHeader()->hide();
+		t.setHorizontalHeaderLabels({QStringLiteral("autoconnect"),
+		                             QStringLiteral("in range")});
+		t.setItem(0, 0, new QTableWidgetItem(QStringLiteral("yes")));
+		t.setItem(0, 1, new QTableWidgetItem(QStringLiteral("no")));
+		t.resize(Qtty::GridMetrics::cells(60, 5));
+		Qtty::CellBuffer b(60, 5);
+		Qtty::render_once(t, b);
+		const QString frame = b.to_text();
+		QString head = QStringLiteral("(no header row)");
+		for (const QString &l : frame.split(QLatin1Char('\n')))
+			if (l.contains(QStringLiteral("in ")) || l.contains(QStringLiteral("auto"))) {
+				head = l.trimmed();
+				break;
+			}
+		printf("info: a header wider than its cells renders as \"%s\"\n",
+		       qPrintable(head));
+		// BOTH LABELS, because one of them eliding is the fault and the
+		// other is the control: they differ in length, so a budget that
+		// is short by a fixed amount takes the longer one first and a
+		// check reading only that one cannot say the deficit is a cell
+		// rather than a proportion.
+		CHECK(frame.contains(QStringLiteral("autoconnect"))
+		      && frame.contains(QStringLiteral("in range"))
+		      && !frame.contains(QStringLiteral("\u2026")),
+		      "a column sized by a header longer than its cells draws that"
+		      " header in full, the separator cell being counted in the"
+		      " size hint as well as in the elide budget");
+	}
+
 	// AND THE TABLE THE TAKEOVER MUST NOT TOUCH, which is the half the
 	// suite could not see. polish() takes a table's grid over to stop
 	// sizeHintForColumn()'s pixel rounding a column off the cell grid --

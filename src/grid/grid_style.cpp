@@ -2450,11 +2450,26 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 		// heading up with the column of data below it, and the data is
 		// drawn at one cell of indent. Measured: a six-character wide
 		// heading came back four characters and an ellipsis.
-		if (const auto *hd = qstyleoption_cast<const QStyleOptionHeader *>(o))
-			return QSize(qMax(width,
-			                  label_floor(hd->orientation == Qt::Horizontal
-			                              ? 1 : 0)),
+		// AND THE SEPARATOR CELL, which this counted and CE_HeaderLabel
+		// subtracted -- so the two disagreed by exactly one cell and
+		// every column sized by its own heading lost a character.
+		// Reported by netcfgd from a real window: `securi...` over `psk`
+		// with ninety columns unused to the right. project.md 8.744.
+		//
+		// resizeColumnsToContents() takes the wider of the header's hint
+		// and the cells', so a heading longer than anything under it
+		// decides the width -- and the heading is then drawn with a
+		// budget of width less the indent LESS THE SEPARATOR. 8.714 added
+		// the separator to CT_ItemViewItem's hint and to the label's
+		// budget and not to this one.
+		if (const auto *hd = qstyleoption_cast<const QStyleOptionHeader *>(o)) {
+			const bool across = hd->orientation == Qt::Horizontal;
+			const int sep = across
+			    ? grid_sep_cells(w ? w->parentWidget() : nullptr,
+			                     hd->section) : 0;
+			return QSize(qMax(width, label_floor((across ? 1 : 0) + sep)),
 			             ch);
+		}
 		return QSize(width, ch);
 	case CT_ProgressBar:
 	case CT_Slider:

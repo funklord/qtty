@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2506 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2507 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60329,3 +60329,51 @@ hard is that the sibling solves a different-looking problem: it is about
 window-strip membership, and the shared shape -- *a property written
 twice cannot be falsified once* -- is visible only once you are looking
 for the shape rather than the subject.
+
+### 8.744 A regression I shipped this morning, reported from a real window (2026-11-10)
+
+**netcfgd ran its GUI as a TUI in a 160x50 tmux and sent back three faults
+with a verbatim capture, against qtty `b7c1907` -- a commit from earlier
+the same day. The first is mine, from 8.714, and the capture is what
+identified it.**
+
+    │┌─network───securi…─credential──metr…─autoconne…─in ran…──────────┐
+    ││ Cafe     │open   │none needed│     │yes       │       │
+
+Headings elided **while the cells under them fit**, with about ninety
+columns unused to the right. `securi…` for *security*, `metr…`,
+`autoconne…`, `in ran…` -- each short by about one character, and
+`network` and `credential` not elided at all.
+
+**THE DEPTH OF THE ELISION IS WHAT NAMED THE CAUSE.** One character, on
+the long labels only, is not a proportional budget error; it is a fixed
+deficit of one cell. 8.714 added the separator cell to
+`CT_ItemViewItem`'s size hint and subtracted it from `CE_HeaderLabel`'s
+elide budget -- and did not add it to **`CT_HeaderSection`**'s hint.
+
+`resizeColumnsToContents()` takes the wider of the header's hint and the
+cells', so a heading longer than anything under it decides the width.
+That width then came back one cell short of what the label was drawn
+with, and the heading lost a character. Where the cells were wider --
+`network`, `credential` -- the column was sized by them, which carried
+the separator, and nothing was lost. **The two labels that survived are
+what proves the mechanism rather than merely the fault.**
+
+**Reproduced before it was fixed**, which is the half that makes the fix
+mean something: a two-column `QTableWidget` with `ResizeToContents`,
+headings *autoconnect* and *in range* over cells *yes* and *no*, failed
+with an ellipsis and passes without one. Both labels are asserted,
+because they differ in length and a fixed deficit takes the longer first
+-- reading only one cannot say the deficit is a cell rather than a
+proportion.
+
+**WHAT IT SAYS ABOUT 8.714, which had every check green and an arm on
+both Qt versions.** The separator touches seven sites and the entry for
+it reddens the one it names. Nothing asked whether the sizing surface and
+the drawing surface counted the same chrome, because both were self-
+consistent: the item hint matched the item's drawing and the label's
+budget matched the label's rect. **The disagreement was between two
+surfaces that no single check reads together**, and the thing that reads
+them together is a column whose width comes from one and whose text comes
+from the other -- which is a real window with a long heading, and not
+anything in this suite until now.

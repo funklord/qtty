@@ -8034,7 +8034,7 @@ check = "every size this style answers for a control it draws a label in holds t
 # data below it. 8.487.
 name = "a header section is sized from the font's advance"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\treturn QSize(qMax(width,\n\t\t\t                  label_floor(hd->orientation == Qt::Horizontal\n\t\t\t                              ? 1 : 0)),\n\t\t\t             ch);"
+find = "\t\t\treturn QSize(qMax(width, label_floor((across ? 1 : 0) + sep)),\n\t\t\t             ch);"
 into = "\t\t\treturn QSize(width, ch);"
 count = 1
 check = "every size this style answers for a control it draws a label in holds that label in cells, wide characters included"
@@ -9298,3 +9298,18 @@ find = "\tw->setAttribute(Qt::WA_DontShowOnScreen);\n}"
 into = "\t(void)w;\n}"
 count = 1
 check = "modal dialog stamped WA_DontShowOnScreen (F7)"
+
+# THE CELL A HEADING IS SIZED BY AND DRAWN WITHOUT. CT_HeaderSection's hint
+# and CE_HeaderLabel's elide budget must count the same chrome, and for one
+# day they did not: 8.714 added the separator cell to the item hint and to
+# the label's budget and not to the header's hint, so every column sized by
+# its own heading came back one cell short and the label was elided while
+# its cells had room. netcfgd reported it from a real window -- `securi...`
+# over `psk`, ninety columns unused. 8.744.
+[[sabotage]]
+name = "a heading is sized without the separator it is drawn without"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QSize(qMax(width, label_floor((across ? 1 : 0) + sep)),"
+into = "\t\t\treturn QSize(qMax(width, label_floor(across ? 1 : 0)),"
+count = 1
+check = "a column sized by a header longer than its cells draws that header in full"
