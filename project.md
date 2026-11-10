@@ -59635,3 +59635,61 @@ blind to a file, a precondition the break removed -- and now a property
 established in triplicate and a guard something upstream reaches first.
 **The question that finds all of them is the same**: who else answers
 this before my check reads it. It has yet to fail to find something.
+
+### 8.730 Some checks pin the PLATFORM, and must stay unnamed (2026-11-10)
+
+**The full sweep is running with `--diff`, authorised, and what it will
+produce is the set of checks reddened by nothing. Before reading that set
+as a coverage gap, there is a category in it that is not one.**
+
+**A sabotage can only break OUR code.** So a check asserting Qt's own
+behaviour can never be reddened by any entry, however many are written --
+and it should not be. The spike's numbered findings are exactly that kind:
+F1 to F10 are feasibility questions about Qt, pinned so that a Qt change
+which invalidates the design is caught.
+
+`window->focusWidget() tracks setFocus (F4)` is the clear case. It does
+`edit->setFocus()`, pumps the loop and asserts `dlg.focusWidget() ==
+edit`. **There is no qtty code in that path at all.** Its value is real --
+the design rests on focus tracking under `WA_DontShowOnScreen`, and
+`suite_grid`'s own header names F4 as what it is for -- and it is
+correctly entry-less. I nearly wrote it an entry before reading what it
+asserts.
+
+**The F-number population, measured.** Of 7 checks citing an F-number, 1
+has an entry and 6 do not; of those 6, five are ours and gettable and one
+is this platform pin:
+
+    F3  router resolves Ctrl+S to QAction          ours
+    F5  QScrollBar is exempt                       ours (GridGuard's list)
+    F5  QHeaderView is exempt                      ours (the same list)
+    F7  modal dialog stamped WA_DontShowOnScreen    ours (application.cpp)
+    F9  one keystroke dirties a bounded handful     ours (damage tracking)
+    F4  window->focusWidget() tracks setFocus       QT'S, leave it
+
+**So the tally overstates the gap, and by how much is not yet known.**
+1758 checks are named by no entry; some unknown share of them pin the
+platform the same way. The remedy is not a cleverer count -- it is to read
+a check before writing it an entry, which is the same rule 8.721 and 8.723
+paid for from the other direction. A tally of unnamed checks is a list of
+questions, not a list of defects.
+
+**And the distinction has a tell worth using.** A platform pin has no qtty
+symbol in the path between the fixture and the assertion. `F4`'s check
+calls `setFocus` and `focusWidget`, both Qt's; `F7`'s calls into
+`Qtty::exec`, which is ours. That is cheaper to check than it is to
+discover by writing an entry and finding nothing to anchor it to.
+
+**AND THE FIRST ENTRY WRITTEN FROM THE SWEEP'S OWN OUTPUT.** 8.727
+measured graphics as the thinnest-covered suite -- 118 checks reached by
+nothing against 143 named by nothing, so 17 per cent collateral cover
+where the router has 50 -- which makes an entry there worth about twice
+one written in the router. The first is a **lifetime** guard:
+`Overlay`'s destructor removes it from the registry the compositor walks,
+and without that `visible_overlays()` iterates a freed pointer. The check
+reads the registry immediately after a `delete`, so it sees the stale
+entry before anything dereferences it, and the entry reddens rather than
+crashing. 811 entries.
+
+That is the sweep's clustering being spent rather than admired, which is
+what it was for.

@@ -9047,3 +9047,21 @@ find = "\t\t\"QHeaderView\", \"QScrollBar\","
 into = "\t\t\"QHeaderView\","
 count = 1
 check = "QScrollBar is exempt (F5)"
+
+# A LIFETIME GUARD, and the first entry written from the full sweep's own
+# output: 8.727 measured that graphics has the thinnest collateral cover
+# of any suite -- 118 of its checks reached by nothing, against 143 named
+# by nothing -- so an entry here buys close to a whole check where one in
+# the router buys about two.
+#
+# Overlay's destructor takes it out of the registry the compositor walks.
+# Without that, visible_overlays() iterates a freed pointer: the check
+# reads the registry straight after a delete, so it sees the stale entry
+# before anything dereferences it.
+[[sabotage]]
+name = "a deleted overlay stays in the registry"
+file = "src/graphics/overlay.cpp"
+find = "\tregistry().removeAll(this);"
+into = "\t// the removal, taken out on purpose"
+count = 1
+check = "and deleting it takes it out of the registry"
