@@ -59872,3 +59872,40 @@ guard whose comment records ten bytes reaching an editor, and bypassing
 it changes nothing the suite can see, so something further down guards
 `query_geometry()` as well. Over-determined, and not falsifiable by one
 line.
+
+### 8.734 design.md still called for a calibration the tree had disproved (2026-11-10)
+
+**Found by walking the goal gap through the specification itself rather
+than through the roadmap: §16's "What Phase 0 did not test" is a list the
+project wrote about its own gaps, and one item on it was closed in
+`project.md` and still open in `doc/design.md`.**
+
+The sentence said vertical text centring within multi-cell widgets *"is
+visibly off by one row in the dump above and needs a baseline calibration
+pass"*. §7.1 recorded years later that there was no centring fault at
+all: the controls were **two cells tall where they should have been
+one**, so a control put its indicator on one row and its text on the
+other. With single-line controls one cell tall the two share a row by
+construction, and the recorded fixture shows the prefs dialog going from
+controls separated by blank rows to one row per control.
+
+**So a reader of the design document was being told the renderer has an
+uncalibrated baseline, and sent to the wrong layer to fix it.** That is
+the shape §7.1 already named -- *a design note that names the symptom and
+guesses at the layer is the kind that sends the next reader to the wrong
+file* -- and the note itself was still doing it.
+
+**Corrected in place under §0b's standing permission**, which allows a
+factual claim the tree has measured false to be corrected while a
+decision may not be taken. This is squarely the first kind: the claim is
+about what the code does, and the measurement is recorded with a fixture.
+
+**What was NOT corrected, and why the line matters.** §17.1's estimate
+table also names "baseline calibration (the off-by-one row centring seen
+in §16)" -- and it stays. That table is a record of what was estimated
+before the work was done, not a claim about the tree now, and editing an
+estimate to match an outcome is rewriting a plan rather than correcting a
+fact. The same reasoning leaves §13's risk register alone: R1's trigger
+fired and passed at Phase 0 gate 2, but a risk table with mitigations and
+triggers is a planning artifact and marking entries retired is a
+judgement the permission does not cover.

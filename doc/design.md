@@ -1377,7 +1377,16 @@ the residual risk is tooltips, nested submenus, and off-screen clamping.
 Text-heavy widgets (`QTextEdit`), item-view editors and delegates, `QSplitter`,
 resize/reflow, colour quantisation, real terminal I/O, and macOS/Windows offscreen
 behaviour (§13.3). Vertical text centring within multi-cell widgets is visibly off by
-one row in the dump above and needs a baseline calibration pass.
+one row in the dump above.
+
+**That needed no baseline calibration, and saying it did sent the next reader to the
+wrong layer.** Measured since (project.md §7.1): there was no centring fault. The
+controls were **two cells tall where they should have been one**, and a control with two
+rows to fill puts its indicator on one and its text on the other -- which is why `[x]`
+and `Enable telemetry` landed on different rows. With single-line controls one cell tall
+the two share a row by construction, and the recorded fixture shows the prefs dialog
+going from controls separated by blank rows to one row per control. The symptom was
+described here as a *rendering* fault and it was a *geometry* fault two layers up.
 
 ### Verdict
 
