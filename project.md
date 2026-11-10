@@ -59614,8 +59614,18 @@ the belt-and-braces is deliberate for an attribute whose absence would
 let a platform map a real window. What it means is narrower and worth
 stating: **a property asserted once and established three times is
 unfalsifiable by this mechanism**, and counting its check as guarded or
-unguarded are both wrong. The remedy, if one is ever wanted, is an entry
-form that can break several sites at once -- not a cleverer aim.
+unguarded are both wrong.
+
+**THE REMEDY GUESSED HERE WAS WRONG, and the right one was in the tree --
+see 8.743.** This entry asked for "an entry form that can break several
+sites at once", which is a change to the mechanism. `compositor.cpp`'s
+strip predicate had already answered it the other way, in a comment about
+itself: it is written in ONE place *"because written out twice it could
+not be broken by a single sabotage -- either copy alone keeps a window
+out, so an entry removing one left every check green and reported that
+the code was broken and nothing noticed."* **Factor the sites; do not
+widen the mechanism.** The two router stamps are one function now and F7
+has an entry.
 
 **Section 8.3's is unestablished and said so.** Disabling the modal
 branch's `if (!modal->geometry().contains(px)) return;` changes no line of
@@ -60263,3 +60273,42 @@ That is the cheap version of a question worth asking again: for each
 section design.md calls hard, is its mechanism guarded? Three of §8.1's
 checks were unguarded; two now are, and the third -- a non-modal dialog
 being a strip window -- is the same family and still open.
+
+### 8.743 The answer to an over-determined property was already in the tree (2026-11-10)
+
+**8.729 found `WA_DontShowOnScreen` set in three places and concluded no
+single-line break could remove it. It asked for "an entry form that can
+break several sites at once -- not a cleverer aim". That was the wrong
+remedy, and the right one was written in this tree, about itself,
+months ago.**
+
+`compositor.cpp`'s strip predicate explains why it is one function:
+
+    // Written out twice it could not be broken by a single sabotage
+    // -- either copy alone keeps a window out, so an entry removing one
+    // left every check green and reported that the code was broken and
+    // nothing noticed.
+
+**So the project had already met over-determination and solved it by
+factoring the code, not by widening the harness.** The two router stamps
+-- the `Polish` filter and the show-time branch, both meaning "a
+top-level that is not the root" -- are `stamp_offscreen()` now, and one
+entry breaks both. F7 reddens, with three checks.
+
+**The root's stamp in `Qtty::exec()` stays separate on purpose.** It is a
+different fact: the root window is stamped because it *is* the terminal,
+not because it is a window somebody opened. Folding it in would make one
+function answer two questions, which is how the next reader comes to
+think the root and a dialog are stamped for the same reason.
+
+**THE RULE THIS COST TWICE IN ONE DAY.** `working-practice.md` says to
+look for where the project has settled a question under another name
+before treating it as open -- a decision record, a section, or a sibling
+in the tree doing the same job whose comment says why. 8.729 did not
+look, and neither did 8.740 before it blamed an opt-in convention for
+silence. **The sibling here was not merely in the same tree but in the
+same subsystem, with a comment written to be found.** What makes that
+hard is that the sibling solves a different-looking problem: it is about
+window-strip membership, and the shared shape -- *a property written
+twice cannot be falsified once* -- is visible only once you are looking
+for the shape rather than the subject.

@@ -2620,7 +2620,7 @@ check = "typing still reaches the window a person is in"
 # crash rather than a red line.
 name = "a window is stamped only once it is being shown"
 file = "src/runtime/input_router.cpp"
-find = "\tif (e->type() == QEvent::Polish) {\n\t\tif (auto *w = qobject_cast<QWidget *>(o))\n\t\t\tif (w->isWindow() && w != win_)\n\t\t\t\tw->setAttribute(Qt::WA_DontShowOnScreen);\n\t}\n"
+find = "\tif (e->type() == QEvent::Polish) {\n\t\tif (auto *w = qobject_cast<QWidget *>(o))\n\t\t\tif (w->isWindow() && w != win_)\n\t\t\t\tstamp_offscreen(w);\n\t}\n"
 into = ""
 count = 1
 check = "three dialogs opened and closed in turn"
@@ -9279,3 +9279,22 @@ find = "\treturn t == Qt::Popup || t == Qt::ToolTip;"
 into = "\treturn w->windowFlags().testFlag(Qt::Popup) || t == Qt::ToolTip;"
 count = 1
 check = "and a QSplashScreen is a strip window too"
+
+# F7, BREAKABLE AT LAST. 8.729 found this property established in three
+# places and concluded no single-line break could remove it, asking for an
+# entry form that could break several sites at once. The answer was in the
+# tree under another name: compositor.cpp's strip predicate says it was
+# factored into ONE place precisely "because written out twice it could not
+# be broken by a single sabotage". So the two router sites are one function
+# now and this breaks it. 8.743.
+#
+# The root's own stamp in Qtty::exec() stays separate, being a different
+# fact: these two are "a top-level that is not the root", which is what the
+# F7 check asks about.
+[[sabotage]]
+name = "a non-root top-level is not stamped offscreen"
+file = "src/runtime/input_router.cpp"
+find = "\tw->setAttribute(Qt::WA_DontShowOnScreen);\n}"
+into = "\t(void)w;\n}"
+count = 1
+check = "modal dialog stamped WA_DontShowOnScreen (F7)"

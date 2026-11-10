@@ -516,11 +516,30 @@ QWidget *InputRouter::key_target() const {
 // because the hide repair in the filter asks the same question Tab does.
 static bool move_focus(QWidget *scope, bool forward);
 
+// THE STAMP, IN ONE PLACE, for the reason the strip predicate in
+// compositor.cpp gives about itself: written out twice it could not be
+// broken by a single sabotage, because either copy alone keeps the
+// behaviour and an entry removing one leaves every check green while
+// reporting that the code was broken and nothing noticed.
+//
+// That is what 8.729 met on this very attribute -- `WA_DontShowOnScreen`
+// is set here, again below, and once more in Qtty::exec() for the root --
+// and what it left open, asking for an entry form that could break
+// several sites at once. The answer was already in the tree under
+// another name: factor the sites, do not widen the mechanism. 8.743.
+//
+// The root's own stamp in exec() stays separate and is a different fact:
+// these two are "a top-level that is not the root", and that is what the
+// F7 check asks about.
+static void stamp_offscreen(QWidget *w) {
+	w->setAttribute(Qt::WA_DontShowOnScreen);
+}
+
 bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 	if (e->type() == QEvent::Polish) {
 		if (auto *w = qobject_cast<QWidget *>(o))
 			if (w->isWindow() && w != win_)
-				w->setAttribute(Qt::WA_DontShowOnScreen);
+				stamp_offscreen(w);
 	}
 	// A WIDGET THAT HAD FOCUS AND IS BEING HIDDEN HANDS IT BACK.
 	//
@@ -617,7 +636,7 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 				// real screen on a platform that has one. Modals included:
 				// this runtime draws them itself (section 8.1), so the
 				// platform must never try to.
-				w->setAttribute(Qt::WA_DontShowOnScreen);
+				stamp_offscreen(w);
 				if (is_popup_layer(w)) {
 					popups_.removeAll(QPointer<QWidget>(w));
 					popups_.append(w);                             // top of stack
