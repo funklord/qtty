@@ -1435,6 +1435,55 @@ int suite_runtime() {
 			      "while the lower one is drawn, not dropped");
 		}
 		{
+			// AND THE PRODUCER'S CLIP, applied by the raster path, which
+			// nothing had ever painted. project.md 8.738.
+			//
+			// paint_placements()'s own comment states the invariant this
+			// is for: it is the path a GUI build and qtty-inspect take,
+			// and it "has to agree with what the terminal tiers draw or
+			// the two frontends disagree about a scrolled surface". The
+			// two halves were tested apart -- the cell side asserts what
+			// a clip does to a CellBuffer, and every placement painted
+			// here carried has_clip false -- so the raster half of that
+			// sentence was asserted by nothing, and the first whole-tree
+			// coverage put the setClipRect lines at zero executions.
+			//
+			// A scrolled sticker is the case: half of it has left the
+			// viewport, and the clip is the only thing that stops the
+			// painter drawing the rest over whatever is there.
+			QVector<CellImage> one;
+			CellImage c;
+			c.key = quint64(first.cacheKey());
+			c.cell_rect = QRect(0, 0, 4, 2);
+			c.pixmap = first;
+			c.has_clip = true;
+			c.clip = QRect(0, 0, 4, 1);        // the top row only
+			one.append(c);
+
+			QImage clipped_out = canvas;
+			{ QPainter p(&clipped_out); paint_placements(p, one, cw, ch); }
+
+			// THE CONTROL IS THE SAME PLACEMENT WITHOUT THE FLAG, in the
+			// same condition, because "row 1 is black" is also true of a
+			// painter that drew nothing at all -- which is exactly what a
+			// clip set to the wrong rectangle would look like.
+			one[0].has_clip = false;
+			QImage whole_out = canvas;
+			{ QPainter p(&whole_out); paint_placements(p, one, cw, ch); }
+
+			printf("info: a placement clipped to its top row paints"
+			       " (%d,%d) and (%d,%d); unclipped it paints (%d,%d)\n",
+			       qRed(at(clipped_out, 1, 0)), qBlue(at(clipped_out, 1, 0)),
+			       qRed(at(clipped_out, 1, 1)), qBlue(at(clipped_out, 1, 1)),
+			       qRed(at(whole_out, 1, 1)), qBlue(at(whole_out, 1, 1)));
+			CHECK(at(clipped_out, 1, 0) == qRgb(255, 0, 0)
+			      && at(clipped_out, 1, 1) == qRgb(0, 0, 0)
+			      && at(whole_out, 1, 1) == qRgb(255, 0, 0),
+			      "the raster path honours a placement's clip, drawing the"
+			      " row inside it and leaving the row outside alone, which"
+			      " the same placement unclipped does paint");
+		}
+		{
 			// Equal z, which is every placement in the tree today: the
 			// ordering must then say nothing and leave the painter's own
 			// order standing, so the LATER one wins. This pins what the

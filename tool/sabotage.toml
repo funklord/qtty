@@ -9193,3 +9193,17 @@ find = "\telse                            return 0;"
 into = "\telse                            return 1;"
 count = 1
 check = "a stray continuation byte is dropped, not delivered"
+
+# THE RASTER PATH'S CLIP, which nothing painted until 8.738. Its own
+# comment states the invariant: this is the path a GUI build and
+# qtty-inspect take, and it has to agree with what the terminal tiers draw
+# or the two frontends disagree about a scrolled surface. Ignoring the
+# producer's clip draws the half of a sticker that has left the viewport
+# over whatever is there.
+[[sabotage]]
+name = "the raster path ignores a placement's clip"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (ci.has_clip) {"
+into = "\t\tif (false) {"
+count = 1
+check = "the raster path honours a placement's clip"

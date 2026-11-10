@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2502 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2503 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60052,3 +60052,42 @@ own count.
 caught both.** They name a stable substring now rather than the whole
 sentence, so the next wording change does not break them -- the same
 lesson as the anchors that move when code is edited around them.
+
+### 8.738 The raster path's clip, stated as an invariant and painted by nothing (2026-11-10)
+
+**`paint_placements()` carries the invariant in its own comment** -- *"this
+is the raster path a GUI build and `qtty-inspect` take, and it has to
+agree with what the terminal tiers draw or the two frontends disagree
+about a scrolled surface"* -- **and the raster half of that sentence was
+asserted by nothing.**
+
+8.736's coverage put `p.save()` and `p.setClipRect(...)` at zero
+executions. The two halves were tested apart: the cell side asserts what
+a clip does to a `CellBuffer`, and every placement this suite painted
+carried `has_clip` false.
+
+**A scrolled sticker is the case.** Half of it has left the viewport, and
+the clip is the only thing stopping the painter drawing the rest over
+whatever is there. `qtty-inspect` ships, so the disagreement is between
+two things a user can both look at.
+
+**The control is the same placement without the flag**, in the same
+condition, because *"the row outside is black"* is also true of a painter
+that drew nothing at all -- which is exactly what a clip set to the wrong
+rectangle looks like. Measured: clipped to its top row it paints red at
+row 0 and black at row 1; unclipped it paints red at row 1.
+
+**Proved twice over.** The entry that ignores the clip reddens the check,
+and `compositor.cpp` went from 99.01 per cent to **99.61** with the three
+lines gone from the uncovered list -- the same before-and-after 8.737
+used, which is what this tree asks of a mechanical change applied to a
+test.
+
+**THE LENS, which is 8.736's instrument rather than a guess.** Three
+files' uncovered lines pointed at one thing: `cell_buffer.cpp` could not
+render a clip in `to_text()`, `compositor.cpp` could not apply one, and
+both were the same placement feature. **Coverage groups by what is not
+run, and the grouping is the finding** -- neither file alone says "the
+clip is untested", and the pair does. That is a different instrument from
+the sabotage sweep, which groups by what nothing notices, and this run is
+the first time the two have been held beside each other.
