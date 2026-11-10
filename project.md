@@ -60377,3 +60377,42 @@ surfaces that no single check reads together**, and the thing that reads
 them together is a column whose width comes from one and whose text comes
 from the other -- which is a real window with a long heading, and not
 anything in this suite until now.
+
+### 8.745 The other two netcfgd faults: one parked, one not reproduced (2026-11-10)
+
+**8.744 fixed the first of the three. The second is a question already
+reserved for the copyright holder, and the third did not reproduce.**
+
+**THE DOUBLED FRAME CORNER IS §0b's NESTED-FRAMES ROW.** netcfgd saw
+`│┌─┌────` and `││ │ link` -- the tab page's frame and the table's own,
+one cell apart. That is the entry §0b carries from 8.25 to 8.27: two
+frames nested with no layout margin are 1px lines 1px apart in pixels and
+two rules on a grid, the edges being in **different cells** because the
+inner rect is one cell inside the outer. Three options with their costs
+are on record and the cheapest -- suppress a rule whose neighbour already
+holds one -- cannot tell nesting from two adjacent framed widgets. **Not
+mine to choose**, and the report is a third independent sighting of it
+after fuzzypickles and a QScrollArea.
+
+**THE STRAY RULE DID NOT REPRODUCE.** Reported as a run of `-` under the
+last row, 55 cells wide -- the width of the columns, not of the viewport
+-- where X11 draws nothing. Probed two ways with `ResizeToContents` and
+the grid taken over:
+
+    a two-row, three-column table   frame complete, no rule
+    the same table with no rows     frame complete, top and bottom
+
+So a plain table does not show it, and what netcfgd has that these lack
+is the nesting: its table sits in a tab page inside a tab widget inside
+a group box, which is also what produces the second fault. **The two may
+be one fault** -- a frame drawn at an offset row would put a horizontal
+run where the capture shows one and leave the real bottom elsewhere --
+and the capture stops at that line, so it cannot say.
+
+**What would settle it, asked rather than guessed:** the rows below that
+rule in the same capture, and whether the table carries a frame of its
+own as well as the page's. Written back to netcfgd's inbox rather than
+inferred from here, because they have the window and this tree has only
+the picture. **The reproduction is theirs and the diagnosis is mine** --
+which is the division `harmonization.md` sets for a fault found in a
+dependency, read from the dependency's side.
