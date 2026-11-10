@@ -1617,11 +1617,40 @@ COV_DIR = build-cov
 # $(MAKE), so -n only prints them. That is the distinction -- the hazard
 # needs the write and the claim on one logical line with the recursion --
 # and it is why this target is left unguarded. project.md 8.705.
+# WITH NO `F`, THE WHOLE LIBRARY, which it refused to do until 8.736 and
+# which is the form that answers a question rather than confirming one. Per
+# file it tells you what you already suspected about the file you named;
+# over the tree it ranks, and the first ranking taken said tray.cpp is 0 of
+# 139 lines while nothing else is below 95 per cent.
+#
+# `F=<name>` is unchanged and still prints the uncovered lines, which the
+# whole-tree form deliberately does not: sixteen files' worth of line
+# numbers is not a ranking.
+#
+# ONE CAVEAT, and it is the instrument's rather than the code's. gcov
+# counters are flushed at exit, so anything exercised only in a forked
+# child that dies by a SIGNAL is reported as never executed -- which is
+# exactly what `fatal_child()` does to leave_terminal() and the fatal and
+# stop handlers. Read a zero there as "not visible to gcov", not as "not
+# tested".
 coverage:
-	@test -n "$(F)" || { echo "coverage: name the file, e.g. make coverage F=term_caps" >&2; exit 1; }
 	$(MAKE) test BUILD_DIR=$(COV_DIR) \
 		QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
 		              QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage' >/dev/null
+	@if [ -z "$(F)" ]; then \
+		cd $(COV_DIR)/src && for g in *.gcno; do \
+			[ -f "$$g" ] || continue; gcov "$${g%.gcno}" >/dev/null 2>&1; \
+		done; \
+		for f in *.cpp.gcov; do \
+			[ -f "$$f" ] || continue; \
+			awk -F: -v n="$${f%.gcov}" \
+			    '$$1 ~ /^ *[0-9]+$$/ { ex++ } $$1 ~ /^ *#####/ { un++ } \
+			     END { t = ex + un; if (t > 0) \
+			         printf "%6d uncovered of %6d  %6.2f%%  %s\n", \
+			                un, t, 100.0 * ex / t, n }' "$$f"; \
+		done | sort -rn; \
+		exit 0; \
+	fi
 	@( cd $(COV_DIR)/src && gcov $(F).cpp >/dev/null 2>&1 )
 	@test -f $(COV_DIR)/src/$(F).cpp.gcov \
 		|| { echo "coverage: no data for $(F)" >&2; exit 1; }

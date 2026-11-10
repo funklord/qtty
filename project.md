@@ -59953,3 +59953,54 @@ and design.md is deliberately outside that set: a specification may name
 things not yet built, and `setCompact` is exactly such a thing. So the
 document most likely to name a symbol wrongly is the one nothing checks,
 by a decision that is correct for the reason it was taken.
+
+### 8.736 The first whole-tree coverage, and what it says about the tray (2026-11-10)
+
+**`make coverage` has existed for a long time and could only ever answer
+about one file you had already decided to suspect.** `F=<name>` builds
+with `--coverage` and prints that file's uncovered lines -- useful once
+you know where to look, and no help at all in finding out. With no `F` it
+refused to run. It now does the whole library and ranks it, which is a
+different question and the one worth asking.
+
+**The first ranking ever taken:**
+
+       139 uncovered of  139    0.00%  tray.cpp
+        38 uncovered of  888   95.72%  ansi_backend.cpp
+        36 uncovered of   36    0.00%  moc_tray.cpp
+        25 uncovered of 1186   97.89%  grid_style.cpp
+        13 uncovered of 1085   98.80%  input_router.cpp
+        12 uncovered of  249   95.18%  application.cpp
+         9 uncovered of  793   98.87%  cell_paint.cpp
+         5 uncovered of  507   99.01%  compositor.cpp
+         4 uncovered of  258   98.45%  cell_buffer.cpp
+         0 uncovered of  ...  100.00%  theme, overlay, color, drag,
+                                       cell_item_delegate and three more
+
+**Nothing is below 95 per cent except the tray, which is at nought.** The
+suite does not execute a single line of `tray.cpp`. It is not untested --
+`test-tray` passes -- but that is an arm **outside `make check`**, so a
+tray regression passes the gate and is caught by whatever runs the arms
+next. That is the standing arrangement this tree chose on purpose, *"the
+gate is what blocks a bad commit, and the arms are what notice a bad
+week"*, and the tray is the one place where a whole file depends on it.
+
+**It is also the parked tray question with a number attached.** That
+question was "should the tray have suite checks"; it is now "the tray has
+0 of 139 lines of suite coverage, and its only cover is an arm outside
+the gate". Still the holder's to answer, and cheaper to answer with the
+figure.
+
+**ONE CAVEAT, AND IT IS THE INSTRUMENT'S RATHER THAN THE CODE'S.** The
+backend's 38 uncovered lines are `leave_terminal()` and the fatal and
+stop handlers -- the paths that give a terminal back when a program dies.
+They read as never executed and they **are** executed: `fatal_child()`
+forks, raises `SIGSEGV` in the child, and the check asserts on the bytes
+that reach the pty. gcov flushes its counters at exit, and a child killed
+by a signal never gets there.
+
+So a zero in those lines means *not visible to gcov*, not *not tested* --
+and I read it the wrong way first, and was two greps from filing "the
+emergency terminal restore is never exercised" as a finding. The caveat
+is in the Makefile beside the target, because that is where the next
+reader will be when they meet it.
