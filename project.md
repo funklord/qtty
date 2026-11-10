@@ -59518,3 +59518,72 @@ toolkit handler acting first, a second door to one fact, an identity that
 could not see a file -- and now a precondition that the break removes.
 Each time something between the break and the assertion decided the
 answer first.
+
+### 8.727 The full sweep, and what 1005 unguarded checks are made of (2026-11-10)
+
+**Authorised and run: 808 entries with `--diff`, 9h05m, 33s an entry.
+The headline is the verdict tally and the set that only a full run can
+produce.**
+
+    805 ok     1 FAILED     2 INCONCLUSIVE     0 REFUSED
+
+against the previous full sweep's **794 / 8 / 2 / 1**. The difference is
+the eight dead checks closed over the preceding day showing up in the
+instrument that found them.
+
+**The one FAILED is the one kept on purpose.** Entry 167, the cursor
+record's second guard, which 8.711 measured byte-identical with and
+without and left in the spec deliberately. Its `--diff` now corroborates
+that independently: the only lines that moved were a 600 ms probe
+reading 601 and a diff timing shifting 0.004 ms. Two measurements, a day
+apart, by different means, agreeing that nothing observable changes --
+which is what 8.711 claimed and could not then cross-check.
+
+**THE SET THAT NEEDED THE WHOLE RUN.** 1498 of 2502 checks are reddened
+by something, so **1005 -- 40 per cent -- are reddened by nothing**. No
+partial run can give this: it is `all checks` minus the union of every
+entry's effect, and the union is only complete when every entry has run.
+
+**And it is a different shape from the unnamed set.** 8.722 measured
+which checks no entry NAMES; this measures which nothing REACHES. The
+gap between them is collateral cover, and it is wildly uneven:
+
+    suite            unnamed   unguarded   collateral cover
+    router             447        223          50%
+    widgets            201         97          52%
+    render              93         53          43%
+    cells               63         33          48%
+    backend            357        228          36%
+    theme               84         70          17%
+    graphics           143        118          17%
+
+**The router's checks are half-covered by entries aimed elsewhere, and
+graphics' and theme's are barely covered at all.** That is the actionable
+result: an entry written in graphics or theme buys close to one check,
+while one written in the router buys about two. Nobody had this, and it
+is the reason the run was worth its hours rather than a re-confirmation.
+
+### 8.728 A break caught 56 times, reported as reaching nothing (2026-11-10)
+
+**The sweep's second INCONCLUSIVE, and the opposite failure from 8.726's:
+there the break removed its check's precondition, here the break is
+caught extremely well and the named check is simply too late.**
+
+Making the grid snap non-idempotent -- `+ ch` on the snapped top, so
+every pass walks a laid-out tree one row further down -- fails **56
+checks** and then **segfaults the suite at 528 passes**, measured by hand
+at exit 139. The check it named, *"snapping a snapped rectangle changes
+nothing"*, runs after the crash. So the harness reported it cut off
+before the named check, which is true and reads like a coverage hole when
+it is the reverse.
+
+**Re-pointed at a check the drift reaches early** -- *"a child wider than
+its parent is clipped to it"* -- and it now reddens 56.
+
+**The number worth keeping is 37.** That many of the 56 are named by no
+entry at all, so this single idempotence guard is what stands between a
+laid-out tree and a large share of every geometry assertion in the suite.
+It is also a caution about reading 8.727's 1005: a check reached only by
+a break that crashes the run is counted as reached, and a check reached
+only *after* such a crash is not reached at all. The sweep's union is a
+lower bound on coverage for exactly the entries whose breaks are fatal.

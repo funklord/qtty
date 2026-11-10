@@ -7419,12 +7419,24 @@ check = "snapping never overlaps two disjoint rectangles"
 # Snapping that moves a rectangle already on the grid, so the filter is no
 # longer idempotent and every pass over a laid-out tree walks it further
 # down the screen.
+#
+# RE-POINTED 8.727, and the reason is where the break lands rather than
+# whether it is caught. It is caught very well -- 56 checks fail -- but
+# the suite then SEGFAULTS at 528 passes, and "snapping a snapped
+# rectangle changes nothing" comes after the crash, so the full sweep
+# reported this INCONCLUSIVE: cut off before the named check. Measured by
+# hand, exit 139.
+#
+# So it names a check the drift reaches EARLY instead. 37 of those 56
+# failures are named by no entry at all, which is this break's real value:
+# one idempotence guard is what stands between a laid-out tree and every
+# geometry assertion in the suite.
 name = "the absence of movement is not preserved by snapping"
 file = "src/grid/grid_style.cpp"
 find = "\tconst int t = qRound(double(px.top()) / ch) * ch;"
 into = "\tconst int t = qRound(double(px.top()) / ch) * ch + ch;"
 count = 1
-check = "snapping a snapped rectangle changes nothing"
+check = "a child wider than its parent is clipped to it"
 
 [[sabotage]]
 # A wholly transparent half composed anyway, so an image with no ink in it
