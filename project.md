@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2503 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2504 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60091,3 +60091,42 @@ run, and the grouping is the finding** -- neither file alone says "the
 clip is untested", and the pair does. That is a different instrument from
 the sabotage sweep, which groups by what nothing notices, and this run is
 the first time the two have been held beside each other.
+
+### 8.739 A fixture that could not see a clip, and my own wrong accessor (2026-11-10)
+
+**The other half of 8.738's pair.** 8.736's coverage pointed at
+`cell_buffer.cpp` and `compositor.cpp` together: one could not apply a
+placement's clip, the other could not record it. 8.738 closed the
+applying; this closes the recording.
+
+`to_snapshot()` appends `" clip x,y WxH"` to a placement's line, and the
+comment there says why it appends rather than inserts -- so every
+existing fixture of an unclipped placement stays byte-identical. Both
+halves of that were unasserted, and **a fixture is how a consumer
+characterises a scrolled surface before changing it**, so a wrong suffix
+makes every such fixture wrong together. Measured:
+
+    0,0 3x2 z0 (30x38 px) clip 1,0 2x1
+
+**The control is the comment's own promise:** an unclipped placement's
+line must carry no `clip` at all. Reading only the clipped case would
+pass for an implementation that printed the suffix unconditionally, which
+is the one thing that comment says it does not do.
+
+**AND I ASKED THE WRONG ACCESSOR FIRST, which the check caught.** I wrote
+it against `to_text()`. The clip is in `to_snapshot()`'s image block --
+the comment at that site draws exactly that distinction, saying
+`to_text()` could not see the attribute and colour planes either. The
+check failed with an empty line, which is the right outcome and cost one
+build; had I asserted something weaker it would have passed against the
+wrong function. **A check that fails for the reason you did not expect is
+doing its job**, and the two accessors differing is a fact the site
+already recorded.
+
+**The lens, continued.** 8.738 noted that coverage groups by what is not
+run and the grouping is the finding. This is the second instalment of one
+grouping: two files, one feature, two checks, and neither file alone said
+the clip was untested. The sabotage sweep groups by what nothing notices
+and would not have grouped these -- `compositor.cpp`'s clip lines and
+`cell_buffer.cpp`'s suffix are not near each other in any spec, only in
+what the suite never reached.

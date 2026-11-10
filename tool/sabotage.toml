@@ -9207,3 +9207,18 @@ find = "\t\tif (ci.has_clip) {"
 into = "\t\tif (false) {"
 count = 1
 check = "the raster path honours a placement's clip"
+
+# THE CLIP A FIXTURE RECORDS. to_snapshot() appends " clip x,y WxH" to a
+# placement's line, and the comment there says why it appends rather than
+# inserts -- so every existing fixture of an unclipped placement stays
+# byte-identical. Dropping the suffix makes a snapshot unable to see the
+# field, which is the argument that site already makes about the attribute
+# and colour planes: a fixture that cannot see a field goes green when the
+# field stops being set. 8.739.
+[[sabotage]]
+name = "a fixture stops recording a placement's clip"
+file = "src/core/cell_buffer.cpp"
+find = "\t\t\tif (im.has_clip)\n"
+into = "\t\t\tif (false)\n"
+count = 1
+check = "a fixture records a placement's clip"

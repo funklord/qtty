@@ -1356,6 +1356,45 @@ int suite_runtime() {
 			CHECK(clipped(false, QRect(0, 0, 3, 1)).images != narrow.images,
 			      "and dropping the clip is a different frame from keeping"
 			      " it, the rectangle beside the flag being unchanged");
+			{
+				// AND WHAT A FIXTURE RECORDS OF IT, which nothing read.
+				// project.md 8.739.
+				//
+				// to_text() appends " clip x,y WxH" to a placement's line, and
+				// the comment at that site says why it appends rather than
+				// inserts: so every existing fixture of an unclipped
+				// placement stays byte-identical. Both halves of that were
+				// unasserted -- the first whole-tree coverage put those three
+				// lines at zero executions -- and a fixture is how a consumer
+				// characterises a scrolled surface before changing it, so a
+				// wrong suffix makes every such fixture wrong together.
+				//
+				// THE CONTROL IS THE CLAIM ITSELF: an unclipped placement's
+				// line must carry no "clip" at all. Reading only the clipped
+				// case would pass for an implementation that printed the
+				// suffix unconditionally, which is the one thing the comment
+				// promises it does not do.
+				// to_snapshot(), not to_text(): the clip is in the
+				// snapshot's image block, and the comment at that site
+				// draws the distinction -- to_text() could not see the
+				// attribute and colour planes either. Asking the wrong
+				// one of the two reads an empty line and says nothing,
+				// which is what the first version of this check did.
+				const QString with =
+				    clipped(true, QRect(1, 0, 2, 1)).to_snapshot();
+				const QString without =
+				    clipped(false, QRect(1, 0, 2, 1)).to_snapshot();
+				QString shown = QStringLiteral("(no image line)");
+				for (const QString &l :
+				     with.split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+					if (l.contains(QStringLiteral(" z"))) shown = l;
+				printf("info: a clipped placement records \"%s\"\n",
+				       qPrintable(shown));
+				CHECK(with.contains(QStringLiteral(" clip 1,0 2x1"))
+				      && !without.contains(QStringLiteral("clip")),
+				      "a fixture records a placement's clip, and records none"
+				      " for a placement that has no clip");
+			}
 		}
 	}
 
