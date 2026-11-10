@@ -9065,3 +9065,32 @@ find = "\tregistry().removeAll(this);"
 into = "\t// the removal, taken out on purpose"
 count = 1
 check = "and deleting it takes it out of the registry"
+
+# A NULL GUARD, and its honest outcome is a dead suite rather than a red
+# line, which is what `expect` is for. align_text_document() takes a
+# QTextDocument an application hands it; the check calls it with nullptr
+# and asserts 0 rather than a crash. Remove the null half of the guard --
+# the cell-size half stays, so this is not "the guard is gone" but "the
+# null case is" -- and the next line dereferences it.
+[[sabotage]]
+name = "a null document is dereferenced rather than refused"
+file = "src/graphics/graphics.cpp"
+find = "\tif (!doc || !cell_px.isValid() || cell_px.width() <= 0 || cell_px.height() <= 0)"
+into = "\tif (!cell_px.isValid() || cell_px.width() <= 0 || cell_px.height() <= 0)"
+count = 1
+expect = "crash"
+check = "and a null document is not a crash"
+
+# THE TILE QUANTISER LOSING HALF A DAMAGE, which the check's own comment
+# names as the fault it exists for: "a quantiser that returned one tile
+# would lose half the damage, and one that returned every tile would cost
+# the screen". Stopping after the first tile breaks exactly the boundary
+# case and leaves the single-tile case passing, so the pair is what fails
+# rather than the whole function.
+[[sabotage]]
+name = "a damage spanning two tiles reports only the first"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (!t.isEmpty() && damage.intersects(t)) out.append(t);"
+into = "\t\t\tif (!t.isEmpty() && damage.intersects(t) && out.isEmpty()) out.append(t);"
+count = 1
+check = "damage across a boundary dirties both tiles"

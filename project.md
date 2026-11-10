@@ -59693,3 +59693,35 @@ crashing. 811 entries.
 
 That is the sweep's clustering being spent rather than admired, which is
 what it was for.
+
+### 8.731 Spending the clustering, by instalments (2026-11-10)
+
+**8.727's measurement is only worth what gets written against it.** Three
+entries so far in graphics, the thinnest-covered suite at 17 per cent
+collateral cover, chosen by lens rather than by walking 118 in order --
+lifetime, null, and a quantiser losing half its input:
+
+    a deleted overlay stays in the registry          reddens
+    a null document is dereferenced rather than      expect = crash
+      refused
+    a damage spanning two tiles reports only the     reddens
+      first
+
+**The null one is the honest use of `expect = "crash"`.** Removing the
+null half of `align_text_document()`'s guard -- the cell-size half stays,
+so this breaks the null case rather than the guard -- makes the next line
+dereference it, and the check that calls it with `nullptr` cannot report
+a number because the process is gone. The harness's own comment names a
+lifetime guard as the case for that mode, and the alternative would be an
+entry reporting INCONCLUSIVE for ever.
+
+**The quantiser one is the check's own stated fault.** Its comment says
+"a quantiser that returned one tile would lose half the damage, and one
+that returned every tile would cost the screen", so the break stops after
+the first tile: the single-tile case still passes and only the pair
+fails, which is the boundary the sentence is about.
+
+**813 entries.** The remaining ~1000 unguarded checks are not 1000
+entries to write -- 8.730's platform pins must stay unnamed and 8.729's
+over-determined properties cannot be broken by one line -- but the order
+is no longer a guess, which is what the nine hours bought.
