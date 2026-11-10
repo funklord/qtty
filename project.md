@@ -60004,3 +60004,51 @@ and I read it the wrong way first, and was two greps from filing "the
 emergency terminal restore is never exercised" as a finding. The caveat
 is in the Makefile beside the target, because that is where the next
 reader will be when they meet it.
+
+### 8.737 The sizing surface had a fallback arm nothing had ever taken (2026-11-10)
+
+**8.736's first whole-tree coverage put three `return QSize(...)` lines
+in `sizeFromContents()` at zero executions, and all three are the same
+thing: the arm taken when `qstyleoption_cast` fails.**
+
+    case CT_ItemViewItem:
+        if (const auto *vi = qstyleoption_cast<...>(o)) { ... }
+        return QSize(width, snapped);        // never reached
+    case CT_HeaderSection:
+        if (const auto *hd = qstyleoption_cast<...>(o)) { ... }
+        return QSize(width, ch);             // never reached
+
+**The suite's own block at the head of that section does exactly this
+test, for one type.** It asks `CT_ToolButton` with an option it cannot
+cast and states the contract in as many words -- *a cell answer whatever
+it was handed*. Every other call in the sweep below it then hands its
+type the option that type expects, so twenty-odd fallback arms were never
+taken and the contract was asserted for one of them.
+
+**It is the arm a real caller reaches by being wrong**, which is the case
+a style cannot refuse. Qt asks; answering with a pixel count because the
+cast failed puts an off-grid geometry into a layout, which is exactly how
+8.428's group box came to draw through its own border.
+
+**So the sweep gained a pass over every type with an option it cannot
+cast**, keyed off `QMetaEnum` for the reason the sub-element sweep gives.
+The answers went from **176 to 368** -- twenty-four types at eight
+contents sizes -- and every one is a whole number of cells, against 292
+of the base style's that are not.
+
+**Proved by the measurement that motivated it moving.** `grid_style.cpp`
+went from 97.89 per cent to **98.15**, and the three lines are gone from
+the uncovered list. That is the check this tree asks of a mechanical
+change -- state what must change and show it -- applied to a test rather
+than to a tool.
+
+**And `miscast` is asserted beside the rest**, so a pass that stopped
+asking cannot leave the check green by sweeping less: an enum that shrank
+or a loop that never ran would otherwise be invisible, which is the
+vacuous-pass shape the sub-element sweep already guards against with its
+own count.
+
+**Two sabotage entries named the check's old message and `--validate`
+caught both.** They name a stable substring now rather than the whole
+sentence, so the next wording change does not break them -- the same
+lesson as the anchors that move when code is edited around them.

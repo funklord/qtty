@@ -7882,7 +7882,7 @@ file = "src/grid/grid_style.cpp"
 find = "\tconst int width = ((s.width() + cw - 1) / cw) * cw;"
 into = "\tconst int width = s.width();"
 count = 1
-check = "every size this style measures is a whole number of cells, on every contents type, where the base style's are not"
+check = "every size this style measures is a whole number of cells"
 
 [[sabotage]]
 # And the height, which is the half that becomes a fractional number of rows
@@ -7892,7 +7892,7 @@ file = "src/grid/grid_style.cpp"
 find = "\tconst int snapped = ((s.height() + ch - 1) / ch) * ch;"
 into = "\tconst int snapped = s.height();"
 count = 1
-check = "every size this style measures is a whole number of cells, on every contents type, where the base style's are not"
+check = "every size this style measures is a whole number of cells"
 
 [[sabotage]]
 # fill() stops clearing a pair whose lead lies outside its left edge, so a

@@ -419,6 +419,36 @@ int suite_grid() {
 		sweep(QStringLiteral("mdicontrols"), QStyle::CT_MdiControls, &any);
 		sweep(QStringLiteral("sizegrip"), QStyle::CT_SizeGrip, &any);
 		sweep(QStringLiteral("menubar"), QStyle::CT_MenuBar, &any);
+
+		// AND EVERY TYPE WITH AN OPTION IT CANNOT CAST, which nothing
+		// reached. project.md 8.737.
+		//
+		// The block at the head of this section does exactly this for
+		// CT_ToolButton and states the contract in as many words -- a
+		// cell answer whatever it was handed -- and every call above
+		// hands its type the option that type expects. So the fallback
+		// arm of each `qstyleoption_cast` in that switch was never taken:
+		// the first whole-tree coverage put three `return QSize(...)`
+		// lines in sizeFromContents() at zero executions, and all three
+		// are that arm.
+		//
+		// It is the arm a REAL caller reaches by being wrong, which is
+		// the case a style cannot refuse: Qt asks, and answering with a
+		// pixel count because the cast failed puts an off-grid geometry
+		// into a layout exactly as 8.428's group box did.
+		//
+		// Keyed off QMetaEnum rather than written out, for the reason the
+		// sub-element sweep gives: a written list drifts from the enum,
+		// and Qt's own set differs between versions.
+		const QMetaEnum ct_enum =
+		    QMetaEnum::fromType<QStyle::ContentsType>();
+		int miscast = 0;
+		for (int i = 0; i < ct_enum.keyCount(); ++i) {
+			++miscast;
+			sweep(QStringLiteral("miscast/")
+			          + QString::fromLatin1(ct_enum.key(i)),
+			      QStyle::ContentsType(ct_enum.value(i)), &any);
+		}
 		delete plain;
 		sfc_askew.sort();
 		sfc_askew.removeDuplicates();
@@ -429,9 +459,14 @@ int suite_grid() {
 		       int(sfc_backward.size()), base_askew,
 		       sfc_askew.isEmpty() ? "" : ": ",
 		       qPrintable(sfc_askew.join(QStringLiteral(", "))));
-		CHECK(sfc_asked > 0 && base_askew > 0 && sfc_askew.isEmpty(),
+		// `miscast` is asserted beside the rest so the pass above cannot
+		// quietly ask nothing: an enum that shrank, or a loop that never
+		// ran, would otherwise leave this green by sweeping less.
+		CHECK(sfc_asked > 0 && base_askew > 0 && miscast >= 15
+		      && sfc_askew.isEmpty(),
 		      "every size this style measures is a whole number of cells,"
-		      " on every contents type, where the base style's are not");
+		      " on every contents type and on every type handed an option"
+		      " it cannot cast, where the base style's are not");
 		// THE SECOND CHECK IS NOT DEFENDED BY A SABOTAGE and says so.
 		// Monotonicity here is held jointly: the base style's own answers
 		// rise with the contents, and the rounding above is monotonic, so
