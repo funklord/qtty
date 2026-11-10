@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2504 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2505 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60130,3 +60130,40 @@ the clip was untested. The sabotage sweep groups by what nothing notices
 and would not have grouped these -- `compositor.cpp`'s clip lines and
 `cell_buffer.cpp`'s suffix are not near each other in any spec, only in
 what the suite never reached.
+
+### 8.740 Ctrl+W's walk, and the step past something that cannot close (2026-11-10)
+
+**Two lines of the Ctrl+W close walk were at zero executions in 8.736's
+coverage, and the second is the one worth having.**
+
+The walk goes from the focus outwards and the first closable thing wins.
+The existing fixture puts its tab bar inside a `QTabWidget`, so the emit
+goes to the **parent** and two neighbours were never reached: the `else`
+arm where a `QTabBar` stands on its own -- an application doing its own
+content area beside a bare bar, which is ordinary -- and the `continue`
+that lets the walk step **past** a bar whose tabs are not closable.
+
+**A walk that stopped there would do nothing at all while a closable dock
+sat one level out**, and the user would press the key twice and give up.
+Measured both ways now: a bare closable bar asks for tab 1, and past a
+non-closable one the dock closes.
+
+**NO DEFECT -- THE CODE WAS RIGHT AND MY FIXTURE WAS WRONG**, and the way
+it was wrong is worth the line. Both halves failed on the first run. The
+cause is three checks above, in as many words: *"with the conventions off
+neither answers, this being an opt-in convention rather than a key the
+library takes"*. The block I appended to turns the conventions off on its
+way out, so a fixture written after it and not asking for them gets
+silence -- and silence from an opt-in feature reads exactly like a
+defect in the feature.
+
+**That is the second time this run a check failed for a reason that was
+mine rather than the code's** (8.739 asked `to_text()` where the field
+lives in `to_snapshot()`), and both times the failure was the cheap
+outcome. A fixture that is wrong in a way that makes the code look broken
+costs one build; one that is wrong in a way that makes the code look
+**fine** costs however long it takes somebody to doubt it.
+
+**The entry guards the skip rather than the emit.** Breaking `continue`
+to `return` is the version a user would notice, and the emit it would
+otherwise reach is covered by the bare-bar half of the same check.

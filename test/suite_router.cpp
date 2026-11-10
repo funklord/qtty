@@ -4849,6 +4849,82 @@ int suite_router() {
 		      "and with the conventions off neither answers, this being an"
 		      " opt-in convention rather than a key the library takes");
 
+		// AND THE TWO BRANCHES OF THAT WALK NOTHING HAD TAKEN.
+		// project.md 8.740, from the first whole-tree coverage.
+		//
+		// The fixture above puts its tab bar inside a QTabWidget, so the
+		// walk emits on the PARENT. Two lines beside that one were at
+		// zero executions: the `else` arm, where a QTabBar stands on its
+		// own -- an application doing its own content area beside a bare
+		// bar, which is an ordinary arrangement -- and the `continue`
+		// that lets the walk step PAST something that cannot close.
+		//
+		// The second is the invariant worth having. Ctrl+W walks from the
+		// focus outwards and the first closable thing wins; a walk that
+		// stopped at a non-closable tab bar would do nothing at all while
+		// a closable dock sat one level out, and the user would press the
+		// key twice and give up.
+		{
+			// THE CONVENTIONS ARE ON FOR THIS, which the check three
+			// above proves is required: "with the conventions off
+			// neither answers, this being an opt-in convention rather
+			// than a key the library takes". The block this sits in
+			// turns them off on its way out, so a fixture written after
+			// it and not asking gets silence and reads it as a defect --
+			// which is what the first version of this did.
+			set_keyboard_conventions(true);
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *bar = new QTabBar(&host);
+			bar->addTab(QStringLiteral("one"));
+			bar->addTab(QStringLiteral("two"));
+			bar->setTabsClosable(true);
+			bar->setGeometry(0, 0, 20 * cw, ch);
+			host.resize(GridMetrics::cells(20, 3));
+			host.show();
+			QCoreApplication::processEvents();
+			int bare = -1;
+			QObject::connect(bar, &QTabBar::tabCloseRequested,
+			                 [&bare](int i) { bare = i; });
+			bar->setCurrentIndex(1);
+			bar->setFocus();
+			set_focus_widget(bar);
+			InputRouter br(&host);
+			br.on_key({Qt::Key_W, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+
+			// AND PAST ONE THAT CANNOT CLOSE, to the dock outside it.
+			QMainWindow win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *dock = new QDockWidget(QStringLiteral("Panel"), &win);
+			dock->setFeatures(QDockWidget::DockWidgetClosable);
+			auto *shut = new QTabBar(dock);
+			shut->addTab(QStringLiteral("only"));
+			shut->setTabsClosable(false);        // the thing to step past
+			dock->setWidget(shut);
+			win.addDockWidget(Qt::LeftDockWidgetArea, dock);
+			win.resize(GridMetrics::cells(30, 8));
+			win.show();
+			QCoreApplication::processEvents();
+			shut->setFocus();
+			set_focus_widget(shut);
+			InputRouter dr(&win);
+			dr.on_key({Qt::Key_W, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			const bool dock_gone = dock->isHidden();
+			GridGuard::reset();
+
+			printf("info: Ctrl+W on a bare closable tab bar asked for tab"
+			       " %d, and past a non-closable one it %s the dock\n",
+			       bare, dock_gone ? "closed" : "did NOT close");
+			CHECK(bare == 1 && dock_gone,
+			      "Ctrl+W closes a tab on a bar standing on its own, and"
+			      " steps past a bar that cannot close to the dock that"
+			      " can");
+			set_keyboard_conventions(false);
+		}
+
 		// AND Ctrl+F4 DOES IT FROM A TEXT FIELD, which is the one place
 		// the two chords differ: readline claims Ctrl+W where a caret has
 		// it and claims Ctrl+F4 nowhere, so this is the key that still

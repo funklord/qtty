@@ -9222,3 +9222,16 @@ find = "\t\t\tif (im.has_clip)\n"
 into = "\t\t\tif (false)\n"
 count = 1
 check = "a fixture records a placement's clip"
+
+# THE WALK STOPPING AT SOMETHING THAT CANNOT CLOSE. Ctrl+W walks from the
+# focus outwards and the first closable thing wins; `continue` is what
+# lets it step past a tab bar whose tabs are not closable. Returning
+# instead makes the key do nothing at all while a closable dock sits one
+# level out -- the user presses it twice and gives up. 8.740.
+[[sabotage]]
+name = "the close walk stops at a tab bar that cannot close"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t\tif (!bar->tabsClosable() || bar->currentIndex() < 0)\n\t\t\t\t\t\tcontinue;"
+into = "\t\t\t\t\tif (!bar->tabsClosable() || bar->currentIndex() < 0)\n\t\t\t\t\t\treturn;"
+count = 1
+check = "Ctrl+W closes a tab on a bar standing on its own"
