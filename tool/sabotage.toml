@@ -9329,3 +9329,17 @@ find = "\t\treturn QRect(left, r.top(), right - left + 1, r.height());"
 into = "\t\treturn valid_rect(r, opt);"
 count = 1
 check = "a titled group box keeps a title row and a frame row above its contents, at the size it is shown rather than the size it was born"
+
+# THE VERTICAL INSET DROPPED BACK TO THE BASE STYLE'S PIXELS. A tab widget's
+# page must clear the border that is drawn, and the border has a top as well
+# as sides: Fusion's two-pixel inset rounds to no rows, so the page begins on
+# the pane's own top rule and a framed child draws its corner into it. The
+# fixture that guards the horizontal half scans a row and cannot see this.
+# 8.748.
+[[sabotage]]
+name = "a tab page clears the border beside it and not above it"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t             tall ? pane.top() + ch : r.top(),"
+into = "\t\t\t             r.top(),"
+count = 1
+check = "and clears it above as well, the top border being drawn no less than the sides"

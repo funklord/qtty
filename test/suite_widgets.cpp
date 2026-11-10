@@ -1892,7 +1892,17 @@ int suite_widgets() {
 	// than as a column number, which would pin this to one terminal width and
 	// one frame width.
 	{
-		QTabWidget tabs;
+		// initStyleOption() is protected, and the option is what lets this
+		// ask the style the same question Qt's own layout asks it.
+		class Tabs : public QTabWidget {
+		public:
+			QStyleOptionTabWidgetFrame frame_option() const {
+				QStyleOptionTabWidgetFrame o;
+				initStyleOption(&o);
+				return o;
+			}
+		};
+		Tabs tabs;
 		auto *page = new QWidget;
 		auto *v = new QVBoxLayout(page);
 		auto *inner = new QListWidget;
@@ -1916,6 +1926,51 @@ int suite_widgets() {
 			}
 		CHECK(first >= 0 && second > first + 1,
 		      "a tab widget's page clears the border it draws");
+		// AND THE SAME QUESTION ABOUT THE OTHER AXIS, which the scan above
+		// structurally cannot ask: it walks a ROW looking for two vertical
+		// bars, so it is blind to anything the top and bottom borders do.
+		// They did the wrong thing for as long as it took to look --
+		// SE_TabWidgetTabContents stated its horizontal inset in cells and
+		// left r.top() and r.height() at the base style's two pixels, which
+		// round to no rows at all, so the page began ON the pane's top rule.
+		//
+		// Found while rendering netcfgd's nesting for 8.747 rather than by
+		// this fixture, which is the lesson: a check is blind along the axis
+		// it scans.
+		//
+		// Asserted as the gap between the two borders on each edge, in
+		// cells, for the same reason the row scan above is a relationship --
+		// a row number would pin it to one terminal height.
+		const QStyleOptionTabWidgetFrame fo = tabs.frame_option();
+		const QRect pane = tabs.style()->subElementRect(
+		    QStyle::SE_TabWidgetTabPane, &fo, &tabs);
+		const QRect page_rect = tabs.style()->subElementRect(
+		    QStyle::SE_TabWidgetTabContents, &fo, &tabs);
+		const int ch = GridMetrics::ch();
+		CHECK(page_rect.top() - pane.top() >= ch,
+		      "and clears it above as well, the top border being drawn no "
+		      "less than the sides");
+		CHECK(pane.bottom() - page_rect.bottom() >= ch,
+		      "and below, which is the same border's other end");
+		// The rendered consequence, which is what a reader of the terminal
+		// sees: the pane's top rule carries the pane's own corner and
+		// nobody else's. With the page on that row, the child's corner
+		// landed in it and the row held two.
+		int top_row = -1, corners = 0;
+		for (int y = 0; y < b.rows() && top_row < 0; ++y)
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, y).ch == QStringLiteral("\u250c")) {
+					top_row = y;
+					break;
+				}
+		if (top_row >= 0) {
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, top_row).ch == QStringLiteral("\u250c"))
+					++corners;
+		}
+		CHECK(top_row >= 0 && corners == 1,
+		      "so the topmost rule drawn carries one opening corner, not a "
+		      "framed child's as well");
 	}
 
 	// The same handle between FRAMED panes, where it must not render.
@@ -10404,7 +10459,6 @@ int suite_widgets() {
 	// unused to the right. (The capture's ellipses and bullets are written
 	// out here: a comment is prose and this tree's prose is ASCII.)
 	{
-		const int cw = Qtty::GridMetrics::cw();
 		QTableWidget t(1, 2);
 		t.horizontalHeader()->setSectionResizeMode(
 		    QHeaderView::ResizeToContents);

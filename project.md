@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2513 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2516 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60471,7 +60471,14 @@ filter is "ours or theirs" and the answer is in the headers. `grep -nE
 ### 8.747 A cached margin computed from a 100x30 widget (2026-11-10)
 
 **Every titled `QGroupBox` with a layout in it had nonsense contents
-margins, and had since the funnel was added in 8.476.** Found by building
+margins, and had since the funnel was added in 8.476.** Precisely: every
+one whose title was set before it reached a real size, which is the
+constructor's `QGroupBox(title, parent)` and every `setTitle()` that
+follows it promptly. A box titled after being laid out and shown
+computes correct margins and keeps them, so the fault is not literally
+universal -- but the common form is the broken one, and the four callers
+of Qt's `calculateFrame()` are `init()`, `setTitle()`, `setCheckable()`
+and a font or style change, none of which a resize reaches. Found by building
 netcfgd's own nesting -- a group box inside a tab page inside a tab
 widget -- which is what their 20261110T2049Z report was a capture of. The
 two faults I could not reproduce from the capture alone both came out of
@@ -60536,5 +60543,93 @@ checks.
 **And the residue is a question, not a defect.** With the margins right,
 the group box's title row lands on the tab pane's own top rule, and three
 concentric frames eat six columns of a hundred. That is 0b's
-NESTED-FRAMES ROW, now sighted a fourth time, and it is the holder's to
-decide rather than mine.
+NESTED-FRAMES ROW -- netcfgd's report being its third independent
+sighting, per 8.745, since my own render of their nesting is the same
+code observed again rather than a new reporter -- and it is the holder's
+to decide rather than mine.
+
+### 8.748 The same inset, on the axis nobody scanned (2026-11-10)
+
+**A tab widget's page began ON the pane's own top rule**, and had since
+the arm that fixed the horizontal half of exactly this was written.
+Found by looking at 8.747's repaired render rather than by any fixture:
+with the group box's margins fixed, its title row came to rest on the
+pane's border, `interface` reading along a rule instead of above one.
+
+`SE_TabWidgetTabContents` states its horizontal inset in cells --
+`pane.left() + cw`, `pane.width() - 2 * cw` -- and kept the base style's
+`r.top()` and `r.height()`, which are inset by Fusion's **two pixels**.
+Two pixels of a nineteen-pixel row round to none, so the page cleared
+the border beside it and not the border above it.
+
+**The comment on that arm already contained the argument against
+itself.** It says a page "must clear the frame that is actually DRAWN",
+that the pane's border "is one cell wide here", and that the fault is
+"an inset disagreeing with the border it exists to clear" -- every word
+of which is as true of the top and bottom as of the sides. It was
+written for fuzzypickles' report of a chat tab that "opens with two
+corners and runs two rules down both panes", and it fixed the axis that
+report named.
+
+**Why it survived: a check is blind along the axis it scans.** The
+fixture guarding the first fix walks ROW 3 looking for the first two
+vertical bars and asserts a gap between them. That scan cannot pose the
+question about the horizontal borders at all -- not "it failed to", but
+it has no way to. So the fix and its guard were both correct and both
+one-dimensional, and nothing in the tree was shaped to notice.
+
+This is the twelfth instance this run of something between the break and
+the assertion supplying the right answer, and the second in two entries
+where the supplier is **the shape of the question** rather than the code:
+8.747's sweep asked at a size where the funnel could not fire, and this
+one asked along an axis where the fault could not appear.
+
+Three checks, all three failing before the fix and the existing
+horizontal one passing throughout, which is the separation that shows
+the axis was the variable. Two ask the style for the gap between pane
+and contents on each edge, in cells; the third asks the buffer that the
+topmost rule drawn carries one opening corner rather than a framed
+child's as well. Each axis falls back on its own, so a pane too short to
+clear its border keeps whatever the base style said about the other.
+
+**The gallery snapshot corroborates it independently, and was checked
+for being live rather than assumed.** `test/snapshot/widgets_gallery.txt`
+carries a tab widget -- its fixture names "combo box, progress bar,
+slider, tabs" -- and is byte-unchanged across this fix, which is
+surprising enough to test the instrument: perturbing one character of it
+fails `gallery snapshot`, so the comparison is real and not vacuous. The
+two facts reconcile because the inset is symmetric. The contents rect
+loses a row at the top and a row at the bottom, so a child the layout
+centres between them does not move, while the three new checks ask the
+rect itself and see the row plainly. A snapshot is a weak instrument for
+a symmetric change, which is worth knowing about every snapshot in that
+directory rather than only this one.
+
+2516 checks. The nested-frames density that remains -- three concentric
+single-cell frames costing six columns of a hundred -- is 0b's row and
+the holder's.
+
+**AND THE TREE HAD ALREADY SOLVED THIS, TWICE, ON OTHER CONTROLS.**
+`SE_LineEditContents` is single-axis for the opposite reason and says so:
+*"The HORIZONTAL inset is kept and is not incidental: PE_PanelLineEdit
+writes '[' at the first cell and ']' at the last... Only the second axis
+needs saying, as PM_MenuVMargin already does for PM_MenuPanelWidth."* So
+the line edit had this exact fault on this exact axis, was fixed, and
+its comment names the menu margins as the sibling it followed.
+
+That is `working-practice.md`'s *a working sibling explaining itself is a
+cheaper source of a project's decisions than the document is* -- and it
+is the stronger version of the complaint, because the sibling was not
+merely available, it was **three hundred lines up the same function**.
+Nothing brings an arm together with the arm above it; the tab pane was
+simply not being read on the day the line edit was.
+
+**The lens was then swept rather than left at one instance.** Every
+geometry arm in `src/grid/grid_style.cpp` that returns a `QRect` and names `cw`
+without `ch`, or the reverse: seven of them. Six are right by design --
+a spin box's two buttons, a tool button's menu arrow, an item view's
+check indicator and its text all subdivide a row HORIZONTALLY and keep
+its full height on purpose, and `SC_GroupBoxFrame` is a vertical offset
+across the full width. The seventh is the line edit above. So the class
+has one live instance, it is this one, and the sweep is the evidence for
+saying so rather than hoping.

@@ -1606,13 +1606,36 @@ QRect GridStyle::sub_element_rect(SubElement se, const QStyleOption *opt,
 	//
 	// This is not the border-merging question, which is a policy and is
 	// open. It is an inset disagreeing with the border it exists to clear.
+	// AND ON BOTH AXES, which this arm did not do for its first fix. The
+	// paragraph above argues from the border that is DRAWN, and a drawn
+	// border has a top and a bottom as surely as it has sides -- but only
+	// the horizontal inset was stated in cells, while r.top() and
+	// r.height() kept the base style's two PIXELS. Two pixels of a
+	// nineteen-pixel row round to none, so a tab page began on the pane's
+	// own top rule and a framed child drew its corner into it.
+	//
+	// Found by rendering netcfgd's nesting for 8.747: with the group box's
+	// margins repaired, its title row came to rest on the pane's top rule,
+	// `interface` reading along a border rather than above one. The
+	// horizontal fault fuzzypickles reported, turned ninety degrees, and
+	// invisible for as long as it was because the fixture that found the
+	// first one scans a ROW for two vertical bars -- a scan that cannot
+	// ask the question about the axis it runs along.
+	//
+	// Each axis falls back on its own, so a pane too short to clear its
+	// border still keeps whatever the base style said about the other one.
 	if (se == SE_TabWidgetTabContents && opt) {
 		const int cw = GridMetrics::cw();
+		const int ch = GridMetrics::ch();
 		const QRect pane = QProxyStyle::subElementRect(SE_TabWidgetTabPane,
 		                                              opt, w);
-		if (pane.isValid() && pane.width() > 2 * cw)
-			return QRect(pane.left() + cw, r.top(),
-			             pane.width() - 2 * cw, r.height());
+		const bool wide = pane.isValid() && pane.width() > 2 * cw;
+		const bool tall = pane.isValid() && pane.height() > 2 * ch;
+		if (wide || tall)
+			return QRect(wide ? pane.left() + cw : r.left(),
+			             tall ? pane.top() + ch : r.top(),
+			             wide ? pane.width() - 2 * cw : r.width(),
+			             tall ? pane.height() - 2 * ch : r.height());
 	}
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
