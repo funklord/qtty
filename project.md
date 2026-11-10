@@ -60270,9 +60270,26 @@ unguarded and a list of what is dangerous are different lists, and this
 tree had both without ever laying one over the other.**
 
 That is the cheap version of a question worth asking again: for each
-section design.md calls hard, is its mechanism guarded? Three of §8.1's
-checks were unguarded; two now are, and the third -- a non-modal dialog
-being a strip window -- is the same family and still open.
+section design.md calls hard, is its mechanism guarded? **Asked of all of
+§8 the same day, and the answer is short enough to keep:**
+
+    8.1  popups and top-levels   two lockouts now guarded, here
+    8.2  text layout below cell  already guarded, 44 entries touch
+                                 strike-through and underline
+    8.3  focus without a WM      its mechanism is the modal drop 8.729
+                                 attempted and could not establish
+    8.4  widget matrix           18 of 18 exercised, checked 8.722
+    8.5  scrollbars              PM_ScrollBarExtent carried by the
+                                 pixel-metric sweep
+    8.6  icons and pixmaps       the glyph registry exists both routes
+    8.7  runtime weight          a non-goal, nothing to guard
+
+**So the lens is spent on §8 after two findings**, and what it leaves is
+one honest gap -- §8.3's -- and one item below the bar: §8.1's third
+check asserts the DEFAULT case, a non-modal dialog being a strip member
+by not being excluded, so reddening it needs a defect inserted rather
+than a guard removed. Worth saying because the next reader will see three
+unguarded checks in §8.1 and should know only two were worth entries.
 
 ### 8.743 The answer to an over-determined property was already in the tree (2026-11-10)
 
