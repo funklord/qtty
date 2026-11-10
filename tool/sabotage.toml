@@ -9249,3 +9249,33 @@ find = "\tif (fmt == Qt::MarkdownText) {\n\t\tdoc.setMarkdown(text);"
 into = "\tif (false) {\n\t\tdoc.setMarkdown(text);"
 count = 1
 check = "a label whose format makes its link markup into plain characters offers no link"
+
+# THE FIRST LOCKOUT, reproduced. design.md 8.1 is the section the document
+# itself calls highest risk, and this is its mechanism: a layer that is
+# DRAWN is not always a layer that TAKES KEYS, so the stack has two
+# readers. A Qt::ToolTip is in popups() and not in input_popups() -- it
+# owns no input anywhere and Qt's own Escape handling does not apply to
+# it, so treating it as an input layer took the keyboard away with no way
+# back. 8.195, and 8.742 for why it had no entry.
+[[sabotage]]
+name = "a tooltip is treated as a layer that owns keys"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->windowType() == Qt::ToolTip) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "a tooltip window is a layer the compositor draws and not one that owns keys"
+
+# AND THE OTHER LOCKOUT, which is why membership is asked by the MASKED
+# window type rather than by flag bits: Qt::Tool is 0xb and
+# Qt::SplashScreen is 0xf, and both contain every bit of Qt::Popup (0x9).
+# So `testFlag(Qt::Popup)` is true for a palette window and for a splash
+# screen, which made a palette a popup -- 8.194, the first lockout of the
+# two. windowType() is those flags masked to WindowType_Mask, which is how
+# Qt itself asks.
+[[sabotage]]
+name = "popup membership is asked by flag bits again"
+file = "src/runtime/input_router.cpp"
+find = "\treturn t == Qt::Popup || t == Qt::ToolTip;"
+into = "\treturn w->windowFlags().testFlag(Qt::Popup) || t == Qt::ToolTip;"
+count = 1
+check = "and a QSplashScreen is a strip window too"

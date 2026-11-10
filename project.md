@@ -60225,3 +60225,41 @@ which lines executed.** The sabotage sweep would not have found it
 either: an entry breaking the plain arm reddens nothing, because no
 fixture reaches it, and that reads as a dead check rather than as a
 fixture that stops short.
+
+### 8.742 The highest-risk section's own mechanism was unguarded (2026-11-10)
+
+**design.md §8.1 is the section the document itself labels *highest
+risk*, and the two lockouts it records were defended by checks that no
+sabotage entry reached.** Found by walking the specification at the place
+it says is most likely to be wrong, rather than at the place a roadmap
+points.
+
+**The first lockout (8.194): membership by flag bits.** `Qt::Tool` is
+`0xb` and `Qt::SplashScreen` is `0xf`, and both contain **every bit** of
+`Qt::Popup` (`0x9`). So `windowFlags().testFlag(Qt::Popup)` is true for a
+palette window and for a splash screen, and a palette became a popup.
+`windowType()` is those flags masked to `WindowType_Mask`, which is how
+Qt itself asks the question. The entry restores the wrong spelling and
+reddens the splash-screen check and five others.
+
+**The second (8.195): a layer that is drawn is not a layer that takes
+keys.** The stack has two readers -- `popups()` for the compositor and
+`input_popups()` for keys, shortcuts and the suppression behind an open
+menu. A `Qt::ToolTip` is in the first and not the second: it owns no
+input anywhere, and Qt's own `Escape` handling does not apply to it, so
+treating it as an input layer took the keyboard away **with no way back**.
+The entry removes the exclusion and reddens the tooltip check and two
+others.
+
+**Why they had no entries is worth more than the entries.** Both checks
+are in the backend's and router's unnamed set, which 8.722 measured at
+447 for the router alone -- and the clustering 8.727 produced ranks by
+suite, not by risk. The document already ranks by risk, in its own
+words, and nothing had crossed the two rankings. **A list of what is
+unguarded and a list of what is dangerous are different lists, and this
+tree had both without ever laying one over the other.**
+
+That is the cheap version of a question worth asking again: for each
+section design.md calls hard, is its mechanism guarded? Three of §8.1's
+checks were unguarded; two now are, and the third -- a non-modal dialog
+being a strip window -- is the same family and still open.
