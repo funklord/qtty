@@ -210,7 +210,7 @@ public:
 
     // Backends push input; they never poll. Integration with the host event
     // loop is the backend's business (QSocketNotifier, epoll thread, etc.).
-    virtual void setEventSink(ITerminalEventSink *) = 0;
+    virtual void set_event_sink(ITerminalEventSink *) = 0;
 
     virtual void suspend() = 0;   // SIGTSTP / shelling out
     virtual void resume()  = 0;
@@ -639,7 +639,7 @@ readers.
 
 **L6 is free functions, settled by the copyright holder 2026-11-02.** This section
 specified a `class qtty::Application`, constructed from a `QApplication` and a
-`std::unique_ptr<ITerminalBackend>`, with `prepareEnvironment()`, `setTheme()` and
+`std::unique_ptr<ITerminalBackend>`, with `prepare_environment()`, `set_theme()` and
 `exec()`. **That class is struck.** It was never built, §16.4 had already called the
 free-function surface "the intended `qtty::Application` API", and the roadmap item
 holding the choice open is closed with it. What ships is `qtty/application.h`:
@@ -729,13 +729,13 @@ entirely on our side of the backend seam whenever the terminal itself cannot.
 **App-facing API** — one object, target-independent:
 
 ```cpp
-namespace qtty {
+namespace Qtty {
 class Overlay : public QObject {
 public:
-    void setImage(const QImage &rgba);        // straight or premultiplied alpha
-    void setRect(const QRectF &cellRect);     // in cells; default = whole terminal
-    void setOpacity(qreal);                   // multiplied into the image's alpha
-    void setZ(int);                           // stacking among overlays
+    void set_image(const QImage &rgba);       // straight or premultiplied alpha
+    void set_rect(const QRectF &cell_rect);   // in cells; default = whole terminal
+    void set_opacity(qreal);                  // multiplied into the image's alpha
+    void set_z(int);                          // stacking among overlays
     void show(); void hide();
 };
 }

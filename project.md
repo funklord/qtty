@@ -60416,3 +60416,47 @@ inferred from here, because they have the window and this tree has only
 the picture. **The reproduction is theirs and the diagnosis is mine** --
 which is the division `harmonization.md` sets for a fault found in a
 dependency, read from the dependency's side.
+
+### 8.746 Fixing the instance instead of the class, one entry later (2026-11-10)
+
+**8.735 found design.md's Tier-2 example naming an API that does not
+exist, corrected it and three neighbouring references, and did not sweep
+the document. There were seven more wrong names in three other places,
+including a whole subsystem's public API block.**
+
+    5.1  virtual void setEventSink(...)        set_event_sink
+    5.6  `prepareEnvironment()`, `setTheme()`  prepare_environment, set_theme
+    5.7  namespace qtty {                      Qtty
+         void setImage(...)                    set_image
+         void setRect(...)                     set_rect
+         void setOpacity(...)                  set_opacity
+         void setZ(...)                        set_z
+
+**§5.7's is the worst of them**: it is the app-facing API for the whole
+graphics-overlay plane, presented as the one object an application
+manipulates in both targets, and four of its five methods were spelled
+the way they were before the 117-name rename. A reader copying it gets
+four compile errors.
+
+**And §5.6 contradicted itself eleven lines apart.** The prose at that
+point says `prepareEnvironment()` and `setTheme()`; lines 664 and 673 of
+the same document already say `Qtty::set_theme` and
+`Qtty::prepare_environment`. So the document held both spellings and
+nothing compared them.
+
+**THE MISTAKE WAS MINE AND IT HAS A NAME.**
+`working-practice.md`: *a claim usually lives in more than one place, and
+the correction has to go where it will next be looked for.* 8.735 read
+that as "fix the copy a reader uses" and fixed the copy **it had found**.
+The class was "camelCase qtty API in design.md", the instance was one
+code block, and one grep over `set[A-Z]` would have given all four sites
+at the time. **A correction that does not ask what else is wrong the same
+way is half a correction**, and the half left behind is the half nobody
+is now looking for, because the entry says the thing was fixed.
+
+**What makes the sweep cheap is that the class is mechanical.** Seven of
+the eleven `set[A-Z]` matches in the document are Qt's own names --
+`setAttribute`, `setCursor`, `setProperty`, `setTransientParent`,
+`QPainter::setOpacity` -- and keeping Qt's spelling is the rule, so the
+filter is "ours or theirs" and the answer is in the headers. `grep -nE
+'\bset[A-Z]'` over `doc/` is the whole instrument.
