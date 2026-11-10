@@ -9094,3 +9094,32 @@ find = "\t\t\tif (!t.isEmpty() && damage.intersects(t)) out.append(t);"
 into = "\t\t\tif (!t.isEmpty() && damage.intersects(t) && out.isEmpty()) out.append(t);"
 count = 1
 check = "damage across a boundary dirties both tiles"
+
+# A REFUSAL AT A USER-INPUT BOUNDARY. An application hands
+# set_terminal_palette() a scheme; a short one is refused outright rather
+# than padded, because half a user's scheme and half xterm's is a palette
+# no terminal has and every colour decision after it would be made against
+# a table that describes nothing. Accepting any length is the break.
+#
+# In theme, which 8.727 measured at 17 per cent collateral cover beside
+# the router's 50.
+[[sabotage]]
+name = "a partial terminal palette is kept rather than refused"
+file = "src/core/color.cpp"
+find = "\ts_palette = low16.size() == 16 ? low16 : QVector<QRgb>();"
+into = "\ts_palette = low16;"
+count = 1
+check = "and a partial palette is refused, not mixed with the built-in one"
+
+# THE CONTRAST FLOOR'S OWN COMPARISON. Everything the emission path does
+# about readability rests on this one line, and a floor of zero passes
+# every pairing -- so the two greys the suite names as unreadable would be
+# emitted. The computation is left in place and only the threshold goes,
+# so this is not "the function was removed" but "the floor was".
+[[sabotage]]
+name = "the contrast floor accepts any pairing"
+file = "src/core/color.cpp"
+find = "\treturn qAbs(fg.luminance(true) - bg.luminance(false)) >= min_delta;"
+into = "\treturn qAbs(fg.luminance(true) - bg.luminance(false)) >= 0;"
+count = 1
+check = "near-identical greys flagged as low contrast"

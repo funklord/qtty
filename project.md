@@ -59696,16 +59696,26 @@ what it was for.
 
 ### 8.731 Spending the clustering, by instalments (2026-11-10)
 
-**8.727's measurement is only worth what gets written against it.** Three
-entries so far in graphics, the thinnest-covered suite at 17 per cent
-collateral cover, chosen by lens rather than by walking 118 in order --
-lifetime, null, and a quantiser losing half its input:
+**8.727's measurement is only worth what gets written against it.** Five
+entries so far, in the two suites it named thinnest -- graphics and theme,
+both at 17 per cent collateral cover against the router's 50 -- chosen by
+lens rather than by walking 188 checks in order:
 
     a deleted overlay stays in the registry          reddens
     a null document is dereferenced rather than      expect = crash
       refused
     a damage spanning two tiles reports only the     reddens
       first
+    a partial terminal palette is kept rather        reddens, +3
+      than refused
+    the contrast floor accepts any pairing           reddens, +6
+
+**The last two take nine other checks with them**, which is the
+collateral cover the sweep measured as thin being thin for a reason:
+there was nothing aimed at either line. A refusal at a user-input
+boundary -- half a user's scheme and half xterm's is a palette no
+terminal has -- and the single comparison every readability decision
+rests on.
 
 **The null one is the honest use of `expect = "crash"`.** Removing the
 null half of `align_text_document()`'s guard -- the cell-size half stays,
