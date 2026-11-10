@@ -8999,3 +8999,51 @@ find = "\t\t\tif (rows > 0 && cols > 0"
 into = "\t\t\tif (rows >= 0 && cols > 0"
 count = 1
 check = "a resize report naming zero rows or zero columns is dropped"
+#
+# These three assert design.md's own NUMBERED promises and have no entry.
+# 8.722's walk found 55 unnamed checks citing a document; these are the
+# ones whose citation is a numbered requirement or compositor section.
+
+# section 8.1's flip: "a menu opening at x=78 must flip left, which the
+# desktop code never had to do". Inverted rather than removed, so the
+# branch stays reachable and no constant-condition warning appears: it
+# now flips only when the layer already FITS, which is wrong both ways.
+[[sabotage]]
+name = "an anchored layer flips only when it already fits"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (x + g.width() > limit_x && x - g.width() >= 0) x -= g.width();"
+into = "\t\tif (x + g.width() < limit_x && x - g.width() >= 0) x -= g.width();"
+count = 1
+check = "menu at the right edge flips left of its anchor (section 8.1)"
+
+# section 8.3: input outside activeModalWidget() is dropped BEFORE
+# dispatch. The comment at the site records the fault it closed -- a
+# button pressed through a modal that was there to block it.
+# F7, the spike's own numbered finding: a modal dialog is stamped
+# WA_DontShowOnScreen so Qt does not try to raise a real window.
+# F3, the spike's numbered finding that a terminal key reaches a QAction's
+# shortcut. The modifiers are dropped from the pressed sequence rather than
+# the matching being disabled, so Ctrl+S is matched as a plain S: the
+# lookup still runs and still finds nothing, which is the shape a check on
+# "did any shortcut fire" would not see.
+[[sabotage]]
+name = "a chord is matched without its modifiers"
+file = "src/runtime/input_router.cpp"
+find = "\tconst QKeySequence pressed(Qtty::combined_key(mods, Qt::Key(k.qt_key)));"
+into = "\tconst QKeySequence pressed(Qtty::combined_key(Qt::NoModifier, Qt::Key(k.qt_key)));"
+count = 1
+check = "router resolves Ctrl+S to QAction (F3)"
+
+# F5's exemption list, which GridGuard consults so that Qt's own
+# sub-widgets are not reported as misaligned. Dropping ONE class rather
+# than emptying the list: the guard still exempts, so a check asking only
+# "does is_exempt() ever answer true" would pass, and what breaks is the
+# membership F5 names. Its QHeaderView twin is the same shape and wants
+# its own entry.
+[[sabotage]]
+name = "a scroll bar is no longer exempt from the grid guard"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\"QHeaderView\", \"QScrollBar\","
+into = "\t\t\"QHeaderView\","
+count = 1
+check = "QScrollBar is exempt (F5)"

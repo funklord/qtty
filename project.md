@@ -59587,3 +59587,51 @@ It is also a caution about reading 8.727's 1005: a check reached only by
 a break that crashes the run is counted as reached, and a check reached
 only *after* such a crash is not reached at all. The sweep's union is a
 lower bound on coverage for exactly the entries whose breaks are fatal.
+
+### 8.729 Three of five numbered promises guarded, and two that cannot be (2026-11-10)
+
+**8.722 found that design.md's own numbered findings were largely
+unguarded. Five entries were prepared for them with anchors verified
+unique; three redden and two cannot, for two different reasons.**
+
+    section 8.1  an anchored layer flips only when it already fits   ok
+    F3           a chord is matched without its modifiers            ok
+    F5           a scroll bar is no longer exempt from the guard     ok
+    F7           a modal is not stamped WA_DontShowOnScreen          no
+    section 8.3  a click outside a modal reaches the window behind   no
+
+**F7 IS OVER-DETERMINED, and that is a limit of the spec rather than of
+the entry.** The attribute is set in **three** places, each with its own
+reason written beside it: `Qtty::exec()` stamps the window it is given,
+and `InputRouter::eventFilter()` stamps again on `Polish` for any window
+that is not the root and again where a dialog or popup arrives with it
+unset. The check lives in `suite_router.cpp`, so the filter is what
+answers it -- and because a spec entry is one `find`/`into` pair, **no
+single-line break can remove a property three sites establish.**
+
+That is not a defect. Each site has a caller the others do not cover, and
+the belt-and-braces is deliberate for an attribute whose absence would
+let a platform map a real window. What it means is narrower and worth
+stating: **a property asserted once and established three times is
+unfalsifiable by this mechanism**, and counting its check as guarded or
+unguarded are both wrong. The remedy, if one is ever wanted, is an entry
+form that can break several sites at once -- not a cleverer aim.
+
+**Section 8.3's is unestablished and said so.** Disabling the modal
+branch's `if (!modal->geometry().contains(px)) return;` changes no line of
+the suite's output. The popup branch above it carries "the modal branch's
+rule below verbatim", so a click in that fixture may be dropped there
+first -- plausible, unverified, and recorded as a question rather than a
+mechanism. 8.716 is this run's own lesson about the comfortable
+explanation that ends an investigation.
+
+**Both entries are removed rather than kept unprovable**, which is
+8.722's precedent. 810 entries.
+
+**Seventh and eighth of one kind in two days.** A funnel that repaired the
+value, a sibling road covering the cells, a toolkit clamping upstream, a
+toolkit handler acting first, a second door to one fact, an identity
+blind to a file, a precondition the break removed -- and now a property
+established in triplicate and a guard something upstream reaches first.
+**The question that finds all of them is the same**: who else answers
+this before my check reads it. It has yet to fail to find something.
