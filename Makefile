@@ -1685,7 +1685,9 @@ check:
 		echo "       recipe." >&2; \
 		exit 0 ;; \
 	esac; \
-	id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
+	id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; \
+	         git ls-files -z --others --exclude-standard 2>/dev/null \
+	           | xargs -0 -r sha1sum 2>/dev/null; } \
 	       | sha1sum | cut -d' ' -f1 ); \
 	echo "RUNNING $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	left=; for t in $$(grep -oE '^[a-z0-9-]+-check:' $(firstword $(MAKEFILE_LIST)) \

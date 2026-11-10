@@ -71,7 +71,7 @@ dir=$(git rev-parse --git-common-dir 2>/dev/null) || {
 # fail; its stderr goes nowhere and the id simply stops carrying it, which
 # is the honest reading -- there is no content to hash.
 content_id() {
-	git ls-files -z -- . ':(exclude)*.md' 2>/dev/null \
+	git ls-files -z --cached --others --exclude-standard -- . ':(exclude)*.md' 2>/dev/null \
 		| xargs -0 sha1sum 2>/dev/null \
 		| sha1sum | cut -d' ' -f1
 }

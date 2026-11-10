@@ -59409,3 +59409,59 @@ code that is correct -- which is the one thing a gate must not do.
 **Both counts are asserted**, so a gate over an empty header list cannot
 report success: it refuses when `include/qtty` is not a directory and when
 it holds no header.
+
+### 8.725 The receipt ids could not see an untracked file (2026-11-10)
+
+**Found by a hook note nobody had explained.** Committing the hygiene
+check tripped *"the last `make check` was for DIFFERENT content than this
+commit"*, although the only thing between the gate and the commit was
+`git add` of a file whose bytes had not changed.
+
+**The cause, measured directly.** The check stamp's id is
+`sha1sum` of `git rev-parse HEAD` plus `git diff HEAD --binary`, and
+**neither can see an untracked file**:
+
+    tree with the new file untracked   92c69faa30bc
+    the same tree, file staged         7f84818bf76a
+
+So the id is the same whether an untracked file is there or not. The arm
+receipts had it too, by a different route: `content_id()` hashes
+`git ls-files`, which lists tracked files only.
+
+**WHY IT IS A HOLE RATHER THAN AN INCONVENIENCE, and the reason is this
+tree's own build.** The `.pro` files GLOB their sources. So an untracked
+`.cpp` in `src/` is compiled into the library, the gate tests a tree
+containing it, and the id recorded does not mention it -- which means the
+same PASS validates a commit that does **not** contain the file. The tree
+that was tested and the tree that was committed can differ by a whole
+translation unit with the receipt satisfied. Narrow, and reachable
+exactly where it matters.
+
+**Fixed in all four places at once**, because an id is only useful if
+every reader computes it the same way: the Makefile's stamp, the tracked
+`tool/hooks/pre-commit`, the installed copy via `make hooks`, and
+`tool/arm-receipt`. Untracked files now contribute their bytes, through
+`git ls-files --others --exclude-standard` -- so anything `.gitignore`
+covers is still excluded and ordinary scratch does not disturb the id.
+
+    with an untracked file   7e9bfe9b9d41
+    without it               10d6e3675914
+
+**And `xargs -0 -r`, where the `-r` is deliberate but not for the reason
+I first wrote.** The entry said that without it `xargs` runs `sha1sum`
+with no arguments, which then reads stdin and hangs. **Measured, it does
+not** -- exit 0 either way, because in that pipeline `sha1sum`'s stdin is
+the already-closed pipe and it reads EOF at once. Whether it blocks
+depends on what stdin happens to be, which is a property of the caller
+rather than of this code. `-r` removes the question instead of answering
+it: the command is not run at all when there is nothing to hash. The
+weaker claim is the true one, and the stronger one was in a draft of this
+entry before the test contradicted it.
+
+**The shape, and it is this run's sixth of one kind.** A receipt is an
+answer to *is this the thing I checked*, and it was answering about a
+smaller object than the thing. Five earlier instances were a guard that
+looked undefended because something between the break and the assertion
+supplied the right answer; this is the same question asked of an
+identity -- **what does this id NOT distinguish** -- and the answer was a
+file the build compiles.
