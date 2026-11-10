@@ -191,6 +191,7 @@ void scan_osc_color(const QByteArray &b, const QByteArray &prefix,
 		if (b.mid(i, prefix.size()) != prefix) continue;
 		int j = i + prefix.size();
 		unsigned char rgb[3];
+		int width[3] = {0, 0, 0};
 		// A prefix that does not parse abandons THIS candidate and not the
 		// search. These were returns, which gave up on the whole buffer --
 		// so one truncated reply, or the literal text of one arriving as
@@ -212,12 +213,31 @@ void scan_osc_color(const QByteArray &b, const QByteArray &prefix,
 			if (digits == 0) { ok = false; break; }
 			const long span = (1L << (4 * digits)) - 1;
 			rgb[c] = (unsigned char)((v * 255 + span / 2) / span);
+			width[c] = digits;
 			if (c < 2) {
 				if (j >= b.size() || b[j] != '/') { ok = false; break; }
 				++j;
 			}
 		}
 		if (!ok) continue;
+		// EQUAL WIDTHS, which is what tells a torn reply from a short one.
+		// project.md 8.733.
+		//
+		// parse_string_sequence() hands this function a body with NO
+		// terminator in two situations, and from here they look alike: an ST
+		// split across two reads, where the body is complete and must be
+		// read, and `if (c == 0x1b) return i;` abandoning a sequence torn in
+		// the middle of a channel, where it must not. Requiring a terminator
+		// was the first attempt and the suite refused it, because the
+		// split-ST case is deliberate and has a check of its own.
+		//
+		// X11's own rgb: form settles it. Each channel carries one to four
+		// hex digits and they are the SAME width -- XParseColor reads them
+		// that way -- so a reply whose last channel is narrower than the
+		// first was cut rather than sent. Measured: `rgb:1c1c/1c1c/1`
+		// parses cleanly and commits blue 17 where the whole reply says 28,
+		// and that value is what this library contrasts everything against.
+		if (!(width[0] == width[1] && width[1] == width[2])) continue;
 		known = true;
 		rgb_out[0] = rgb[0]; rgb_out[1] = rgb[1]; rgb_out[2] = rgb[2];
 		return;

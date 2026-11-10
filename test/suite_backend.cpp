@@ -2289,12 +2289,38 @@ int suite_backend() {
 				for (int n = 0; n < full.size(); ++n) {
 					++prefixes;
 					const TermCaps part = caps_of(full.left(n));
+					// FLAGS, and then VALUES, because the flags alone
+					// miss the case this was written against.
+					// project.md 8.733: letting a half-read colour reply
+					// commit sets bg_known on a PREFIX -- but the whole
+					// reply sets it too, so `part.bg_known &&
+					// !whole.bg_known` is false and the sweep saw
+					// nothing, while four narrower checks caught it at
+					// once. A prefix that learns the same FACT with a
+					// different ANSWER is teaching more than the whole as
+					// surely as one that learns a fact the whole does
+					// not.
+					const auto colour_differs = [](bool pk, bool wk,
+					                               const unsigned char *p,
+					                               const unsigned char *w) {
+						return pk && wk && (p[0] != w[0] || p[1] != w[1]
+						                    || p[2] != w[2]);
+					};
 					if ((part.kitty && !whole.kitty)
 					    || (part.sixel && !whole.sixel)
 					    || (part.bg_known && !whole.bg_known)
 					    || (part.fg_known && !whole.fg_known)
 					    || (!part.palette16.isEmpty() && whole.palette16.isEmpty())
-					    || (part.cell_px.isValid() && !whole.cell_px.isValid()))
+					    || (part.cell_px.isValid() && !whole.cell_px.isValid())
+					    || colour_differs(part.bg_known, whole.bg_known,
+					                      part.bg, whole.bg)
+					    || colour_differs(part.fg_known, whole.fg_known,
+					                      part.fg, whole.fg)
+					    || (part.cell_px.isValid() && whole.cell_px.isValid()
+					        && part.cell_px != whole.cell_px)
+					    || (!part.palette16.isEmpty()
+					        && !whole.palette16.isEmpty()
+					        && part.palette16 != whole.palette16))
 						++taught_more;
 				}
 			}

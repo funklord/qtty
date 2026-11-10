@@ -59735,3 +59735,67 @@ fails, which is the boundary the sentence is about.
 entries to write -- 8.730's platform pins must stay unnamed and 8.729's
 over-determined properties cannot be broken by one line -- but the order
 is no longer a guess, which is what the nine hours bought.
+
+### 8.733 A torn colour reply committed a colour the terminal never sent (2026-11-10)
+
+**A real defect at this library's one trust boundary, found by aiming a
+sabotage at a check and watching it miss.**
+
+**THE CHAIN, because no step of it would have found this alone.** 8.727's
+clustering said the backend is 36 per cent collateral-covered, so an
+entry there is worth writing. The strongest unguarded property in the
+file is the prefix sweep: *no truncation of any reply this tree knows how
+to ask for may teach the parser something the whole reply does not*, over
+150 prefixes. An entry was written against `scan_osc_color()`'s `ok`
+check -- and it **reddened four narrower checks and not that one**.
+
+**WHY THE SWEEP MISSED IT, which is the first finding.** It compared
+which FLAGS a prefix set against the whole reply's:
+
+    part.bg_known && !whole.bg_known
+
+A prefix that sets `bg_known` with a **different colour** is invisible to
+that, because the whole reply sets `bg_known` too. The sweep asked which
+facts were learned and never which answers. Strengthened to compare the
+values as well, it **failed on clean code at two prefixes of ten
+replies**:
+
+    rgb:1c1c/1c1c/1   -> blue 17, whole says 28
+    rgb:d0d0/d0d0/d   -> blue 221, whole says 208
+
+**AND THEY ARE REACHABLE, which is the second.**
+`parse_string_sequence()` hands a body to the parser with no terminator
+in two situations -- an ST split across two reads, where the body is
+complete, and `if (c == 0x1b) return i;`, a sequence abandoned because a
+new escape arrived. The second is a tear, and a tear in the middle of the
+last channel leaves a body that parses cleanly: three channels, a legal
+one-to-four digits each, `ok` true. The ground the whole library
+contrasts against was set from it.
+
+**THE FIX IS X11's OWN RULE.** In an `rgb:R/G/B` specification each
+channel carries one to four hex digits and they are the **same** width --
+`XParseColor` reads them that way -- so a reply whose last channel is
+narrower than its first was cut rather than sent. Requiring equal widths
+refuses the torn body and costs a well-formed reply nothing.
+
+**Requiring the TERMINATOR was the first attempt and the suite refused
+it**, twice. *"A reply whose ST is split across two reads is still read,
+rather than abandoned at the trailing escape"* is a deliberate behaviour
+with a check and a long comment of its own, and a terminator rule breaks
+it -- the split-ST body has no terminator either. The two cases are
+indistinguishable by terminator and distinguishable by width, which is
+why the rule is the one it is. **The suite caught my fix twice before it
+was right**, which is the thing a suite is for and the reason the second
+attempt was cheap.
+
+**The entry is now aimed at the guard rather than at what found it.**
+Breaking the width rule reddens the strengthened sweep. The `ok` check it
+first named is still right and still guarded -- by the four narrower
+checks that caught it at once, which is how the defect surfaced at all.
+
+**The shape, and it is this run's ninth.** The sweep was reading
+something correlated with what it meant -- *which fact was learned*
+rather than *what was learned* -- and `evidence.md` names that exactly:
+ask the object you mean, not something correlated with it. Eight earlier
+instances were a guard something upstream answered first; this is the
+same question asked of an assertion rather than of a guard.
