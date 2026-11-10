@@ -9138,8 +9138,8 @@ check = "near-identical greys flagged as low contrast"
 [[sabotage]]
 name = "a half-read colour reply is committed anyway"
 file = "src/backend/ansi/term_caps.cpp"
-find = "\t\tif (!(width[0] == width[1] && width[1] == width[2])) continue;"
-into = "\t\tif (false) continue;"
+find = "\t\tif (!terminated\n\t\t    && !(width[0] == width[1] && width[1] == width[2]))"
+into = "\t\tif (false\n\t\t    && !(width[0] == width[1] && width[1] == width[2]))"
 count = 1
 check = "no truncated capability reply teaches the parser something the whole reply does not"
 

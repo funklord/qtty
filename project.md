@@ -59772,11 +59772,26 @@ last channel leaves a body that parses cleanly: three channels, a legal
 one-to-four digits each, `ok` true. The ground the whole library
 contrasts against was set from it.
 
-**THE FIX IS X11's OWN RULE.** In an `rgb:R/G/B` specification each
-channel carries one to four hex digits and they are the **same** width --
-`XParseColor` reads them that way -- so a reply whose last channel is
-narrower than its first was cut rather than sent. Requiring equal widths
-refuses the torn body and costs a well-formed reply nothing.
+**THE FIX IS A WIDTH RULE, AND IT IS NARROWER THAN THE FIRST VERSION
+SAID.** A tear can only shorten the **last** channel, a cut being a
+suffix, so a body whose channels are not all the same width was cut
+rather than sent.
+
+**But that is only true where the body is UNTERMINATED**, and the first
+version of this entry claimed more: that X11 requires equal widths and
+`XParseColor` reads them that way. It does not. `rgb:<r>/<g>/<b>` allows
+one to four hex digits per channel **independently** -- `rgb:f/ff/fff` is
+legal, each field scaled by its own width, which this function has always
+done correctly. A width rule applied to a terminated reply would refuse
+something a terminal is entitled to send.
+
+No unequal-width literal exists anywhere under `/usr/share` on this
+machine, every one being `rgb:d/5/5` and its kind -- but **an absence
+here is not a licence to narrow somebody else's wire format**, so the
+rule applies only where the terminator is missing. There the body is
+either a split ST, complete, or a tear, short, and equal widths is
+exactly what separates them. Terminated replies are trusted whatever
+their widths.
 
 **Requiring the TERMINATOR was the first attempt and the suite refused
 it**, twice. *"A reply whose ST is split across two reads is still read,

@@ -237,7 +237,28 @@ void scan_osc_color(const QByteArray &b, const QByteArray &prefix,
 		// first was cut rather than sent. Measured: `rgb:1c1c/1c1c/1`
 		// parses cleanly and commits blue 17 where the whole reply says 28,
 		// and that value is what this library contrasts everything against.
-		if (!(width[0] == width[1] && width[1] == width[2])) continue;
+		// ONLY WHERE THE BODY IS UNTERMINATED, which is the whole of
+		// where the ambiguity lives. X11's rgb: form allows one to four
+		// hex digits per channel INDEPENDENTLY -- `rgb:f/ff/fff` is legal
+		// and each field is scaled by its own width, which this function
+		// has always done -- so a width rule applied to a TERMINATED reply
+		// would refuse something a terminal is entitled to send. None was
+		// found on this machine, every rgb: literal under /usr/share being
+		// equal-width, but absence here is not a licence to narrow the
+		// wire format.
+		//
+		// Unterminated is different: there the body is either a split ST,
+		// complete, or a tear, short. A tear can only shorten the LAST
+		// channel, since it is a suffix cut -- so equal widths means not
+		// torn, and that is the one place the rule is both needed and
+		// sound.
+		const bool terminated =
+		    j < b.size()
+		    && (b[j] == 0x07
+		        || (b[j] == 0x1b && j + 1 < b.size() && b[j + 1] == '\\'));
+		if (!terminated
+		    && !(width[0] == width[1] && width[1] == width[2]))
+			continue;
 		known = true;
 		rgb_out[0] = rgb[0]; rgb_out[1] = rgb[1]; rgb_out[2] = rgb[2];
 		return;
