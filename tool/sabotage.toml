@@ -9235,3 +9235,17 @@ find = "\t\t\t\t\tif (!bar->tabsClosable() || bar->currentIndex() < 0)\n\t\t\t\t
 into = "\t\t\t\t\tif (!bar->tabsClosable() || bar->currentIndex() < 0)\n\t\t\t\t\t\treturn;"
 count = 1
 check = "Ctrl+W closes a tab on a bar standing on its own"
+
+# THE FORMAT A LABEL READS ITS OWN TEXT BY. holds_a_link() asks the
+# DOCUMENT rather than the string, because Qt::PlainText showing the
+# characters `<a href=...>` offers nothing while the same text as rich
+# text or markdown offers a link. Dropping the markdown spelling makes a
+# markdown link invisible to pointer_only(), so a control no key can
+# reach stops being reported. 8.741.
+[[sabotage]]
+name = "a markdown link is not read as a link"
+file = "src/runtime/input_router.cpp"
+find = "\tif (fmt == Qt::MarkdownText) {\n\t\tdoc.setMarkdown(text);"
+into = "\tif (false) {\n\t\tdoc.setMarkdown(text);"
+count = 1
+check = "a label whose format makes its link markup into plain characters offers no link"

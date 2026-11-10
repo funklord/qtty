@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2505 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2506 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60167,3 +60167,40 @@ costs one build; one that is wrong in a way that makes the code look
 **The entry guards the skip rather than the emit.** Breaking `continue`
 to `return` is the version a user would notice, and the emit it would
 otherwise reach is covered by the bare-bar half of the same check.
+
+### 8.741 A link report that had never been asked about two of three formats (2026-11-10)
+
+**`holds_a_link()` decides whether a mouse-only label goes into
+`pointer_only()`, the public report of controls a click can reach and no
+key can. It branches on three text formats and two were at zero
+executions.**
+
+The function asks the **document** rather than the string, and its
+comment says why: *"Qt::PlainText showing the characters `<a href=...>`
+offers nothing, and Qt::AutoText -- the default -- decides with
+mightBeRichText(). Markdown is asked in its own spelling for the same
+reason."* Only the rich-text arm was ever taken.
+
+**The fixture had a label that looked like it covered the plain case and
+did not.** `no_link` holds "just words" -- but the loop drops a label
+without `LinksAccessibleByMouse` **before** asking `holds_a_link()`, and
+that label has the default flags. So it never reached the function, and
+the arm the comment is about was unexercised: a label flagged clickable
+whose text holds no link. Named wrongly, the report an application acts
+on has a false positive in it.
+
+**Both added, and asserted as a pair**, because either alone passes for
+the wrong reason -- a function answering false for everything satisfies
+the plain case and one answering true for everything satisfies the
+markdown case. Measured: the plain label holding markup is not named,
+the markdown link is.
+
+**THE LENS HAS NOW PRODUCED FIVE, and this is the one that says what it
+is good at.** A reader of this fixture would conclude the plain case was
+covered: there is a label with no link, it is not reported, the check
+passes. What coverage saw is that the *function* never ran for it.
+**Nothing about the test's text reveals the gap -- only a measurement of
+which lines executed.** The sabotage sweep would not have found it
+either: an entry breaking the plain arm reddens nothing, because no
+fixture reaches it, and that reads as a dead check rather than as a
+fixture that stops short.

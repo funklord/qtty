@@ -7917,12 +7917,50 @@ int suite_router() {
 			auto *no_link = new QLabel(QStringLiteral("just words"), &page);
 			no_link->setGeometry(0, 4 * GridMetrics::ch(),
 			                     30 * GridMetrics::cw(), GridMetrics::ch());
+			// AND THE TWO FORMATS holds_a_link() DECIDES BY, which
+			// nothing reached. project.md 8.741.
+			//
+			// `no_link` above never gets that far: the loop drops a label
+			// without LinksAccessibleByMouse before asking, so the plain
+			// arm was unexercised and so was the Markdown one -- both at
+			// zero in the first whole-tree coverage.
+			//
+			// The plain one is the case that function's comment is
+			// ABOUT: "Qt::PlainText showing the characters `<a href=...>`
+			// offers nothing". A label flagged clickable whose text holds
+			// no link must not be named, or the report an application
+			// acts on has a false positive in it.
+			auto *plain_markup = new QLabel(
+			    QStringLiteral("see <a href=\"http://z\">nothing</a>"), &page);
+			plain_markup->setTextFormat(Qt::PlainText);
+			plain_markup->setTextInteractionFlags(
+			    Qt::LinksAccessibleByMouse);
+			plain_markup->setGeometry(0, 5 * GridMetrics::ch(),
+			                          30 * GridMetrics::cw(),
+			                          GridMetrics::ch());
+			auto *md_link = new QLabel(
+			    QStringLiteral("or [the manual](http://w)"), &page);
+			md_link->setTextFormat(Qt::MarkdownText);
+			md_link->setTextInteractionFlags(Qt::LinksAccessibleByMouse);
+			md_link->setGeometry(0, 6 * GridMetrics::ch(),
+			                     30 * GridMetrics::cw(), GridMetrics::ch());
 			page.show();
 			QCoreApplication::processEvents();
 			const QVector<QWidget *> found = pointer_only(&page);
 			CHECK(found.contains(mouse_only),
 			      "a link only a click can follow is named, and it is drawn "
 			      "exactly like one a key can reach");
+			printf("info: of two flagged labels, the plain one holding"
+			       " markup is %s and the markdown link is %s\n",
+			       found.contains(plain_markup) ? "NAMED" : "not named",
+			       found.contains(md_link) ? "named" : "NOT NAMED");
+			// Asserted as the PAIR, because either alone passes for the
+			// wrong reason: a function that answered false for everything
+			// satisfies the plain case, and one that answered true for
+			// everything satisfies the markdown case.
+			CHECK(!found.contains(plain_markup) && found.contains(md_link),
+			      "a label whose format makes its link markup into plain"
+			      " characters offers no link, while a markdown one does");
 			CHECK(!found.contains(keyed_link),
 			      "a link with LinksAccessibleByKeyboard is not, Qt having "
 			      "made it a tab stop");
