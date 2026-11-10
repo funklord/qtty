@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2516 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2519 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1100,9 +1100,14 @@ faith looks like rendered.
 
 An index, because these are recorded where they were found -- scattered
 through a document that has long outgrown reading end to end -- and a
-question nobody can locate is one nobody answers. **None is a defect and
-none blocks anything**; each is a decision that was deliberately not taken
-while working on something else. The sections named carry the measurement
+question nobody can locate is one nobody answers. **One is a defect and the rest are not, and
+none blocks anything**; all but one are decisions that were deliberately
+not taken while working on something else. The exception is 8.749, added
+2026-11-10: a real cached-inset fault whose three remedies each cost
+something, one of them measured to break a guarded case -- so what is
+open there is which price to pay, not whether anything is wrong. It is
+indexed here because this is where a question is looked for, and a
+defect whose fix is a decision is still a question. The sections named carry the measurement
 and the options.
 
 **`doc/design.md` MAY NOW BE CORRECTED WHERE MEASUREMENT FALSIFIES IT.**
@@ -1173,6 +1178,7 @@ Owned by the copyright holder:
 | **Should a dashed pen render as dashed at all?** Measured 2026-11-02: every `Qt::PenStyle` -- Dash, Dot, DashDot, DashDotDot -- renders cell for cell identically to Solid, so a chart telling series apart by dashing has that removed, which matters most where colour is scarce. **It is a decision rather than a defect, and the direction of the ink is why**: weight and colour ADD to cells drawn anyway, while dashing REMOVES ink, and a twenty-cell line rendered as ten reads as damage rather than style against N2's legible reinterpretation. Both remedies are known -- Unicode's dashed box family, unused here but with no diagonals, so dashing would vanish when a line slopes; or skipping cells, which works at every angle and is about twenty-five lines, threading the dash phase through `stroke_polyline` so it carries across segments. 8.658 | 8.658 |
 | **Should qtty say that the DOCUMENTED surface is the supported one?** Not the parked question, which was whether to promise API stability; measurement narrowed it. 203 names are declared in the public headers and **87 are named in the documentation** -- 80 when this was measured, plus the five of 8.663 and the two the same passage documents beside them, `Qtty::Color` itself and its `Default` kind -- which `make guide-check` compiles against those headers on every `make check` -- so a documented name cannot be removed without failing our own gate. Of the **44** names that were ever public and are not now, **not one was ever documented**, and 33 of the 44 are a single event, the camelCase-to-snake_case migration of 2026-08-27. So the guarantee a consumer wants already exists mechanically; what is missing is the sentence saying so. That sentence is a statement to other projects -- fuzznet keeps its qtty render test out of its own `make check` for want of it -- and committing this tree to a supported subset is the holder's call, not a recording | 8.662, 8.648 |
 | **What does Phase 4's scope become now that the unit is a BINARY rather than a product?** design.md's OQ-4 asks whether any product needs the TUI where QtWidgets cannot be linked, and says a product that does "goes to 13.2 permanently". Its factual half is answered for all three named products (8.664) and the answer does not fit its shape: **netcfgd is both**, deliberately. Its `gui/` links Qt and reaches qtty from production; its `ncfg tui` is in a core whose `NEEDED` list is gated by `make linkage` to libc and the kernel, which no Qt build can meet. So it is not a product to move to the fallback, it is a product with two TUIs on two linkage budgets, one of which qtty can never serve. fuzzypickles states no such constraint and raidcfgd has no TUI. The consolidation goal G3 inherits the same assumption, which is part of why four has been hard to count. What Phase 4 covers, and whether G3's count is of products or of binaries, is the holder's | 8.664, 8.641, design.md 14 |
+| **A frame shown before a layout sized it caches a ten-pixel inset and keeps it.** `QFrame` derives four frame widths from `SE_ShapedFrameContents` and caches them, and Qt never recomputes them on a resize -- so a frame resized under three rows and shown takes the base style's `PM_DefaultFrameWidth` on all four sides and holds a ten-pixel vertical inset where a row is nineteen, permanently. Narrow to reach and silent when reached. The obvious remedy is measured and costs a guarded case: constant insets fail `a popup is a whole number of rows tall`, because the combo popup SIZES itself from the same rectangle while unlaid-out. Three options are costed in the entry and the third -- post a `StyleChange` when a frame is resized onto the grid, leaving every style answer alone -- is unmeasured and the one to cost first | 8.749 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -60471,7 +60477,21 @@ filter is "ours or theirs" and the answer is in the headers. `grep -nE
 ### 8.747 A cached margin computed from a 100x30 widget (2026-11-10)
 
 **Every titled `QGroupBox` with a layout in it had nonsense contents
-margins, and had since the funnel was added in 8.476.** Precisely: every
+margins, and had since the funnel was added in 8.476.** **And the tree had already met this
+exact query and written a guard for it, one arm away.** The
+`SE_FrameContents`/`SE_ShapedFrameContents` arm, 600 lines up the same
+file, says in as many words: *"Qt asks a widget about its frame before
+anything has sized it, at QWidget's default 100x30 -- and 30 px is not a
+whole number of 19 px rows, while every laid-out height in this style
+is"*, and guards itself with `opt->rect.height() % ch == 0` after a combo
+popup "collapsed its margins, and the collapse shrank it and kept it
+collapsed: measured, 76 px became 56". So the 100x30 pre-layout query was
+known, measured, named by number, and defended -- in one arm. The group
+box arm, with an identically caching consumer, never got it. This was not
+an unknown hazard but a known one applied unevenly, which is the sharper
+and less comfortable reading.
+
+Precisely: every
 one whose title was set before it reached a real size, which is the
 constructor's `QGroupBox(title, parent)` and every `setTitle()` that
 follows it promptly. A box titled after being laid out and shown
@@ -60633,3 +60653,149 @@ its full height on purpose, and `SC_GroupBoxFrame` is a vertical offset
 across the full width. The seventh is the line edit above. So the class
 has one live instance, it is this one, and the sweep is the evidence for
 saying so rather than hoping.
+
+### 8.749 The same defect on a second consumer, and the obvious fix costs a measured case (2026-11-10)
+
+**Reported rather than fixed, and the reason is the point.** Chasing
+8.747's lens -- a style answer that a widget CACHES -- through Qt's own
+source turned up a second consumer with the identical shape, and a real
+defect in it. The fix that 8.747 used does not transfer, because this
+rectangle has two consumers that want opposite things.
+
+**The lens, enumerated rather than guessed, and all fourteen read rather
+than the eight that would have answered it.** Of the widgets in
+`qtbase/src/widgets/widgets` that call `setContentsMargins`, seven pass a
+constant or a zero margin and are not in question. `QToolBarLayout`,
+`QSplitter` and `QMdiSubWindow` derive theirs from PIXEL METRICS, which
+do not depend on the widget's size; `QMenu` copies another widget's.
+
+Three derive them from a style RECT, and so inherit whatever
+size-dependence that rect has: `QGroupBox` (8.747), **`QFrame`**, and
+`QDialogButtonBox`, which negates `SE_PushButtonLayoutItem`. **Of the
+three, only two are hazards HERE**, because this style overrides no
+`SE_*LayoutItem` at all -- the button box therefore gets the base style's
+answer, which carries no cell arithmetic. Said that way because the
+hazard is not "a widget caches a style rect" but "a widget caches a rect
+THIS style makes depend on a size", and only the second is actionable.
+
+`QFramePrivate::updateStyledFrameWidths()` computes four frame widths as
+differences between `SE_ShapedFrameContents` and `opt.rect` -- the same
+formula `calculateFrame()` uses -- and caches them. Qt calls it from a
+style change, a parent change, `Polish`, `setFrameStyle`, `setLineWidth`
+and `setMidLineWidth`. **Never from a resize.**
+
+**The ordinary path is safe, and safe by design rather than by luck,
+which is worth having measured.** A frame is polished at 640x480 or
+larger, where the `>= 3 * ch` branch applies -- and that branch's four
+insets are CONSTANT at any height, `cw`, `ch`, `cw`, `ch`, which is
+exactly what 8.747 says a cached answer must be. Measured: polish at
+640x480 gives (10, 19, 10, 19) and it survives the layout unchanged.
+
+**The fall-through is the defect.** A frame resized under three rows and
+shown lands past both branches onto the base style's answer, which insets
+by `PM_DefaultFrameWidth` -- `cw`, ten pixels -- on all four sides.
+Measured at 30, 40 and 56 pixels tall, then grown to eight rows:
+
+    born   10,10,10,10        grown  10,10,10,10
+
+So the viewport sits **ten pixels down a nineteen-pixel row,
+permanently** -- section 16.3's cell-safety lost to a question asked
+early, and precisely the fault the arm was written to fix. 56 is not an
+arbitrary probe: it is the figure that arm's own comment records from the
+combo popup incident, three rows less one pixel.
+
+**THE OBVIOUS FIX WAS TRIED AND MEASURED, AND IT COSTS A GUARDED CASE.**
+Answering the unlaid-out query with constant insets, as 8.747 does, fails
+`a popup is a whole number of rows tall`: the combo popup SIZES itself
+from this same rectangle while unlaid-out, so a smaller contents rect
+shrinks it -- 76 px became 86 px, remainder 10. The change was reverted
+and the popup is back to 76, remainder 0.
+
+That is the finding worth more than the defect: **the unlaid-out query
+has a SIZING consumer as well as a CACHING one, and one rectangle cannot
+serve both.** A cache needs an answer that does not depend on the
+transient size; a widget sizing itself needs an answer that does not
+shrink it. The guard that protects the popper is the same
+`% ch == 0` test that would have protected the group box, pointed the
+other way.
+
+**Three options, their costs, and whose they are.** Not mine: each
+changes behaviour somebody measured, and the first is already shown to
+break a check.
+
+1. **Constant insets for the unlaid-out query.** Costs the popup, as
+   above. Measured.
+2. **Tell the two consumers apart.** No way found. Both ask the same
+   sub-element about their own rect, and `w` is an item view in both.
+3. **Force the cache to be recomputed when the frame is resized onto the
+   grid** -- post a `StyleChange` at the one moment the cached value
+   becomes wrong. This leaves every style answer alone, so the popup is
+   untouched. **Unmeasured**, and it is the one I would cost first: it
+   needs an event filter on framed widgets and `StyleChange` re-polishes,
+   so the risk is expense and loops rather than correctness.
+
+**Reachability, stated plainly so the holder can weigh it.** It needs an
+application to `show()` a framed widget, or resize one under three rows,
+before a layout has sized it. A widget laid out normally is always a
+whole number of rows here and never enters the branch. So this is narrow
+-- and it is permanent when it happens, and silent.
+
+**Reported, not asserted.** The suite prints the measured margins as an
+`info:` line on every run rather than asserting them: a `CHECK` would
+fail the gate on a defect nobody has chosen how to fix, and asserting
+today's numbers would pin it. The horizontal half IS asserted, since it
+was never in doubt and the contrast is what localises the fault -- three
+checks, and the same axis separation 8.748 had. 2519 checks.
+
+### 8.750 The suite reported one check fewer, fifteen times, and I cannot say why (2026-11-10)
+
+**Recorded unexplained on purpose.** `running-code.md`: *a comfortable
+explanation that ends an investigation is more expensive than no
+explanation at all*, because no explanation keeps somebody looking. This
+is one, and it is about the trustworthiness of the instrument every count
+in this document rests on.
+
+**What was seen.** With the binary built for 8.749 and never rebuilt
+afterwards, a batch of fifteen consecutive runs each reported **2518**
+passing checks. The suite reports **2519 with no failures**, so those
+runs had one check FAILING -- 2518 passes plus one failure is the same
+2519 total.
+
+**What was ruled out, each by measurement rather than by argument.**
+Twenty-two further runs of the same byte-identical binary, every one
+2519 with zero failures:
+
+- six run interactively, piped to `grep -c`, the exact form that had
+  given 2518;
+- six run under `nohup` in the background, the exact form of the batch;
+- four run CONCURRENTLY with each other, for CPU contention;
+- six run while three `g++ -fsyntax-only` passes over the largest suite
+  file and three `style_gate.py docs` passes over this 60,000-line
+  document ran beside them, which is the pressure that was present
+  during the batch;
+- two with stdout redirected to a file rather than a pipe.
+
+**And one apparent control was not one, which is worth more than the
+list.** The first comparison "with and without a tty" redirected BOTH
+runs to files, so neither had a terminal: it compared two identical
+conditions and found them identical. `evidence.md`'s *a control has to be
+able to fail the way the thing it controls for fails*, met by writing the
+control carelessly. Under this harness stdout is never a terminal, so the
+tty hypothesis cannot be tested here at all -- which is a fact about the
+instrument, not a result.
+
+**The failing check's identity is unknown, and that is the harness's
+fault rather than the flake's.** The batch counted `^PASS` and discarded
+everything else, so fifteen reproductions of a real failure were reduced
+to a number that could not name it. **A counting harness that drops the
+diagnostic turns a reproducible fault into a rumour.** Count the failures
+too and keep their text, always; it costs one more `grep`.
+
+**What this does and does not license.** It does not license doubting any
+particular count: `count-check` compares the suite's total against this
+document on every gate run and has never disagreed, and a failure would
+have reddened `make check`. It does license treating a single clean run
+as weaker evidence than it looks, and it leaves a real question open --
+**fifteen consecutive failures followed by twenty-two consecutive passes
+is not a coin flip**, so something persistent differed in that window and
+nothing I have measured says what.

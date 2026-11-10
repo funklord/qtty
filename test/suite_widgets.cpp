@@ -81,6 +81,80 @@ public:
 
 int suite_widgets() {
 	fails = 0;
+	// A FRAME SHOWN BEFORE IT IS LAID OUT CACHES A TEN-PIXEL INSET AND
+	// KEEPS IT. The same class as 8.747 on a second consumer: QFrame
+	// computes four frame widths from SE_ShapedFrameContents in
+	// QFramePrivate::updateStyledFrameWidths() and caches them, and Qt
+	// calls that from a style change, a parent change, Polish,
+	// setFrameStyle, setLineWidth and setMidLineWidth -- never from a
+	// resize. So whatever this style answers before a layout has run is
+	// what the widget keeps.
+	//
+	// The usual path is safe and for a good reason rather than by luck:
+	// a frame is normally polished at 640x480 or larger, where the
+	// `>= 3 * ch` branch applies and its four insets are CONSTANT --
+	// cw, ch, cw, ch at any height. Measured: polish at 640x480 gives
+	// (10, 19, 10, 19) and it survives the layout.
+	//
+	// The fall-through is not. A frame resized under three rows and shown
+	// lands past both branches, takes the base style's answer, and caches
+	// PM_DefaultFrameWidth on all four sides -- ten pixels, where a row
+	// is nineteen. Measured at 30, 40 and 56 pixels tall: born
+	// (10, 10, 10, 10) and still (10, 10, 10, 10) after growing to eight
+	// rows. A viewport ten pixels down a nineteen-pixel row is exactly
+	// the fault this arm was written to fix, section 16.3's cell-safety
+	// broken permanently by a question asked early.
+	//
+	// 56 is not an arbitrary probe: the arm's own comment records a combo
+	// box popup whose margins collapsed from 76 px to 56, "three rows
+	// less one pixel and no longer a whole number of anything".
+	//
+	// The second branch already guards this case -- `height() % ch == 0`
+	// is there to keep it away from a widget nothing has sized -- and the
+	// fall-through past it does not, which is the whole defect.
+	//
+	// THE OBVIOUS FIX WAS TRIED AND IT COSTS A MEASURED CASE. Answering
+	// the unlaid-out query with constant insets, the way 8.747 does for
+	// the group box, breaks "a popup is a whole number of rows tall":
+	// the combo popup SIZES itself from this same rectangle while it is
+	// unlaid-out, and a smaller contents rect shrinks it -- 76 px became
+	// 86 px with a remainder of 10. So the unlaid-out query has a sizing
+	// consumer as well as a caching one, and one rectangle cannot serve
+	// both. 8.749 carries the three options and whose they are; the
+	// vertical half is reported rather than asserted until one is
+	// chosen.
+	{
+		const int ch = GridMetrics::ch(), cw = GridMetrics::cw();
+		for (int h : {30, 40, 56}) {
+			QWidget host;
+			auto *hv = new QVBoxLayout(&host);
+			auto *f = new QTableWidget(1, 1);
+			f->resize(200, h);
+			f->setAttribute(Qt::WA_DontShowOnScreen);
+			f->show();
+			QCoreApplication::processEvents();
+			hv->addWidget(f);
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(40, 8));
+			host.show();
+			QCoreApplication::processEvents();
+			const QMargins m = f->contentsMargins();
+			// REPORTED, NOT ASSERTED, because the remedy is a decision
+			// rather than an edit -- see the entry this comment names.
+			// Asserting it would fail the gate on a defect nobody has
+			// chosen how to fix, and asserting the current numbers would
+			// pin it. The print keeps the measurement in front of whoever
+			// runs the suite next.
+			printf("info: a frame shown at %d px caches margins "
+			       "%d,%d,%d,%d and keeps them at %d px; one row is %d "
+			       "and one column %d\n",
+			       h, m.left(), m.top(), m.right(), m.bottom(),
+			       f->height(), ch, cw);
+			CHECK(m.left() == cw && m.right() == cw,
+			      "a frame shown before a layout sized it still insets its "
+			      "viewport by whole columns once it is grown");
+		}
+	}
 	// A TITLED GROUP BOX'S CONTENTS MARGINS ARE COMPUTED ONCE, FROM A
 	// WIDGET THAT IS STILL 100x30. QGroupBox asks this style for
 	// SC_GroupBoxContents in its constructor -- from setTitle(), by way of
