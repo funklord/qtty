@@ -60367,6 +60367,13 @@ because they differ in length and a fixed deficit takes the longer first
 -- reading only one cannot say the deficit is a cell rather than a
 proportion.
 
+**VERIFIED ON BOTH ARMS, because the check asserts a heading renders in
+full and header sizing is `QCommonStyle`'s.** 8.717 is this run's own
+lesson about a separating measurement taken under one configuration, and
+this check is exactly that shape. `make test-versions`: Qt 6.8.2 at 2507
+pass and Qt 5.15.15 at 2495 pass with 12 step over, 2507 checks each, no
+failures. So the new check is not pinning Qt 6's header metrics.
+
 **WHAT IT SAYS ABOUT 8.714, which had every check green and an arm on
 both Qt versions.** The separator touches seven sites and the entry for
 it reddens the one it names. Nothing asked whether the sizing surface and
