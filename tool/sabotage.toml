@@ -9374,3 +9374,33 @@ find = "\t\t\t\tcell.ch = top_half ? QStringLiteral(\"\u2580\") : QStringLiteral
 into = "\t\t\t\tcell.ch = top_half ? QStringLiteral(\"\u2584\") : QStringLiteral(\"\u2580\");"
 count = 1
 check = "a half-covered cell takes the block of the covered half"
+
+# THE CELL'S FLOOR NARROWED TO ZERO, so a NEGATIVE cell is stored. The whole
+# library divides by cw and ch, and the call that died when this was first
+# found is GridMetrics::is_aligned(). Zero is deliberately still refused here:
+# admitting it divides by zero and takes the suite down instead of reddening
+# a check, which proves a crash rather than the guard. A negative cell needs
+# no division by zero to be wrong -- every measurement comes out negative and
+# cells(2,2) stops being positive. 8.754.
+[[sabotage]]
+name = "the cell size floor admits a negative cell"
+file = "src/grid/grid_style.cpp"
+find = "\tif (cw <= 0 || ch <= 0) {"
+into = "\tif (cw == 0 || ch == 0) {"
+count = 1
+check = "a cell of zero or less is refused and the working one kept"
+
+# THE BRIGHT HALF FOLDED ONTO THE DIM ONE. ANSI-16 spells the bright eight
+# 90-97 and 100-107, the aixterm form; the comment at that line says
+# bold-as-bright is deliberately NOT used, because it would make Attr::Bold
+# and a bright colour the same byte and then neither could be turned off
+# without the other. Masking the index to 8 is that conflation: index 15 comes
+# out 37 rather than 97, and Bold is the only thing left saying "bright".
+# 8.754.
+[[sabotage]]
+name = "a bright ansi-16 colour is folded onto the dim half"
+file = "src/core/theme.cpp"
+find = "\t\tconst int i = c.kind() == Color::Indexed ? c.index() % 16 : 7;"
+into = "\t\tconst int i = c.kind() == Color::Indexed ? c.index() % 8 : 7;"
+count = 1
+check = "a bright colour and Attr::Bold stay separate bytes"

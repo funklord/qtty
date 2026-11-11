@@ -61069,3 +61069,37 @@ covers is the same fault as the placeholder that never drew**: a reader
 cannot tell a case that is handled from one that cannot arise.
 
 2521 checks.
+
+### 8.754 Two more entries, and the one that had to admit a negative rather than a zero (2026-11-11)
+
+**An instalment, chosen for load-bearing guards rather than for the
+thinnest suite this time.** 831 entries to 833, each verified with
+`--only`, each reddening the check it names.
+
+**The cell size floor.** `GridMetrics::set()` refuses a non-positive cell
+because the whole library divides by `cw` and `ch`, and the check that
+defends it had no entry. The interesting part is what the break had to
+be: **admitting zero is the obvious sabotage and it is the wrong one.**
+Zero divides, so the suite would die rather than report -- and the
+comment on that fixture says `is_aligned()` is the call that died when
+this was first found, so the crash is the original defect, not a
+hypothetical. An entry that crashes proves a crash; what wanted proving
+is that the guard is read. So the break narrows the floor to `== 0`,
+admitting a NEGATIVE cell, which needs no division by zero to be wrong:
+every measurement comes out negative and `cells(2, 2)` stops being
+positive. Reddens its own check and the paired one about the arithmetic
+still answering.
+
+**The bright half of ANSI-16.** `sgr_sequence()` spells the bright eight
+90-97 and 100-107, the aixterm form, and the comment there says
+bold-as-bright is *deliberately* not used because it would make
+`Attr::Bold` and a bright colour the same byte, after which neither could
+be turned off without the other. The break is that conflation, written
+as a mask: index 15 comes out 37 instead of 97, leaving `Attr::Bold` as
+the only thing saying "bright". Reddens its own check and two more.
+
+**What the pair has in common is worth the entry.** Both guards exist
+because somebody met the failure, both say so in a comment, and neither
+could be falsified by the harness until now -- so for both, the sentence
+explaining why the code is written that way was the only thing defending
+it. A comment is not a check. 833 entries.
