@@ -1120,8 +1120,30 @@ def main():
 		# it needs a clean run's own list to subtract from -- which is why
 		# the green set goes beside it rather than being re-measured later
 		# against a tree that has moved.
+		# AND A PARTIAL RUN WRITES ITS OWN NAMES, because the useful half
+		# of this pair is the COMPLEMENT -- which checks nothing reddens --
+		# and that is only meaningful when every entry has run. An --only
+		# or a --from leaves almost everything green for the trivial
+		# reason that almost nothing was tried, so writing that over the
+		# canonical files replaces an 8.1-hour answer with a 40-second
+		# one, silently and at the same paths.
+		#
+		# Found by doing it: a one-entry --only reported "wrote 2517 green
+		# check(s)" over whatever the last full sweep had left, and the
+		# comment above says in as many words that a log cannot
+		# reconstruct the set. The reddened half of a partial run is still
+		# worth keeping -- it says which checks those entries hit -- so
+		# this renames rather than skips.
+		partial = only is not None or start > 1
+		suffix = "-partial" if partial else ""
+		if partial:
+			say("sabotage: a partial run, so the canonical lists are left"
+			    " alone and")
+			say("          these carry -partial: a green set here means"
+			    " untried, not unguarded.")
 		for name, rows in (("reddened", reddened), ("green", green)):
-			out = os.path.join(ROOT, "build", "sabotage-%s.txt" % name)
+			out = os.path.join(ROOT, "build",
+			                   "sabotage-%s%s.txt" % (name, suffix))
 			try:
 				os.makedirs(os.path.dirname(out), exist_ok=True)
 				with open(out, "w", encoding="utf-8") as f:

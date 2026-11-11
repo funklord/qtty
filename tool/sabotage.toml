@@ -9343,3 +9343,18 @@ find = "\t\t\t             tall ? pane.top() + ch : r.top(),"
 into = "\t\t\t             r.top(),"
 count = 1
 check = "and clears it above as well, the top border being drawn no less than the sides"
+
+# THE OLD POSITION DROPPED FROM A RASTERISED FRAME'S DAMAGE. The cell diff is
+# not the damage for a pixel frame: an overlay that MOVES changes pixels under
+# cells that did not change, so a region computed from the diff and the new
+# position alone leaves a ghost of the overlay where it used to be. Nothing
+# else remembers where it was, which is why FrameScheduler keeps
+# prev_overlays_. Both loops add `now` here, so the parameter stays used and
+# the omission is the whole of the change. 8.752.
+[[sabotage]]
+name = "a moved overlay's old position is left out of the damage"
+file = "src/runtime/compositor.cpp"
+find = "\tfor (const QRect &r : was) out += r;"
+into = "\tfor (const QRect &r : now) out += r;"
+count = 1
+check = "a moved overlay damages where it was as well as where it is"

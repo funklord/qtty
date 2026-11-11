@@ -60871,3 +60871,68 @@ unexplained: whatever paints an empty row's rule appears to take the
 separator column with it across the whole table, which is a drawing
 order I have not traced. The reproduction is in the suite so the next
 reader starts from a fixture rather than from this paragraph.
+
+### 8.752 An instalment of sabotage cover, and the tool ate the sweep's own record (2026-11-10)
+
+**One entry added and verified, and a defect in the harness found by
+adding it.** The instalment is the small half; the tooling fault is the
+part worth reading.
+
+**The entry.** `FrameScheduler::pixel_damage()` unions the cell diff with
+an overlay's old and new positions, and the old one is what a diff-only
+region misses -- it is the half that leaves a ghost of the overlay
+behind. Nothing else remembers where it was, which is why the scheduler
+keeps `prev_overlays_`. The sabotage makes both loops add `now`, so the
+parameter stays used and the omission is the whole change:
+
+    ok -- reddened: a moved overlay damages where it was as well as
+                    where it is
+
+Chosen from the 140 checks in `suite_graphics.cpp` that no entry names,
+graphics being the thinnest-covered suite.
+
+**THEN THE HARNESS OVERWROTE THE 8.1-HOUR SWEEP'S RECORD WITH A
+40-SECOND RUN'S, AND I DID IT BY RUNNING IT.** `sabotage.py` writes
+`build/sabotage-reddened.txt` and `build/sabotage-green.txt` at fixed
+paths whenever a run reddens anything -- including an `--only` of a
+single entry. The comment above that write explains why the files exist:
+the per-entry log is truncated with `... and N more`, so *"asking
+afterwards which checks no entry reddens is a question this run can
+answer for nothing and a finished log cannot answer at all"*. It then
+lets a one-entry run destroy the answer, silently, at the same filename.
+
+**Which of the two is expensive took correcting, and the first reading
+was wrong.** `green` is not the complement -- it is the clean baseline,
+every check the suite passes, and the full sweep wrote **2502** of them.
+Reproducing that costs one suite run. The expensive file is
+`sabotage-reddened.txt`: the sweep wrote **1498 distinct checks** there,
+and the complement a reader wants is 2502 - 1498 = **1004 that nothing
+reddens**. My run replaced those 1498 with one.
+
+**Recovery from the log was attempted and is half a record.** The
+sweep's log survives, and the per-entry lines name **746 distinct
+checks of the 1498** -- 49 per cent -- with 71 truncation markers hiding
+980 further mentions. That is the tool's own warning coming true almost
+to the figure it quotes (*"recovered 907 of 1216 and silently counted
+the truncation markers as checks"*). The 746 are kept in
+`build/sabotage-reddened-recovered.txt` as a LOWER bound on what is
+guarded, and therefore an upper bound on the 1004; the exact set needs
+another full sweep.
+
+**The fix: a partial run writes its own names.** `--only` and `--from`
+now write `sabotage-reddened-partial.txt` and
+`sabotage-green-partial.txt` and say so, leaving the canonical pair
+alone -- "a green set here means untried, not unguarded". Renamed rather
+than skipped, because a partial run's reddened half is still worth
+keeping; it is the complement that is meaningless when almost nothing
+was tried. The two files my run wrote have been moved to those names,
+so nothing on disk claims to be a sweep that was not one.
+
+**The shape, which is this run's own lesson pointed at the tooling.**
+Every other finding today was something between a break and an
+assertion supplying the right answer. This is the same thing one level
+up: the instrument that proves the checks can fail silently discarded
+its own most expensive output, and nothing in the project would have
+noticed -- the file is in `build/`, nothing reads it on a schedule, and
+a stale one is indistinguishable from a fresh one. **An artifact worth
+8.1 hours needs to be harder to overwrite than a log.**
