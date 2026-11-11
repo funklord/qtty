@@ -61103,3 +61103,84 @@ because somebody met the failure, both say so in a comment, and neither
 could be falsified by the harness until now -- so for both, the sentence
 explaining why the code is written that way was the only thing defending
 it. A comment is not a check. 833 entries.
+
+### 8.755 Today's nine commits put through the arms, and a staleness table that was all detector (2026-11-11)
+
+**Nine commits landed today before any of the thirteen verification arms
+had seen the last of them.** Twelve receipts were dated 2026-11-10 and
+the thirteenth, `test-versions`, `2026-11-10T23:54Z` -- this session's
+own earlier run, against the tree as it then stood. The gate runs on
+every commit; the arms do not, and nothing says when one has gone
+stale.
+So this is the pass that puts today's code through the configurations
+`make check` does not cover.
+
+**What ran, and what it found.**
+
+- **`test-sanitize`** -- ASan and UBSan over the whole suite: **OK, 0
+  failures.** Two of today's commits changed geometry arithmetic in
+  `grid_style.cpp`, which is where a sanitizer earns its keep, and
+  neither found anything.
+- **`test-compilers`** -- **2 front ends, 2521 checks each, no failures,
+  and zero warnings.** clang found nothing g++ had missed, which is the
+  cheapest second opinion available on a day that touched three source
+  files.
+- **`test-platforms`** -- **2 platforms, one deliberate refusal and one
+  hostile environment, 0 failed, 2521 checks each.** So the two new
+  checks hold on xcb under Xvfb as well as offscreen.
+- **`test-versions`** -- **2 versions, 2521 checks each.** It had already
+  run today at 2519, BEFORE the two socket-notifier checks, so those were
+  unverified on Qt 5.15 until this; they pass there too.
+- **the two fuzz targets**, at 300 s each rather than the 60 s the arm
+  defaults to -- which is new exploration rather than a re-run, the code
+  they cover not having changed today. `scan_caps()`: **392,667
+  executions** over 19 seeds, coverage plateaued at 374 features, **no
+  artifact**. The input decoder is the larger surface at 996 features
+  and ran at about 9,300 executions a second. Nothing in
+  `build-fuzz/artifacts/` from either, which is where a finding would
+  land. **2,691,425 executions** on the decoder, 1026 features.
+
+**AND A STALENESS TABLE THAT WAS ENTIRELY MY OWN DETECTOR.** Asking which
+arms had seen today's code, I compared each receipt's id against the
+tree using **`make check`'s** identity -- `rev-parse HEAD`, plus
+`diff HEAD`, plus the untracked files -- and got *stale* for all
+thirteen, including three I had run myself an hour earlier. The receipts
+are not computed that way, and `tool/arm-receipt` says so in a comment:
+
+    git ls-files -z --cached --others --exclude-standard \
+        -- . ':(exclude)*.md' | xargs -0 sha1sum | sha1sum
+
+File CONTENTS, and **`*.md` excluded**, so that editing this document
+does not invalidate an arm that ran against the same code. Two
+identities, deliberately different, and comparing with the wrong one
+reports every arm stale -- uniformly, plausibly, and wrongly.
+
+`evidence.md`'s *a count inherits its detector*, met while trying to
+measure staleness rather than a count. The tell was there to be read and
+I nearly wrote the table up instead: **three arms I had run that hour
+cannot all be stale**, and a verdict that disagrees with something you
+watched happen is the verdict to doubt. Recomputed with the receipt's own
+formula, the three are current and ten carry yesterday's tree.
+
+This is the concrete half of 0b's arm-receipt identity question. It does
+not answer it -- whether the gate should say an arm has gone stale is
+still the holder's -- but it supplies the command that answers it for a
+reader, and the reason a session reaching for the obvious one gets
+thirteen wrong answers.
+
+**`test-valgrind` was weighed and skipped, which is a judgement worth
+stating rather than a gap worth hiding.** Its distinctive axis is the
+uninitialised read, with `--track-origins=yes`; ASan already covered the
+out-of-bounds and use-after-free classes, and today's changes are
+arithmetic over values that are initialised by construction -- a cell
+size, an inset, a rectangle. Against that, the arm is bounded at 3000
+seconds. Low marginal value for a high fixed cost, so it keeps
+yesterday's receipt and this says so.
+
+**Measured with the receipt's own formula afterwards: six of the thirteen
+arms are current and seven keep yesterday's tree** -- `test-consume`,
+`test-negotiate`, `test-overlay-z`, `test-pty`, `test-screen`,
+`test-tray` and `test-valgrind`. The first six of those are narrow
+fixtures over code today did not touch; the seventh is the one weighed
+above. Counted rather than asserted, this paragraph having first said
+nine.
