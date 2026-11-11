@@ -64,7 +64,15 @@ mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
   > exist. Searching nineteen private trees for ncurses, curses, termpaint, `initscr(`,
   > a `tui`, `curses` or `term` directory, and raw-ANSI screen control, across six
   > languages: **two exist** — fuzzypickles' `tui/` in C, shipped as `fzptui`, and
-  > netcfgd's `crates/netcfgd-sys/src/curses.rs`. Two near misses are not one:
+  > netcfgd's terminal UI. **That path has moved and the language with it,
+  > re-measured 2026-11-11**: netcfgd deleted its Rust in `23aa41ef`
+  > ("remove the Rust, and every gate that built or compared it"), so
+  > `crates/netcfgd-sys/src/curses.rs` is gone and the implementation is
+  > 2510 lines of C at `c/src/cli/tui.c` and `c/src/cli/tui_term.c`, with
+  > no curses at all -- raw termios, `poll`, `TIOCGWINSZ` and ANSI. The
+  > count of two is unchanged and so is the goal; what changed is that one
+  > of the two is now the same technique this library's own backend uses.
+  > project.md 8.753. Two near misses are not one:
   > `beerssh/src/term/` embeds libvterm for an SSH client, the opposite relationship,
   > and openmlx4's only ANSI hit is a comment on why a firmware image carrying
   > `ESC [2J` must not reach a raw terminal. **raidcfgd has none**, although 8.614
@@ -1042,7 +1050,7 @@ Coverage is declared, not discovered. Each widget is classified:
 | **Native (Channel A)** | `QPushButton`, `QLabel` (plain), `QCheckBox`, `QRadioButton`, `QLineEdit`, `QComboBox`, `QGroupBox`, `QTabWidget`, `QScrollArea`, `QSplitter`, `QProgressBar`, `QSlider`, `QMenu`, `QMenuBar`, `QDialogButtonBox`, `QListView`, `QTreeView`, `QTableView` | Style-drawn, reviewed, snapshot-tested |
 | **Generic (Channel B)** | Custom `paintEvent` widgets, third-party | Renders legibly, no guarantees |
 | **Replaced** | *(empty -- see below)* | No cell-native substitute was needed, or written |
-| **Unsupported** | `QGraphicsView`, OpenGL widgets, `QWebEngineView` | Renders a labelled placeholder box |
+| **Unsupported** | `QGraphicsView`, `QOpenGLWidget`, `QQuickWidget`, `QWebEngineView`, `QVideoWidget`, `QAxWidget` (Windows only) | Renders a labelled placeholder box |
 
 Item views work because they paint through `QStyledItemDelegate`; a `CellItemDelegate`
 gives Channel A coverage for the common roles and inherits everything else.

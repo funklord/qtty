@@ -12,6 +12,8 @@
 // no handler at all.
 #include "src/runtime/url_opener.h"
 #include "src/runtime/placement_paint.h"
+#include <QSocketNotifier>
+#include <unistd.h>
 #include <QtWidgets>
 #include <QScreen>
 #include <QProcess>
@@ -2646,6 +2648,95 @@ int suite_runtime() {
 		win.hide();
 		QCoreApplication::processEvents();
 		GridGuard::reset();
+	}
+
+	// ---- an application's own descriptor, while the TUI runs -------------
+	//
+	// NOTHING ASSERTED THIS, although G3 rests on it.
+	//
+	// Both production consumers are socket CLIENTS. netcfgd's terminal UI
+	// subscribes to a daemon over a unix socket and renders what it pushes
+	// -- 2510 lines of C in `c/src/cli/tui.c` and `tui_term.c`, measured
+	// 2026-11-11 -- and that shape is exactly what G3 asks this library to
+	// replace. qtty installs a QSocketNotifier on stdin and another on the
+	// SIGWINCH pipe, so "the library watches descriptors" was never in
+	// doubt; what was never checked is that an APPLICATION's notifier keeps
+	// firing once exec() owns the loop. Were it starved, every consumer
+	// would have to keep an event loop of its own and G3 could not be met
+	// by this design at all.
+	//
+	// BOTH DIRECTIONS, because either alone is satisfied by starving the
+	// other: the descriptor is served, AND frames had reached the backend
+	// by the time it was. A library that served the socket and stopped
+	// painting would pass a check that only looked at the socket.
+	//
+	// It terminates three ways and the watchdog is the one that matters:
+	// the notifier quits the loop, a failed write quits it, and a 2000 ms
+	// watchdog quits it regardless -- so a starved notifier, which is the
+	// defect this exists to catch, fails the check instead of hanging the
+	// suite.
+	{
+		int fds[2] = { -1, -1 };
+		const bool piped = ::pipe(fds) == 0;
+		struct CountingBackend : NullBackend {
+			using NullBackend::NullBackend;
+			int presents = 0;
+			void present(const CellBuffer &frame,
+			             const QRegion &damage) override {
+				++presents;
+				NullBackend::present(frame, damage);
+			}
+		};
+		CountingBackend backend(QSize(40, 12));
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("serving"), &win));
+
+		int served = 0, presents_when_served = -1;
+		bool timed_out = false;
+		if (piped) {
+			QSocketNotifier watch(fds[0], QSocketNotifier::Read);
+			QObject::connect(&watch, &QSocketNotifier::activated, qApp,
+			                 [&] {
+				char byte = 0;
+				if (::read(fds[0], &byte, 1) == 1) {
+					++served;
+					presents_when_served = backend.presents;
+				}
+				QCoreApplication::quit();
+			});
+			QTimer poke;
+			poke.setInterval(10);
+			QObject::connect(&poke, &QTimer::timeout, qApp, [&] {
+				poke.stop();
+				const char byte = 'x';
+				if (::write(fds[1], &byte, 1) != 1)
+					QCoreApplication::quit();
+			});
+			QTimer watchdog;
+			watchdog.setSingleShot(true);
+			QObject::connect(&watchdog, &QTimer::timeout, qApp, [&] {
+				timed_out = true;
+				QCoreApplication::quit();
+			});
+			poke.start();
+			watchdog.start(2000);
+			exec(*qApp, win, backend);
+			poke.stop();
+			watchdog.stop();
+		}
+		if (fds[0] >= 0) ::close(fds[0]);
+		if (fds[1] >= 0) ::close(fds[1]);
+		printf("info: an application's notifier fired %d time(s) after %d"
+		       " frame(s)%s\n", served, presents_when_served,
+		       timed_out ? ", having timed out" : "");
+		CHECK(piped && served == 1 && !timed_out,
+		      "an application's own QSocketNotifier still fires while qtty"
+		      " owns the terminal and the event loop, which is what lets a"
+		      " socket client keep its socket");
+		CHECK(piped && presents_when_served >= 1,
+		      "and frames had already reached the backend by then, so"
+		      " neither the descriptor nor the painting starves the other");
 	}
 
 	// ---- the frame interval, which design.md has always called configurable

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2519 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2521 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -53731,7 +53731,7 @@ copies of qtty and fuzznet, `deps/`, and the vendored yt-dlp and libvterm.
 **TWO HAND-WRITTEN TERMINAL UIs EXIST:**
 
     fuzzypickles   tui/ -- C with ncurses, shipped as fzptui
-    netcfgd        crates/netcfgd-sys/src/curses.rs
+    netcfgd        crates/netcfgd-sys/src/curses.rs   (gone; see 8.753)
 
 **AND TWO THINGS THAT LOOK LIKE ONE AND ARE NOT.** `beerssh/src/term/` is a
 terminal EMULATOR -- it embeds libvterm for an SSH client, which is the
@@ -60958,3 +60958,114 @@ its own most expensive output, and nothing in the project would have
 noticed -- the file is in `build/`, nothing reads it on a schedule, and
 a stale one is indistinguishable from a fresh one. **An artifact worth
 8.1 hours needs to be harder to overwrite than a log.**
+
+### 8.753 G3 is not blocked by anything missing here, and one unsupported name could never match (2026-11-11)
+
+**The goal gap, walked from section 2 of design.md rather than from the
+last run's conclusion.** G3 -- "the four existing terminal
+implementations are consolidated behind one backend interface, retiring
+three of them over time" -- is the one goal the document itself calls
+part met, and it carries two measurements: 8.614 asked which trees
+CONSUME qtty, and 8.641 asked which trees have a terminal UI of their
+own. **Neither asked the question that decides the goal: what do those
+implementations DO that this library cannot?** A capability gap there is
+qtty's work and blocks Phase 3; an empty gap means Phase 3 waits only on
+the products.
+
+**First, the inventory had moved.** 8.641 named netcfgd's
+`crates/netcfgd-sys/src/curses.rs`. It is gone: netcfgd deleted its Rust
+in `23aa41ef`, *"remove the Rust, and every gate that built or compared
+it"*, and its terminal UI is now **2510 lines of C** at
+`c/src/cli/tui.c` and `c/src/cli/tui_term.c` -- with no curses in it at
+all: raw `termios`, `poll`, `TIOCGWINSZ`, ANSI by hand. design.md's §2 is
+corrected in place under 0b's standing permission, the claim being
+factual and measured false. The count of two implementations is
+unchanged, and so is the goal; what changed is that **one of the two now
+uses the same technique `AnsiBackend` does**, which makes it the
+strongest retirement candidate rather than the hardest.
+
+**Then the capability comparison, axis by axis.**
+
+- **Terminal layer.** `tui_term.c` is a run loop and a transport, not a
+  toolkit: open and close the terminal, watch signals, read the size,
+  subscribe to a daemon over a unix socket, paint, drain events, map a
+  key to an action. Everything in it that is about a TERMINAL this
+  library already has -- including suspend and resume, which was the one
+  I expected to be missing and which 8.x found and fixed after a stopped
+  program left its shell looking at the alternate screen.
+- **Graphics.** fzptui is 12,273 lines of C with five tiers --
+  description, libcaca, half-block, sixel, kitty -- of which it
+  implements kitty, half-blocks and the description. qtty implements
+  kitty, **sixel** and half-blocks. So this library is AHEAD on the tiers
+  that draw pixels and lacks only the floor: a text DESCRIPTION for a
+  terminal too poor for any of them. That is not a blocking gap, because
+  `Capabilities` is public and an application that wants a description
+  can draw a label instead of an image -- but it is the one thing
+  fuzzypickles would notice, and their own header says a 16-colour
+  terminal falling to the description is what that tier is for.
+- **Serving an application's own descriptor.** Both consumers are socket
+  CLIENTS, which is the shape of netcfgd's TUI and the shape G3 asks this
+  library to replace. **Nothing asserted that an application's
+  `QSocketNotifier` still fires once `exec()` owns the loop.** The
+  library installs two of its own -- stdin and the SIGWINCH pipe -- so
+  "qtty watches descriptors" was never in doubt; whether it STARVES
+  somebody else's was untested, and if it did, every consumer would have
+  to keep an event loop of its own and G3 could not be met by this design
+  at all.
+
+**So the answer is no gap that blocks the goal**, and the third axis is
+now a check rather than an argument. Two of them, because either alone is
+satisfied by starving the other: the descriptor is served, and frames had
+already reached the backend by the time it was -- measured, one frame
+presented before the notifier fired. A library that served the socket and
+stopped painting would pass a check that only looked at the socket.
+
+**The control, and the stronger control that has no safe form.** With the
+byte never written the check reports `0 time(s) after -1 frame(s), having
+timed out` and both halves fail, so the assertion is live and the 2000 ms
+watchdog bounds it. The control I wanted -- actually starving an
+application's notifier -- has no sabotage entry, and the reason is worth
+recording: the property holds because `exec()` ends in `app.exec()`,
+Qt's own loop, and every way of excluding socket notifiers from a loop
+also ignores `QCoreApplication::quit()`. Such an entry would therefore
+HANG the 8.1-hour sweep rather than redden a check, which is worse than
+not having it. A contrived single-line break would be a worse artifact
+than the honest absence.
+
+**What this leaves for G3**, stated so nobody re-derives it: Phase 3's
+exit criterion is "one screen, one source, both targets, in production",
+and the work is each product rebuilding a screen as `QWidget`s and
+deleting its old TUI. netcfgd already reaches qtty from a production
+entry point and has a Qt GUI to reuse, so it is the near case. None of
+that is this tree's to do, and none of it waits on this tree. 2521
+checks.
+
+**AND THE SAME WALK CHECKED §8.4's OTHER PROMISE, since coverage is
+declared rather than discovered.** The Unsupported row promises "renders
+a labelled placeholder box". That promise was broken once and fixed --
+`suite_render.cpp` records a `QGraphicsView` coming out as 42 glyphs,
+every one its own empty `QFrame` border, so an unsupported widget was
+indistinguishable from a bug. What the row did not say is how many kinds
+the code actually recognises: the document named three and
+`unsupported_class()` listed **seven**, of which the suite exercises
+exactly one, `QGraphicsView` being the only one linkable here.
+
+Six strings nothing has ever matched are worth checking rather than
+trusting, and the cheap check is not a fixture but the names themselves
+-- a name Qt does not use is a dead branch however good the matching is.
+Measured against the installed Qt 6 headers: **all of them exist**, with
+`QAxWidget` absent only because ActiveQt is Windows-only, where it is a
+real `QWidget`, so it stays.
+
+**One was dead for a reason no spelling check would find.** `QQuickView`
+derives from `QWindow`, and both callers hand `unsupported_class()` a
+`QWidget` -- the object being painted, and its `parentWidget()` chain --
+so no object reaching it can carry `QQuickView` anywhere in its
+metaObject chain, the two hierarchies being disjoint. `QQuickWidget` is
+the reachable form of the same thing and was already listed. Removed,
+with the reason in the comment, and §8.4's row now names the six the code
+recognises rather than three of them. **A list that overstates what it
+covers is the same fault as the placeholder that never drew**: a reader
+cannot tell a case that is handled from one that cannot arise.
+
+2521 checks.

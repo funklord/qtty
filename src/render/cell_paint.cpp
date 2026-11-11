@@ -63,9 +63,19 @@ CellPaintDevice::~CellPaintDevice() { s_active = outer_; delete eng_; }
 // with OpenGL or into a scene issues no primitive this engine ever sees. The
 // walk is up the metaObject chain so an application's own subclass of one of
 // these is recognised too, which is how they are actually used.
+//
+// QQuickView WAS in this list and could never match. It derives from QWindow,
+// and both callers hand this a QWidget -- the object being painted, and its
+// parentWidget() chain -- so no object reaching here can carry it anywhere in
+// its metaObject chain, QWindow and QWidget being disjoint hierarchies.
+// QQuickWidget is the reachable form of the same thing and is listed.
+//
+// The six that remain were checked against the installed Qt headers on
+// 2026-11-11 and all exist. QAxWidget has no header on this machine because
+// ActiveQt is Windows-only; it is a real QWidget there, so it stays.
 static const char *unsupported_class(const QObject *o) {
 	static const char *const names[] = {
-		"QGraphicsView", "QOpenGLWidget", "QQuickWidget", "QQuickView",
+		"QGraphicsView", "QOpenGLWidget", "QQuickWidget",
 		"QWebEngineView", "QVideoWidget", "QAxWidget",
 	};
 	for (const QMetaObject *m = o->metaObject(); m; m = m->superClass())
