@@ -61184,3 +61184,86 @@ arms are current and seven keep yesterday's tree** -- `test-consume`,
 fixtures over code today did not touch; the seventh is the one weighed
 above. Counted rather than asserted, this paragraph having first said
 nine.
+
+### 8.756 A second goal-gap walk, through the three sections the first one skipped (2026-11-11)
+
+**The first walk took section 2's goals and section 8.4's matrix and
+stopped. This one reads 11, 13 and 14** -- the budget, the risks and the
+open questions -- because a roadmap's unserved half hides in its risk
+table as readily as in its goal list.
+
+**Section 11's two checkable promises both hold.** "Budget enforced by a
+benchmark test on a 200x60 grid with a 5000-row table" is
+`suite_budget.cpp`, whose first line says so. "Emit DEC 2026
+synchronised-output brackets when available" is emitted: `present()`
+writes `\033[?2026h` at the head of a frame and `kLeave` carries
+`?2026l`, both gated on the terminal having confirmed the mode.
+
+**But the comment that says so contradicted itself, and the stale half
+was the one a reader would believe.** Above
+`c.synchronised_output = sync_frames()` stood:
+
+    // DEC 2026 is NOT claimed. section 11 wants synchronised output to
+    // eliminate tearing, and nothing emits the brackets yet; ...
+    // DEC 2026, and the field still means "qtty uses synchronised
+    // output" ... it is true because present() brackets its frames
+
+Two claims, opposite, adjacent -- and the second opens **mid-sentence**,
+which is the tell: it was written to replace the first, the first was
+left in place, and the replacement's opening went with the edit. So the
+paragraph answered *is this implemented?* with "not yet" directly above
+the sentence saying it is. Repaired, and the history kept in the comment
+rather than silently dropped, because the wrong word was on the one
+question a reader comes to that line with.
+
+**Section 13's two startup mitigations: one implemented, one
+unnecessary, and the second took measuring to tell apart from missing.**
+
+- **R3**, font metrics not integral, is served and its history is in
+  `grid.h`: the originally stated assert was compiled out in release, so
+  `grid_font_problem()` refuses instead and there is no way round it.
+- **R2b** names two halves, "CI matrix Qt 5.15/6.x" and "vendor-check
+  the plugin's presence at startup". The first is `test-versions`. **The
+  second is not implemented**, and `prepare_environment()` does
+  `qputenv("QT_QPA_PLATFORM", platform)` with no check -- so on a build
+  without the plugin, Qt aborts in `QApplication`'s constructor with its
+  generic "no Qt platform plugin could be initialized", naming neither
+  qtty nor what to install.
+
+  **Measured before writing the check: on this distribution the
+  offscreen plugin ships inside `libqt6gui6`** --
+  `dpkg -S .../platforms/libqoffscreen.so` -- the same package as QtGui,
+  and `libqminimal.so` beside it. A build that links Qt6Gui therefore
+  has both by construction, and the failure R2b's second half guards
+  cannot occur here. So that half is **unnecessary rather than missing**
+  on this target, which is a thing to decide rather than a gap to fill,
+  and it would matter again on a distribution that splits the QPA
+  plugins into their own package.
+
+  That is `working-practice.md`'s *measure the feared cost before
+  deliberating* pointed at a mitigation rather than a decision: the
+  check was a quarter-hour's work and the measurement that showed it
+  pointless was two commands.
+
+**Section 14 has one item whose next step was doable from here, and it
+is now taken.** OQ-1 and OQ-2 are closed, OQ-3 is answered and
+continuously demonstrated, OQ-5 is 0b's reserved accessibility question.
+**OQ-4** -- *"do any of the four products need the TUI where QtWidgets
+cannot be linked (embedded, serial console)?"* -- says in as many words
+that it became addressable once the products were named, and that the
+measurement narrowed it to two. It cannot be answered from this tree and
+it had not been asked.
+
+Asked, 2026-11-11: `.git/cc-inbox/20261111T0141Z-claude.md` in both
+netcfgd and fuzzypickles, with the concrete form of the question (an
+embedded target, a serial console, a recovery or initrd environment, a
+container built without Qt), a note that a plain no closes it for their
+tree, and a note that what happens to Phase 4 is the holder's rather
+than mine. **Named here rather than asserted as an act**, per
+`harmonization.md`: "signalled rather than made" leaves no artifact and
+a filename does.
+
+**Nothing else in 11, 13 or 14 names something a user cannot yet do.**
+R1 and R6 are Phase 0 and Phase 2 triggers long past, R4 is a review
+rule, R5's trigger is a Channel B share no screen here reaches, and
+13.3's platform scope is 0b's reserved question.

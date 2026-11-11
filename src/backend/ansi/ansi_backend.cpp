@@ -355,13 +355,21 @@ Capabilities AnsiBackend::capabilities() const {
 	c.bracketed_paste = tty_out_ && mode_usable(caps_, 2004, raw_ok_);
 	c.unicode_wide = true;                           // L2 measures width itself
 
-	// DEC 2026 is NOT claimed. section 11 wants synchronised output to
-	// eliminate tearing, and nothing emits the brackets yet; saying true here
-	// would be a field describing an intention rather than the backend.
-	// DEC 2026, and the field still means "qtty uses synchronised output"
-	// rather than "the terminal has it" -- it is true because present()
-	// brackets its frames, and it is only true when the terminal confirmed
-	// the mode.
+	// Section 11 wants synchronised output to eliminate tearing, and
+	// present() brackets its frames with it -- `\033[?2026h` at the head
+	// and `?2026l` in kLeave. So this field is claimed, and it still means
+	// "qtty uses synchronised output" rather than "the terminal has it":
+	// it is true because present() emits the brackets, and only when the
+	// terminal confirmed the mode.
+	//
+	// This comment said the opposite until 2026-11-11 -- "DEC 2026 is NOT
+	// claimed ... nothing emits the brackets yet" -- directly above the
+	// sentence saying it is true because present() brackets its frames,
+	// the second having been written to replace the first and the first
+	// left in place with the replacement's opening lost. Recorded rather
+	// than quietly corrected because the stale half answered "is this
+	// implemented?" with the wrong word, which is the one question a
+	// reader comes to this line with.
 	//
 	// CONFIRMED ONLY, with the assumption false, which is the opposite
 	// default to mouse and paste above and deliberately so. Those two are
