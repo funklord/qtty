@@ -81,6 +81,78 @@ public:
 
 int suite_widgets() {
 	fails = 0;
+	// A FIXED-WIDTH TABLE LOSES QT'S SEPARATORS AS SOON AS IT HAS AN
+	// EMPTY ROW, AND GAINS A RULE WHERE EACH ONE IS.
+	//
+	// polish() takes a table's grid over only where there is drift to fix
+	// -- a ResizeToContents column, whose width comes from
+	// sizeHintForColumn() and so carries Qt's one grid pixel. A table whose
+	// widths the application set is deliberately left alone, and the reason
+	// recorded there is that taking it over "would cost it Qt's separators
+	// while grid_sep_cells() declines to draw ours: a loss on both sides
+	// for a defect it does not have".
+	//
+	// Measured, that premise holds only while every row is populated. One
+	// variable, the row count, on a table with items in row 0 and nothing
+	// else changed:
+	//
+	//     1 row     | a       | b       |     Qt's separators, as claimed
+	//     3 rows    | a         b             no separator at all
+	//               |--------------------     and a rule where row 1 is
+	//               |--------------------     and another for row 2
+	//
+	// Both have showGrid() true and neither carries `_qtty_grid`, so this
+	// is Qt's own grid on a table qtty deliberately did not touch -- not a
+	// separator qtty failed to draw. That property is ASSERTED already,
+	// by "the grid is taken over only where a column's width comes from
+	// this style", with a sabotage entry of its own, so this block adds no
+	// check of it: the measurement is what is new here, not the property. Turning showGrid off removes the rules
+	// and the separators together, which is the control: with it off, row 0
+	// reads `a         b` and rows 1 and 2 are blank.
+	//
+	// So a fixed-width table gets Qt's separators or stray horizontal
+	// rules depending on whether anything has filled its rows, and an
+	// unpopulated table -- a model not yet loaded, a QTableWidget given a
+	// rowCount before its items -- shows a rule per empty row. On a
+	// character grid that reads as a stray rule, which is the shape
+	// netcfgd reported from a real window.
+	//
+	// REPORTED, NOT ASSERTED, and not fixed: what a table's borders become
+	// on a cell grid is one of the four questions 0b carries as a single
+	// decision, and this is a measurement against it rather than a new
+	// question. 8.751.
+	{
+		for (int rows : {1, 3}) {
+			QWidget win;
+			auto *v = new QVBoxLayout(&win);
+			auto *t = new QTableWidget(rows, 2, &win);
+			t->setHorizontalHeaderLabels({QStringLiteral("key"),
+			                              QStringLiteral("value")});
+			t->verticalHeader()->hide();
+			t->setItem(0, 0, new QTableWidgetItem(QStringLiteral("a")));
+			t->setItem(0, 1, new QTableWidgetItem(QStringLiteral("b")));
+			v->addWidget(t);
+			show(win, 40, 8);
+			CellBuffer b(40, 8);
+			render_once(win, b);
+			const QStringList out = b.to_text().split(QLatin1Char('\n'));
+			int seps = 0, rules = 0;
+			for (const QString &line : out) {
+				if (line.contains(QStringLiteral("a"))
+				    && line.contains(QStringLiteral("b")))
+					seps = line.count(QStringLiteral("\u2502")) - 2;
+				if (line.count(QStringLiteral("\u2500")) > 10
+				    && !line.contains(QStringLiteral("\u250c"))
+				    && !line.contains(QStringLiteral("\u2514")))
+					++rules;
+			}
+			printf("info: a %d-row fixed-width table draws %d separator(s) "
+			       "in its populated row and %d rule(s) elsewhere; "
+			       "showGrid %s, taken over %s\n",
+			       rows, seps, rules, t->showGrid() ? "on" : "off",
+			       t->property("_qtty_grid").isValid() ? "yes" : "no");
+		}
+	}
 	// A FRAME SHOWN BEFORE IT IS LAID OUT CACHES A TEN-PIXEL INSET AND
 	// KEEPS IT. The same class as 8.747 on a second consumer: QFrame
 	// computes four frame widths from SE_ShapedFrameContents in

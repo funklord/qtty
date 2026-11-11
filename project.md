@@ -60808,3 +60808,66 @@ concurrency and the load, and never the one thing that mattered.
 **No count in this document is affected.** `count-check` counts the skips
 back in (8.370), so it agreed at 2519 on every gate run of this change,
 and a genuine failure would have reddened `make check` regardless.
+
+### 8.751 A fixed-width table's separators depend on whether anything filled its rows (2026-11-10)
+
+**Found by the run's own lens -- render a shape a real application
+builds, and read it.** A `QMainWindow` with a toolbar, a `QTableWidget`
+and a status bar came out with a horizontal rule where its first data
+row should be, and the table's header separators missing.
+
+**Narrowed to one variable, the row count**, on a fixed-width table with
+items in row 0 and nothing else changed:
+
+    1 row     | a       | b       |     Qt's separators
+    3 rows    | a         b             no separator at all
+              |--------------------     a rule where row 1 is
+              |--------------------     and another for row 2
+
+Counted by the suite on every run as an `info:` line: **2 separators and
+0 rules at one row, 0 separators and 2 rules at three.** No check is
+added -- the one property worth asserting here, that this style leaves
+such a table's grid alone, is already asserted by "the grid is taken
+over only where a column's width comes from this style" and carries its
+own sabotage entry. A second check of it would inflate the count without
+adding cover.
+
+**It is Qt's grid, on a table this style deliberately did not touch.**
+Both tables report `showGrid()` true and neither carries the
+`_qtty_grid` property, so `polish()` correctly left them alone -- that
+much is asserted rather than described. The control is `setShowGrid`:
+with the grid off, the rules and the separators go together, row 0
+reading `a         b` and rows 1 and 2 blank.
+
+**What it falsifies is the premise of a deliberate decision, not the
+decision.** `polish()` takes a table's grid over only where there is
+drift to fix -- a `ResizeToContents` column, whose width comes from
+`sizeHintForColumn()` and carries Qt's one grid pixel, measured at 31
+pixels against a 10-pixel cell. A table whose widths the application set
+is left alone, and the reason recorded there is that taking it over
+*"would cost it Qt's separators while `grid_sep_cells()` declines to
+draw ours: a loss on both sides for a defect it does not have"*.
+
+Measured, **that premise holds only while every row is populated.** An
+unpopulated fixed-width table -- a model not yet loaded, a
+`QTableWidget` given a `rowCount` before its items, which is an entirely
+ordinary transient state -- has no separators at all and a rule per
+empty row. So the configuration the decision protects is one where Qt's
+separators are sometimes absent and stray rules sometimes present, which
+is not the "loss on both sides" the comment weighs against.
+
+**Reported, not fixed, and deliberately not raised as a new question.**
+What a table's borders become on a character grid is one of the four
+rows 0b carries as a SINGLE decision -- "what does a small drawn MARK
+become on a character grid: a glyph, a block, or the ground it is
+standing on?" -- and this is a measurement against that row rather than
+a new one. `working-practice.md` asks for exactly that check before
+deferring something: the project had already decided to decide this
+together, under a name that does not mention tables.
+
+**The mechanism is not established and I am not claiming one.** Why the
+populated row's separators vanish when empty rows exist below it is
+unexplained: whatever paints an empty row's rule appears to take the
+separator column with it across the whole table, which is a drawing
+order I have not traced. The reproduction is in the suite so the next
+reader starts from a fixture rather than from this paragraph.
