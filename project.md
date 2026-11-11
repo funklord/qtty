@@ -60888,8 +60888,30 @@ parameter stays used and the omission is the whole change:
     ok -- reddened: a moved overlay damages where it was as well as
                     where it is
 
-Chosen from the 140 checks in `suite_graphics.cpp` that no entry names,
-graphics being the thinnest-covered suite.
+**A second entry, and a technique the spec needed.** A cell the image
+covers in its top half takes the upper half block and keeps the
+background behind the uncovered half; the bottom-covered cell takes the
+lower one. Swapping the two leaves every cell painted and every colour
+right, so only a check that reads the GLYPH says so -- and the fixture
+puts the image's edge inside a cell in both directions, which an earlier
+version of it got wrong by painting the top half and covering cell row 0
+entirely.
+
+That entry had to name two non-ASCII glyphs, and **the spec is
+byte-checked for ASCII like every other file here**, so a raw glyph in
+it is a style violation. The answer is TOML's own `\uXXXX` escape: the
+file holds six ASCII characters, `tomllib` decodes them to the glyph,
+and both gates pass -- 100 files ASCII-clean and 831 anchors matching.
+Worth writing down because the obvious two attempts fail in opposite
+directions: a pasted glyph breaks the style gate, and escaping the
+backslash as well (`\u005cu2580`) gives a find string that is the text
+`\u2580` and matches nothing, which `--validate` catches as an
+undefendable entry rather than as a typo.
+
+Both chosen from the 140 checks in `suite_graphics.cpp` that no entry
+names, graphics being the thinnest-covered suite. Each was verified with
+`--only`, which is what the mode exists for, and the half-block one
+reddens three checks in all -- its own and two by collateral.
 
 **THEN THE HARNESS OVERWROTE THE 8.1-HOUR SWEEP'S RECORD WITH A
 40-SECOND RUN'S, AND I DID IT BY RUNNING IT.** `sabotage.py` writes

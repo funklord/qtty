@@ -9358,3 +9358,19 @@ find = "\tfor (const QRect &r : was) out += r;"
 into = "\tfor (const QRect &r : now) out += r;"
 count = 1
 check = "a moved overlay damages where it was as well as where it is"
+
+# THE TWO HALF BLOCKS SWAPPED. A cell the image covers in its top half takes
+# the upper half block and keeps the background behind the uncovered half; the
+# bottom-covered cell takes the lower one. Swapping them leaves every cell
+# painted and every colour right, so only a check that reads the GLYPH says
+# so -- the fixture paints the image's first two rows and its last two, which
+# puts the edge inside a cell in both directions. The glyphs are written as
+# TOML \u escapes to keep this file ASCII, which its own style gate requires.
+# 8.752.
+[[sabotage]]
+name = "the upper and lower half blocks are swapped"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tcell.ch = top_half ? QStringLiteral(\"\u2580\") : QStringLiteral(\"\u2584\");"
+into = "\t\t\t\tcell.ch = top_half ? QStringLiteral(\"\u2584\") : QStringLiteral(\"\u2580\");"
+count = 1
+check = "a half-covered cell takes the block of the covered half"
