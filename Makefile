@@ -2194,6 +2194,7 @@ hooks:
 		echo "       install to." >&2; \
 		exit 1; \
 	fi; \
+	set -e; \
 	mkdir -p "$$dir/hooks"; \
 	install -m 0755 tool/hooks/commit-msg "$$dir/hooks/commit-msg"; \
 	install -m 0755 tool/hooks/pre-commit "$$dir/hooks/pre-commit"; \
