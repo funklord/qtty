@@ -822,6 +822,48 @@ static QString no_font_at_all(const QFont &font) {
 	       .arg(font.family()).arg(QFontDatabase().families().size());
 }
 
+// WHICH FAMILIES WOULD ACTUALLY WORK, because "set QTTY_FONT to a
+// fixed-pitch font" is advice a reader cannot act on without guessing.
+// 8.764 gave the refusal its two levers and left the obvious next question
+// unanswered: WHICH font. On a desktop the answer is "almost any mono
+// family"; on a minimal container or an embedded image it may be one or
+// none, and finding out meant one process start per guess.
+//
+// So this asks the only question that decides it -- would
+// grid_font_problem() accept this family at this size -- rather than
+// guessing from a name. A family called "... Mono" may have fractional
+// metrics at the size in use, and one that is not called Mono may not.
+//
+// At the SIZE IN USE, not a nominal one: integrality is a property of the
+// pair, which is why 8.762's guard is on the metrics rather than the ratio.
+//
+// Capped, because a desktop answers with dozens and a fatal message is the
+// process's last words rather than a catalogue. Ordered as the database
+// reports, which is alphabetical here and is at least stable.
+//
+// Public because an application can use it for more than this message: a
+// font picker that lists only families the grid can lay is strictly better
+// than one that offers every family and refuses half of them.
+//
+// `QFontDatabase().families()` through an instance, which is the spelling
+// no_font_at_all() above explains at length -- the static does not exist on
+// Qt 5 and the constructor is deprecated on Qt 6, and choosing between them
+// would settle a reserved question to quiet a warning.
+QStringList grid_font_candidates(int pixels, int limit) {
+	QStringList out;
+	const int size = pixels > 0 ? pixels : 16;
+	const QStringList families = QFontDatabase().families();
+	for (const QString &family : families) {
+		QFont f(family);
+		f.setPixelSize(size);
+		f.setHintingPreference(QFont::PreferFullHinting);
+		if (!grid_font_problem(f).isEmpty()) continue;
+		out.append(family);
+		if (limit > 0 && out.size() >= limit) break;
+	}
+	return out;
+}
+
 QString grid_font_substitution(const QFont &font) {
 	const QFontInfo info(font);
 	if (info.family().compare(font.family(), Qt::CaseInsensitive) == 0)

@@ -4939,6 +4939,35 @@ int suite_runtime() {
 			      "the startup font refusal names the two levers that"
 			      " change it, a fatal that cannot be acted on being the"
 			      " one message a deployment is sure to meet");
+			// AND WHICH FAMILIES, which is the half the levers leave to
+			// guesswork. Either form is a real answer: a list of families
+			// that pass at the size in use, or the statement that none on
+			// this machine does -- the second being what a minimal image
+			// says, and the one that sends somebody to install a font
+			// rather than to try names.
+			CHECK(err.contains("these pass:")
+			      || err.contains("no family on this machine"),
+			      "and says which families would work, or that none here"
+			      " would, so the advice names fonts rather than a search");
+		}
+		// AND THE FUNCTION ASKED DIRECTLY, because the message check above
+		// accepts EITHER form -- a list or "none here" -- and so cannot
+		// fail for a candidate list that is always empty. That is
+		// evidence.md's check whose pass includes the failure, and it is
+		// mine: the either-or is right for the message, which must cope
+		// with a machine that has no usable font, and wrong as the only
+		// assertion. This one cannot be satisfied by returning nothing.
+		{
+			const QFont in_use = grid_font_request();
+			const QStringList all =
+			    grid_font_candidates(in_use.pixelSize(), 0);
+			printf("info: %lld famil(y/ies) pass at %d px, and the grid is"
+			       " laid on '%s'\n", (long long)all.size(),
+			       in_use.pixelSize(), qPrintable(in_use.family()));
+			CHECK(all.contains(in_use.family()),
+			      "and the family the grid is actually laid on is among"
+			      " the ones it names, which no check on the message's"
+			      " wording could show");
 		}
 	}
 

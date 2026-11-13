@@ -3,6 +3,7 @@
 #include <QProxyStyle>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QIcon>
 #include <QRect>
 #include <QSize>
@@ -43,6 +44,14 @@ public:
 // integrality and compiled out in release -- so R3's stated mitigation was
 // not in place in any shipping build.
 QString grid_font_problem(const QFont &font);
+
+// The families on this machine that grid_font_problem() would accept at
+// `pixels`, at most `limit` of them (0 for no cap). Empty means none would,
+// which is a real answer and the one a minimal image gives. Asked by the
+// startup refusal so that its advice names fonts rather than a search, and
+// public because a font picker that offers only usable families is better
+// than one that offers every family and refuses half.
+QStringList grid_font_candidates(int pixels, int limit = 0);
 
 // The font setup() will install: DejaVu Sans Mono at 16 pixels unless
 // something says otherwise, with full hinting asked for either way -- that

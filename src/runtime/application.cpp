@@ -819,10 +819,21 @@ void setup(QApplication &app) {
 	// called it, and sending a reader there would be sending them to
 	// something that is not wrong.
 	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
+		// AND WHICH FONTS, because the two levers above still left the
+		// reader to guess a family. Asked at the size in use, since
+		// integrality is a property of the pair. Six is a sentence rather
+		// than a catalogue, and an empty answer is the real one a minimal
+		// image gives -- worth saying plainly, because "no family here
+		// works" sends somebody to install one instead of trying names.
+		const QStringList ok = grid_font_candidates(f.pixelSize(), 6);
+		const QString advice = ok.isEmpty()
+		    ? QStringLiteral("no family on this machine passes that test")
+		    : QStringLiteral("these pass: %1")
+		          .arg(ok.join(QStringLiteral(", ")));
 		qFatal("qtty: the grid needs a font with integral metrics: %s"
 		       " -- set QTTY_FONT to a fixed-pitch font, or call"
-		       " Qtty::set_font()",
-		       qPrintable(problem));
+		       " Qtty::set_font(); %s",
+		       qPrintable(problem), qPrintable(advice));
 	}
 
 	// The fifth ambient lever, and it is read from the user's desktop rather

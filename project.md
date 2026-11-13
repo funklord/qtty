@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2528 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2530 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -61725,3 +61725,61 @@ because they are what a remedy looks like when it is not a lever:
 
 So the fatal was the only one, and the lens is closed rather than
 abandoned. 2528 checks, 835 entries.
+
+### 8.765 The advice named levers and left the reader guessing a family (2026-11-13)
+
+**Asked as a USER rather than as a reader of the design, which is what
+the goal-gap walk had not been doing.** 8.764 gave the startup refusal
+its two levers -- `QTTY_FONT` and `Qtty::set_font()`. A user reads that
+and asks *which font*. On a desktop the answer is "almost any mono
+family"; on a minimal container or an embedded image it may be one or
+none, and finding out meant one process start per guess.
+
+**qtty already held everything needed to answer**: the font database,
+and `grid_font_problem()`, which is the only thing that decides. So
+`grid_font_candidates(pixels, limit)` asks the deciding question of every
+family rather than guessing from a name -- a family called "... Mono" may
+have fractional metrics at the size in use, and one that is not called
+Mono may not. **At the size in use**, because integrality is a property
+of the pair, which is 8.762's point about the guard being on the metrics
+rather than the ratio.
+
+The refusal now reads, measured:
+
+    qtty: the grid needs a font with integral metrics: 'DejaVu Sans'
+    resolved to 'DejaVu Sans', which is not fixed pitch -- set QTTY_FONT
+    to a fixed-pitch font, or call Qtty::set_font(); these pass: Agave,
+    Amiga, Bitstream Vera Sans Mono, C-64, Courier, Courier 10 Pitch
+
+Capped at six, because a fatal is the process's last words rather than a
+catalogue -- 101 families pass here. And an empty answer is stated
+plainly as "no family on this machine passes that test", which is the
+real answer a minimal image gives and the one that sends somebody to
+install a font instead of trying names.
+
+**Public, because the message is not its only use.** A font picker that
+offers only families the grid can lay is strictly better than one that
+offers every family and refuses half of them.
+
+**AND I WROTE A CHECK WHOSE PASS INCLUDED THE FAILURE, THEN FIXED IT.**
+The first assertion read `err.contains("these pass:") ||
+err.contains("no family on this machine")` -- either form being a real
+answer, which is right for the MESSAGE, because it must cope with a
+machine that has no usable font. As the only assertion it is worthless:
+a `grid_font_candidates()` that always returned nothing satisfies it.
+That is `evidence.md`'s own trap, committed by me while adding a check.
+
+So the function is asked directly as well: the family the grid is
+actually laid on must be among the ones it names. That cannot be
+satisfied by returning nothing, and the sabotage is sharper than an
+empty list -- it **inverts** the filter, so the refusal names six
+families that would also be refused. The message still reads as an
+answer, the wording check still passes, and only the direct assertion
+catches it. Two entries, each reddening the check it names. 2530 checks,
+836 entries.
+
+**The transferable part is how this was found.** Three runs of goal-gap
+walking read design.md section by section and asked what the document
+claimed. This came from asking what somebody holding the error message
+does next -- and the gap was one sentence past where the previous run
+stopped, in work I had finished an hour earlier and called complete.

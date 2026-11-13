@@ -9430,7 +9430,20 @@ check = "redraw() retires EVERY live overlay"
 [[sabotage]]
 name = "the font refusal stops saying how to recover"
 file = "src/runtime/application.cpp"
-find = "\t\t       \" -- set QTTY_FONT to a fixed-pitch font, or call\"\n\t\t       \" Qtty::set_font()\","
-into = "\t\t       \"\","
+find = "\t\t       \" -- set QTTY_FONT to a fixed-pitch font, or call\"\n\t\t       \" Qtty::set_font(); %s\","
+into = "\t\t       \"%s\","
 count = 1
 check = "the startup font refusal names the two levers that change it"
+
+# THE CANDIDATE LIST INVERTED, so the refusal names families that would ALSO
+# be refused. Worse than an empty list, because the message still reads as an
+# answer: "these pass: <six families that do not>". The wording check cannot
+# catch it -- it accepts any list -- which is why grid_font_candidates() is
+# also asserted directly against the family the grid is laid on. 8.765.
+[[sabotage]]
+name = "the font candidates are the ones that would be refused"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (!grid_font_problem(f).isEmpty()) continue;"
+into = "\t\tif (grid_font_problem(f).isEmpty()) continue;"
+count = 1
+check = "and the family the grid is actually laid on is among the ones it names"
