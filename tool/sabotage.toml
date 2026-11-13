@@ -9459,3 +9459,47 @@ find = "\t\tif (limit > 0 && out.size() >= limit) break;"
 into = "\t\tif (limit < 0 && out.size() >= limit) break;"
 count = 1
 check = "and the limit binds, so the refusal names a few families"
+
+# P2 FLIPPED IN THE SIXEL HEADER, so untouched pixels become the background
+# colour instead of staying transparent. Sixel's P2=1 is the whole of how an
+# image with alpha sits on a terminal without a box around it -- the halo the
+# half-block tier's own comment worries about, "guessing black on a light
+# terminal haloes every icon", arriving by the pixel route. The stream still
+# parses and every opaque pixel is still right, so only a check that reads the
+# UNPAINTED pixels says so. 8.766.
+[[sabotage]]
+name = "the sixel header says untouched pixels are background"
+file = "src/graphics/graphics.cpp"
+find = "QByteArray out = \"\\033P0;1;0q\";"
+into = "QByteArray out = \"\\033P0;0;0q\";"
+count = 1
+check = "sixel round-trip: transparent source pixels stay unpainted"
+
+# THE KITTY CONTINUATION FLAG INVERTED, so a chunked upload tells the terminal
+# the stream ends at the first chunk and continues past the last. Every image
+# over 4096 payload bytes is then either truncated or left waiting, which is
+# every photograph and every sticker of any size -- and the bytes still look
+# well formed, so only a check that reads m= across the chunk boundary says
+# so. 8.766.
+[[sabotage]]
+name = "a chunked kitty upload inverts m= on every chunk"
+file = "src/graphics/graphics.cpp"
+find = "\t\telse out += QByteArray(\"m=\") + (last ? \"0\" : \"1\");"
+into = "\t\telse out += QByteArray(\"m=\") + (last ? \"1\" : \"0\");"
+count = 1
+check = "payload > 4096 chunks with m=1/m=0"
+
+# A BAND'S LAST ROW DROPPED FROM THE COLOUR-PRESENCE SCAN. Sixel paints six
+# rows at a time, and a colour is emitted for a band only if the scan finds it
+# there. Scanning five rows of six means a colour whose only pixels are on the
+# band's last row is judged absent and never written -- so a stripe on row 5
+# or row 11 vanishes while everything away from a boundary is perfect. The
+# stream still parses, the raster attributes are still right, and only a check
+# that puts content ON the boundary says so. 8.766.
+[[sabotage]]
+name = "the sixel colour scan misses each band's last row"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tfor (int y = band; y < qMin(band + 6, h) && !present; ++y)"
+into = "\t\t\tfor (int y = band; y < qMin(band + 5, h) && !present; ++y)"
+count = 1
+check = "sixel round-trip: band-boundary stripes stay on rows 5 and 6"

@@ -420,8 +420,47 @@ int suite_graphics() {
 		CHECK(k.contains("a=T") && k.contains("f=32") && k.contains("i=7"),
 		      "kitty transmit-and-display control keys");
 		CHECK(k.contains("s=64") && k.contains("v=64"), "kitty dimensions");
-		CHECK(k.contains(",m=1") && k.contains("m=0"),
-		      "payload > 4096 chunks with m=1/m=0");
+		// THE CHUNK FLAGS ARE A SEQUENCE AND `contains` CANNOT READ ONE.
+		// This check was `k.contains(",m=1") && k.contains("m=0")`, and
+		// the sabotage that inverts the flag on every chunk -- last says
+		// m=1, the rest m=0 -- left it GREEN: both substrings are still
+		// somewhere in the stream, in exactly the wrong places. The
+		// harness reported "the named check PASSED against broken code",
+		// which is what it is for.
+		//
+		// What matters is positional: kitty reads m=1 as "more follows"
+		// and m=0 as "that was the last", so every chunk but the final one
+		// must say m=1 and the final one m=0. Inverted, a terminal stops
+		// after the first chunk and waits for ever after the last, which
+		// is every image over 4096 payload bytes -- every photograph and
+		// every sticker of any size -- and the bytes still look well
+		// formed.
+		//
+		// Read by splitting on the APC introducer, since each chunk is
+		// `ESC _ G <keys> ; <payload> ESC \`. The head before the first
+		// introducer is empty and dropped.
+		// QByteArray::split takes a CHAR, so the introducer is found by
+		// splitting on the escape byte and keeping the pieces that open
+		// with `_G`. The terminator's piece opens with a backslash and is
+		// dropped by the same test.
+		QList<QByteArray> chunks;
+		for (const QByteArray &piece : k.split('\033'))
+			if (piece.startsWith("_G")) chunks.append(piece.mid(2));
+		int wrong_flag = 0;
+		for (int i = 0; i < chunks.size(); ++i) {
+			const int semi = chunks.at(i).indexOf(';');
+			const QByteArray keys = semi < 0 ? chunks.at(i)
+			                                 : chunks.at(i).left(semi);
+			const bool last = i + 1 == chunks.size();
+			if (last ? !keys.contains("m=0") : !keys.contains("m=1"))
+				++wrong_flag;
+		}
+		printf("info: the kitty upload is %lld chunk(s), %d with the wrong"
+		       " m= flag\n", (long long)chunks.size(), wrong_flag);
+		CHECK(chunks.size() > 1 && wrong_flag == 0,
+		      "payload > 4096 chunks with m=1/m=0, in that ORDER -- every"
+		      " chunk but the last saying more follows, which `contains`"
+		      " cannot tell from the reverse");
 		QByteArray place = kitty_place(7);
 		CHECK(place.size() < 40 && place.contains("a=p") && place.contains("i=7"),
 		      "re-place by id is ~30 bytes (upload-once)");

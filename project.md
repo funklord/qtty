@@ -61807,3 +61807,81 @@ message does next -- and both gaps were one sentence past where the
 previous step stopped, in work finished minutes earlier and called
 complete. **The question that pays is not "what does the document say"
 but "what does the person do now".**
+
+### 8.766 A sabotage that failed, and the weak check it was pointed at (2026-11-13)
+
+**The harness did the thing it exists for, and the finding is the check
+rather than the code.** An instalment of sabotage cover, in the suite
+with the most checks no entry names. Two entries written; the second
+came back:
+
+    FAILED: the named check PASSED against broken code.
+
+**The break.** `encode_kitty_image()` chunks a payload over 4096 bytes
+and flags each chunk: kitty reads `m=1` as "more follows" and `m=0` as
+"that was the last". The sabotage inverts it -- the final chunk says
+`m=1` and the rest `m=0` -- so a terminal stops after the first chunk
+and waits for ever after the last. That is every image over 4096 payload
+bytes: every photograph, every sticker of any size.
+
+**The check that missed it** was named "payload > 4096 chunks with
+m=1/m=0" and read:
+
+    CHECK(k.contains(",m=1") && k.contains("m=0"), ...)
+
+Both substrings are still somewhere in the inverted stream, in exactly
+the wrong places. **`contains` cannot read a sequence**, and the property
+here is positional -- which chunk carries which flag -- so a name
+promising "m=1/m=0" was promising more than the assertion could deliver.
+`evidence.md`'s *a name that claims exhaustiveness*, in a check nothing
+had ever been able to falsify because no entry named it.
+
+**Strengthened to read the sequence.** The stream is split on the escape
+byte, the pieces opening `_G` are the chunks -- `QByteArray::split` takes
+a char, so the multi-byte introducer cannot be the separator -- and each
+chunk's keys up to the first `;` are read: every chunk but the last must
+say `m=1`, the last `m=0`. Measured, the 64x64 upload is **6 chunks, 0
+with the wrong flag**, and the sabotage now reddens that check and
+nothing else.
+
+**The other two landed on the first attempt.** The sixel
+header's `P2` says whether untouched pixels are transparent or the
+background colour; `ESC P 0;1;0 q` means transparent, and flipping it to
+`0;0;0` paints a box behind every image with alpha -- the halo the
+half-block tier's own comment worries about, "guessing black on a light
+terminal haloes every icon", arriving by the pixel route. The stream
+still parses and every opaque pixel is still right, so only a check
+reading the UNPAINTED pixels says so. It reddens its own check and 13
+more, which a P2 flip would.
+
+The third is sixel's band arithmetic. The format paints six rows at a
+time and emits a colour for a band only if a scan finds it there;
+scanning five rows of six judges a colour absent when its only pixels
+are on the band's last row, so a stripe on row 5 or row 11 vanishes
+while everything away from a boundary is perfect. The stream still
+parses and the raster attributes are still right. It reddens its own
+check and two more.
+
+**What the pair is worth saying about.** Two entries, two outcomes: one
+confirmed a check, one condemned it. **A sabotage that fails is not a
+wasted entry -- it is the only way a check gets audited**, and this one
+had been green since it was written because nothing could make it red.
+Three entries, 839.
+
+**AND THE OBVIOUS LENS WAS TRIED AND IS THE WRONG INSTRUMENT**, which is
+worth recording so nobody spends the afternoon I nearly did. The shape
+looks sweepable: find checks whose property is ordered but whose
+assertion is `contains`. Swept -- every `CHECK` in the suites using
+`contains`, reading no position, whose text mentions order -- and it
+returns **49**, of which the ones I read are the detector's own
+artifact: `first` and `next` are variable NAMES for two snapshots, and
+`first.contains("alpha") && !first.contains("beta") && next.contains(...)`
+is a before-and-after comparison, which is strong rather than weak.
+
+Deciding the rest needs reading 49 cases and judging, per case, whether
+relative position is the property. **Weakness is not a property of a
+check's text but of what it can distinguish**, so the instrument that
+answers it is the one that found this: write the break and see whether
+the check goes red. A textual sweep suggests; a sabotage proves. The
+general remedy is therefore more entries rather than a cleverer grep --
+which is the instalment work this entry is part of.
