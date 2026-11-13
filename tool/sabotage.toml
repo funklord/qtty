@@ -9663,3 +9663,65 @@ find = "\tQRegion out = cells;"
 into = "\tQRegion out;"
 count = 1
 check = "an overlay that stayed put is still repainted"
+# REVERSE VIDEO PAINTS THE GROUND A COLOUR NEITHER CELL ASKED FOR. The
+# rasterizer swaps fg and bg for a Reverse cell, so the ground it paints is
+# the cell's FOREGROUND colour -- which is what makes a selection readable:
+# the text keeps its own colour against its own ink. Filling with the
+# terminal's default background instead inverts nothing visible on a cell
+# whose colours happen to be the defaults, and on any other cell produces a
+# third colour that neither the fg nor the bg asked for. The glyph is still
+# drawn in the swapped colour, so only a check that reads the GROUND's value
+# sees it.
+[[sabotage]]
+name = "a reverse cell's ground is the terminal default, not the swapped fg"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (c.attrs & Attr::Reverse) std::swap(fg, bg);"
+into = "\t\t\tif (c.attrs & Attr::Reverse) { std::swap(fg, bg); bg = default_bg; }"
+count = 1
+check = "and the ground it gets is the foreground colour the swap moved there"
+
+# THE DAMAGE RECTANGLE IS IGNORED AND EVERYTHING IS REPAINTED. rasterize_into()
+# intersects the caller's rectangle with the frame; taking the whole frame
+# instead paints every cell on every call. The result is always CORRECT -- it
+# is a full render -- so the check that compares an incremental frame against
+# a whole one passes perfectly while the saving is gone. Only the negative
+# half of that pair can see it: given a region that does NOT cover the change,
+# the result must still differ from a whole render, and here it does not. The
+# suite's own comment says this is the implementation it exists to catch.
+[[sabotage]]
+name = "the damage rectangle is ignored and the whole frame repainted"
+file = "src/graphics/graphics.cpp"
+find = "\tQRect r = cells.intersected(QRect(0, 0, frame.cols(), frame.rows()));"
+into = "\tQRect r = QRect(0, 0, frame.cols(), frame.rows());"
+count = 1
+check = "and a region that misses the change does not, so the rectangle"
+
+# A CLIP THAT MISSES THE PLACEMENT FALLS BACK TO THE WHOLE OF IT. The
+# producer's clip narrows the visible rectangle; where the two do not
+# intersect, the placement is wholly hidden and nothing should be drawn.
+# Declining to apply a clip that would empty the rectangle draws the ENTIRE
+# image instead -- the exact failure the check beside this one names, and the
+# worst shape of it: a picture that should be invisible is drawn at full size
+# over whatever is there. Every overlapping clip still behaves perfectly.
+[[sabotage]]
+name = "a clip that misses the placement is declined rather than obeyed"
+file = "src/graphics/graphics.cpp"
+find = "\tif (has_clip) visible = visible.intersected(clip);"
+into = "\tif (has_clip && visible.intersects(clip)) visible = visible.intersected(clip);"
+count = 1
+check = "and a clip that misses the placement entirely draws nothing"
+
+# THE CLIP RECTANGLE IS READ WHEN THE FLAG SAYS THERE IS NO CLIP. has_clip
+# decides whether the rectangle beside it means anything, and a caller that
+# passes no clip passes a default QRect -- which, read as a clip, is empty and
+# hides every placement. So this break does not merely narrow something: it
+# makes every unclipped placement vanish, while every clipped one stays exactly
+# right. The check it reddens is the one that asserts the flag decides and not
+# the shape of the rectangle.
+[[sabotage]]
+name = "the clip rectangle is read although the flag says there is none"
+file = "src/graphics/graphics.cpp"
+find = "\tif (has_clip) visible = visible.intersected(clip);"
+into = "\tvisible = visible.intersected(clip);"
+count = 1
+check = "a placement with has_clip false restricts nothing"

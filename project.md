@@ -62329,3 +62329,57 @@ is decided, which is the remedy the unreachable `continue` in
 `compose_kitty_placeholders()` got for the same reason.
 
 2533 checks, 850 entries.
+
+### 8.773 Four entries where the broken code is still CORRECT (2026-11-13)
+
+**This instalment's lens is the one shape a correctness test cannot
+see: a break whose output is right.** Three of the four produce a frame
+that is pixel-perfect and a protocol stream that is valid; what they
+destroy is the ECONOMY -- the saving a partial repaint exists for, or
+the request a clip exists to narrow -- and in two of them the only
+witness is a check written as the negative half of a pair.
+
+- **The damage rectangle ignored, and the whole frame repainted.**
+  `rasterize_into()` intersects the caller's rectangle with the frame;
+  taking the whole frame paints every cell on every call. The result is
+  a full render, so `a frame repainted over its changed cells equals one
+  rendered whole` passes PERFECTLY -- and its pair, given a region that
+  does not cover the change, must still differ from a whole render and
+  no longer does. The suite's own comment says this is the
+  implementation it exists to catch; the entry proves the comment.
+  It reddens that negative half and the
+  widening check with it, since a whole-frame answer also widens
+  nothing.
+- **A clip that misses the placement, declined rather than obeyed.**
+  Where the producer's clip does not intersect the placement, nothing
+  should be drawn. Skipping the intersection when it would empty the
+  rectangle draws the ENTIRE image instead, at full size, over whatever
+  is there -- and every overlapping clip still behaves exactly right.
+  It reddens its own check and two more,
+  one of them the `0x0` clip case, which is the same refusal reached by
+  a different shape of empty.
+- **The clip rectangle read although the flag says there is none.**
+  `has_clip` decides whether the rectangle beside it means anything, and
+  a caller with no clip passes a default `QRect` -- which, read as a
+  clip, is empty. So this does not narrow a placement, it makes every
+  unclipped one vanish, while every clipped one stays right.
+  It takes **34** other checks with it,
+  which is what "every unclipped placement vanishes" looks like from the
+  suite -- a broad entry, and the breadth is the measurement rather than
+  a fault: it says how much of the placement surface rests on that one
+  flag.
+- **Reverse video grounded in the terminal default.** The rasterizer
+  swaps fg and bg for a Reverse cell, so the ground it paints is the
+  cell's FOREGROUND colour -- which is what makes a selection readable,
+  the text keeping its own colour against its own ink. Filling with the
+  default background instead is invisible on a cell whose colours are
+  the defaults and produces a third colour on any other. The glyph is
+  still drawn in the swapped colour, so only a check reading the
+  GROUND's value sees it. It reddens its own check and the one
+  beside it, which asserts that a reverse cell is rasterised on a
+  DIFFERENT ground from an ordinary one -- the pair being the property
+  and its control.
+
+****Four written, four reddened on the
+first attempt**, after an instalment where one of four could not be
+written at all. 2533 checks, 854 entries.**
