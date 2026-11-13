@@ -5189,17 +5189,21 @@ static void apply_cells(QWidget *w) {
 static void repolish_frame_insets(QWidget *w) {
 	auto *f = qobject_cast<QFrame *>(w);
 	if (!f) return;
-	// A WINDOW IS THE SIZING CONSUMER, AND THAT IS MEASURED. 8.749's second
+	// A POPUP IS THE SIZING CONSUMER, AND THAT IS MEASURED. 8.749's second
 	// option was to tell the caching consumer from the sizing one and
 	// recorded that no way had been found; this is the way. A combo box's
-	// popup container IS a QFrame, and a window: it sizes itself from the
-	// frame rect while unlaid-out, so re-asking the style mid-flight moved
-	// its items -- two checks went red, `an open drop-down draws the items
-	// below the first` and the three-layer modal case, and the fixture this
-	// mechanism exists for is a child inside a layout. So the distinction is
-	// not "which consumer asked" but "is this frame laid out by somebody
-	// else", and a window never is.
-	if (f->isWindow()) return;
+	// popup container IS a QFrame, and it sizes itself from the frame rect
+	// while unlaid-out, so re-asking the style mid-flight moved its items --
+	// two checks went red, `an open drop-down draws the items below the
+	// first` and the three-layer modal case.
+	//
+	// IT IS THE POPUP FAMILY AND NOT EVERY WINDOW, which the first version
+	// of this line got wrong in the safe direction. An ordinary top-level
+	// frame is the CACHING consumer like any child -- and it is reachable,
+	// which is what decided it: in a terminal under three rows tall every
+	// top-level is born under three rows, so growing the terminal would have
+	// left every one of them holding a ten-pixel inset for life. 8.778.
+	if (f->isWindow() && f->windowType() != Qt::Window) return;
 	const int ch = GridMetrics::ch(), cw = GridMetrics::cw();
 	if (ch <= 0 || cw <= 0) return;
 	// THE FALL-THROUGH'S SIGNATURE, not merely "off the grid", and the

@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2533 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2534 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -62586,3 +62586,41 @@ was re-added as a probe, run without `--diff`, and the hint appeared
 under the verdict; the probe was then removed. A message nobody has
 watched print is a message that may not.
 
+
+### 8.778 The fix's exclusion was wider than its reason, in the safe direction (2026-11-13)
+
+**8.771 excluded every window from the frame-inset repolish because the
+combo popup broke.** That was the right call on the evidence and the
+wrong line: what sizes itself from `SE_ShapedFrameContents` while
+unlaid-out is the POPUP family, and an ordinary top-level frame is the
+CACHING consumer, exactly like a child in a layout.
+
+**Reachability is what decided it, and it is not theoretical.** Here a
+top-level window's size IS the terminal's. In a terminal under three
+rows tall every top-level frame is born under three rows -- past both of
+the style's branches, caching the base style's ten-pixel inset -- so
+growing the terminal afterwards left every one of them holding that
+inset for life, which is the whole defect 8.749 found and 8.771 fixed
+for children only.
+
+So the exclusion is the popup family rather than every window:
+`f->isWindow() && f->windowType() != Qt::Window`. A `Qt::Popup` or a
+`Qt::ToolTip` still sizes itself and is still left alone; a plain
+top-level is re-asked like any other frame, and the suite now asserts
+one, born at 40 px and grown to eight rows.
+
+**Measured, and the popup is the control.** `a popup is a whole number
+of rows tall` and the two drop-down checks that the wider version of
+this mechanism broke are green, which is what says the narrowing did
+not reopen them.
+
+**The shape, which this project has written down before in another
+place.** `code-style.md` says of the ASCII rule that *an exception wider
+than its reason is how a rule stops being enforced*. This is the same
+sentence about a FIX: an exclusion wider than its reason is how a fix
+stops fixing. It cost nothing to notice -- the exclusion's own comment
+named the popup as the case -- and the thing that hid it is that the
+wider line is the safe-looking one. "Safe" here meant leaving the defect
+in place for every window a user actually resizes.
+
+2534 checks, 861 entries.

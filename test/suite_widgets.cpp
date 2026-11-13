@@ -293,6 +293,30 @@ int suite_widgets() {
 			      "a frame shape the style does not correct is never"
 			      " re-asked, however often it is resized");
 		}
+
+		// AND A TOP-LEVEL FRAME, which the mechanism's first version
+		// excluded along with every other window. It is the CACHING
+		// consumer like any child -- only the popup family sizes itself
+		// from this rectangle -- and it is reachable: in a terminal under
+		// three rows tall every top-level is born under three rows, so
+		// growing the terminal would leave each one holding a ten-pixel
+		// inset for life. 8.778.
+		{
+			QTableWidget top(1, 1);
+			top.resize(200, 40);
+			top.setAttribute(Qt::WA_DontShowOnScreen);
+			top.show();
+			QCoreApplication::processEvents();
+			top.resize(GridMetrics::cells(40, 8));
+			QCoreApplication::processEvents();
+			const QMargins m = top.contentsMargins();
+			printf("info: a top-level frame born at 40 px caches margins"
+			       " %d,%d,%d,%d and is %d px tall\n",
+			       m.left(), m.top(), m.right(), m.bottom(), top.height());
+			CHECK(m.top() == ch && m.bottom() == ch,
+			      "a top-level frame grown onto the grid insets its"
+			      " viewport by whole rows too");
+		}
 	}
 	// A TITLED GROUP BOX'S CONTENTS MARGINS ARE COMPUTED ONCE, FROM A
 	// WIDGET THAT IS STILL 100x30. QGroupBox asks this style for
