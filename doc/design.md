@@ -401,10 +401,30 @@ if (auto *c = qobject_cast<ICellPainted *>(w))          // works either way
 ```
 
 **Font provisioning.** Layout depends on `QFontMetrics`, so the font must have exactly
-integral metrics: advance == `CW`, height == `CH`. We bundle a monospace font, load it
-with `QFontDatabase::addApplicationFont`, and **assert** the resulting metrics at
+integral metrics: advance == `CW`, height == `CH`. ~~We bundle a monospace font, load it
+with `QFontDatabase::addApplicationFont`,~~ and **assert** the resulting metrics at
 startup rather than assuming them. If the assertion fails on some platform's font
 backend, that is a hard startup error, not a rendering glitch to discover later.
+
+> **No font is bundled, and the code says so where this section did not
+> (corrected 2026-11-13).** `application.cpp` records it: "Bundled-font
+> provisioning (section 5.3) is later Phase-2 work; DejaVu Sans Mono is the interim
+> source of integral metrics, asserted as designed." There is no `.ttf` or `.otf`
+> in the tree. What exists instead:
+>
+> - **the loading machinery**, `QFontDatabase::addApplicationFont` at
+>   `grid_style.cpp:915`, so adopting a bundled font is a file and a call rather
+>   than a mechanism;
+> - **a request chain** -- `grid_font_request()` reads the application's
+>   `set_font()`, then the user's `QTTY_FONT`, then falls back to DejaVu Sans Mono,
+>   which is the default rather than the only answer;
+> - **the assertion**, which is real and is the half this paragraph got right:
+>   `grid_font_problem()` refuses a font whose metrics are not integral.
+>
+> So the limit on G1 is honest and narrow: a screen compiles once and runs as both,
+> wherever a font with integral metrics can be found. What remains is choosing one
+> to ship, which needs a licence decision that is the copyright holder's.
+> project.md 8.763.
 
 **Scaling.** A fractional device pixel ratio silently destroys the alignment invariant,
 so DPR must be exactly 1. The right levers are `QT_ENABLE_HIGHDPI_SCALING=0` (documented
@@ -414,9 +434,32 @@ that variable is a *multiplier* on the native ratio — *"a product of the set s
 and the native device pixel ratio"* — so 1 is the identity and forces nothing. It is also
 documented as debug-only.
 
-In practice the `offscreen` plugin reports DPR 1 regardless, so the load-bearing
+~~In practice the `offscreen` plugin reports DPR 1 regardless, so the load-bearing
 protection is the assertion, not the environment: assert `devicePixelRatio() == 1` on
-every top-level at show time and treat a failure as a hard startup error.
+every top-level at show time and treat a failure as a hard startup error.~~
+**Corrected 2026-11-13: it is the environment and a different assertion, and no
+`devicePixelRatio()` check was ever written.** project.md 8.762.
+
+What protects the invariant, measured rather than prescribed:
+
+- **`prepare_environment()` pins all three levers**, not one:
+  `QT_ENABLE_HIGHDPI_SCALING=0`, `QT_SCALE_FACTOR=1` and
+  `QT_SCREEN_SCALE_FACTORS=""`. Disabling high-DPI scaling alone was not enough,
+  because the other two override it and a HiDPI desktop commonly sets one. So
+  `QT_SCALE_FACTOR` is pinned after all -- not as the lever that forces anything,
+  which the paragraph above is right that it is not, but to stop an inherited
+  value from overriding the lever that does.
+- **The assertion that fires is `grid_font_problem()`, on the metrics rather than
+  on the ratio.** Measured: with either variable at 2 the line height came out
+  18.6406 px and `setup()` refused to start. That is the stronger check of the
+  two, because it catches every cause of non-integral metrics and not only this
+  one -- and a DPR of exactly 2 with integral metrics would harm nothing, there
+  being no device pixel ratio for a cell grid to honour.
+- **`test-platforms` exercises it**, running the suite with `QT_SCALE_FACTOR=2`
+  and `QT_SCREEN_SCALE_FACTORS=2` set and reporting that the pins absorbed them.
+
+So a reader should not write the `devicePixelRatio()` assertion: it would be
+redundant against a narrower condition than the guard that already fires.
 
 **The alignment guard.** Highest value-per-line component in the project — it converts
 a class of subtle rendering bugs into a stack trace at the point of origin:
@@ -1101,6 +1144,11 @@ The TUI build links QtWidgets, QtGui, and a font stack to draw text on a termina
 For desktop-class products this is irrelevant (Qt is already a dependency). It would be
 disqualifying for a small static ssh-only binary; that use case is a non-goal.
 
+> **This sentence answers OQ-4's hard case**, and the two were never linked until
+> 2026-11-13. A product that needs the TUI where Qt cannot be linked is out of
+> scope here, so §14's OQ-4 resolves for it without a decision, and G3's count of
+> four has included such a product since this was written. project.md 8.761.
+
 ---
 
 ## 9. Testing
@@ -1341,6 +1389,13 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
   > Android, then macOS and Windows, then embedded — and the embedded target as built
   > is the smallest host, with no terminal UI on it. Nothing in their notes names a
   > serial-console, initrd or Qt-free container deployment, and nothing rules one out.
+  >
+  > **AND §8.7 HAD ALREADY DECLARED THAT CASE A NON-GOAL**, which nothing here
+  > said until 2026-11-13. *Runtime weight*: linking QtWidgets, QtGui and a font
+  > stack "would be disqualifying for a small static ssh-only binary; that use
+  > case is a non-goal." netcfgd's MIPS router linking libc alone is that case,
+  > so its branch of this question needs no decision -- it is out of scope by
+  > §8.7 and lands on §13.2 by this question's own sentence. project.md 8.761.
   >
   > **What this leaves open is the scope decision, not the fact.** Whether Phase 4
   > changes, and what becomes of §12's "delete the old screen's TUI code" for a

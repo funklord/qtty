@@ -61464,3 +61464,160 @@ reads a key it minted earlier, because crossing the cap is precisely
 what clears those. Measured: 36 held, 36 held after, 256 forgotten.
 
 2527 checks.
+
+### 8.761 Section 8.7 had already answered OQ-4's hard case, and nothing linked them (2026-11-13)
+
+**Found by walking the sections no run had read**, which this time was
+section 8 -- where a design admits what it has not solved. 8.7, *Runtime
+weight*, in full:
+
+> The TUI build links QtWidgets, QtGui, and a font stack to draw text on
+> a terminal. For desktop-class products this is irrelevant (Qt is
+> already a dependency). **It would be disqualifying for a small static
+> ssh-only binary; that use case is a non-goal.**
+
+**That is netcfgd's case, named as a non-goal before OQ-4 was asked.**
+Their answer two days ago: `ncfg tui` cross-builds for a MIPS router
+linking libc and nothing else, for somebody at a serial console on a
+machine with no network. A small static binary where Qt cannot be
+linked -- 8.7's sentence exactly.
+
+**So the substance was settled and the question was asked anyway, by
+me.** `working-practice.md` says to look for where the project has
+decided something under another name before treating it as open, and
+names the cost: a gap left waiting for a decision taken long ago stays
+open indefinitely, because nobody is coming to take it again. OQ-4 reads
+as a live scope question; 8.7 reads as a closed non-goal; and the only
+place they meet is 0a's own catalogue of section 8, which lists "8.7
+runtime weight -- a non-goal, nothing to guard" and does not connect it
+to anything.
+
+**What this changes, and what it does not.** It does not change
+netcfgd's answer or make it less useful -- the route they documented is
+worth having. What it changes is the size of what the holder has to
+decide:
+
+- **netcfgd's branch of OQ-4 needs no decision.** A product that needs
+  the TUI where Qt cannot be linked is out of scope by 8.7 and lands on
+  13.2 by OQ-4's own sentence. That is the design working rather than a
+  surprise, and 8.757's framing -- true as far as it went -- did not say
+  so.
+- **G3's arithmetic was over-counting before today, not because of
+  today.** The goal asks for four implementations consolidated and three
+  retired. If a product whose TUI must be Qt-free is a declared
+  non-goal, its implementation was never a retirement candidate, so the
+  count of four has included one that could not be counted since 8.7 was
+  written. **Reported, not restated**: what the four should be is the
+  holder's, and this only says the discrepancy predates OQ-4's answer.
+
+**The transferable part is which document answered.** I read sections 2,
+8.4, 11, 12, 13, 14 and 17 across three runs looking for unserved aims,
+and the sentence that settled the question was in none of them -- it was
+in a subsection about binary size, two headings away from the support
+matrix I had read twice. **A design's answers are not filed under the
+questions they answer**, and the catalogue that lists every subsection
+of 8 had already summarised this one in six words without noticing it
+decided anything.
+
+### 8.762 The prescribed assertion was never written, and the guard that fires is better (2026-11-13)
+
+**Continuing the walk into section 5, the largest section no run had
+read.** §5.3's *Scaling* paragraph ends on a specific instruction:
+
+> In practice the `offscreen` plugin reports DPR 1 regardless, so the
+> load-bearing protection is **the assertion, not the environment**:
+> assert `devicePixelRatio() == 1` on every top-level at show time and
+> treat a failure as a hard startup error.
+
+**No such assertion exists.** `grep devicePixelRatio` over `src/`,
+`include/` and `test/` finds three hits and none of them is it: the
+`CellPaintDevice` answering `PdmDevicePixelRatioScaled`, and a check
+reading that same device's ratio. `GridGuard` filters `Show` on every
+widget and would have been the natural home -- it checks geometry and
+not the ratio.
+
+**And the paragraph has it backwards.** What protects the invariant is
+the environment, plus an assertion on a different quantity:
+
+- `prepare_environment()` pins all three levers --
+  `QT_ENABLE_HIGHDPI_SCALING=0`, `QT_SCALE_FACTOR=1`,
+  `QT_SCREEN_SCALE_FACTORS=""` -- because, as its own comment records,
+  disabling high-DPI scaling was not enough on its own: the other two
+  override it and a HiDPI desktop commonly sets one. So the variable the
+  paragraph rightly says forces nothing is pinned anyway, to stop an
+  inherited value overriding the one that does.
+- The assertion that actually fires is **`grid_font_problem()`, on the
+  METRICS rather than on the ratio**. Measured and recorded beside the
+  code: with either variable at 2 the line height came out 18.6406 px
+  and `setup()` refused to start.
+- `test-platforms` exercises exactly this, running the suite with both
+  variables at 2 and reporting that the pins absorbed them.
+
+**The code's choice is the better one and the document should not be
+read as asking for the other.** A guard on non-integral metrics catches
+every cause of them, not only a fractional ratio; and a DPR of exactly 2
+with integral metrics would harm nothing, there being no device pixel
+ratio for a cell grid to honour. So §5.3 is corrected in place under
+0b's standing permission -- a factual claim the tree has measured false
+-- and now says not to write the assertion, because writing it would add
+a narrower check beside a wider one that already fires.
+
+**What makes this worth an entry rather than a one-line edit.** The
+sentence did not merely describe something absent; it told the next
+reader which of two protections to rely on, and it named the one that
+was never built. A reader following it would have implemented a
+redundant assertion and, worse, might have trusted it in place of the
+environment pinning that is doing the work. **A document that is wrong
+about which guard is load-bearing is more expensive than one that is
+silent**, and this is the third stale §5 claim this week after 8.735's
+API names and 8.756's DEC 2026 comment -- all three in text describing
+behaviour the code had moved past.
+
+### 8.763 "We bundle a monospace font" -- we do not, and the code knew (2026-11-13)
+
+**Third stale claim in §5 from the same walk**, and this one is a
+present-tense sentence about a thing that was never done. §5.3's *Font
+provisioning*: "We bundle a monospace font, load it with
+`QFontDatabase::addApplicationFont`, and **assert** the resulting
+metrics at startup."
+
+**There is no font in the tree.** `git ls-files` finds no `.ttf`,
+`.otf`, `.pcf` or `.bdf`. And `application.cpp` records the real state
+beside the code that depends on it: *"Bundled-font provisioning (section
+5.3) is later Phase-2 work; DejaVu Sans Mono is the interim source of
+integral metrics, asserted as designed."*
+
+**So the document and the code disagreed, and the code was right** --
+which is the way round `working-practice.md` says is the harder one to
+notice, because `project.md` wins over code by rule and a reader
+reasonably trusts the design. Nothing was broken by it; what was at risk
+is somebody reading §5.3 and concluding the deployment question was
+settled.
+
+**What actually exists, which is most of it:**
+
+- **the loading machinery** -- `QFontDatabase::addApplicationFont` at
+  `grid_style.cpp:915` -- so adopting a bundled font is a file and a
+  call, not a mechanism to build;
+- **a request chain**, `grid_font_request()`: the application's
+  `set_font()`, then the user's `QTTY_FONT`, then DejaVu Sans Mono as a
+  default rather than the only answer;
+- **the assertion**, which is the half §5.3 had right:
+  `grid_font_problem()` refuses a font whose metrics are not integral,
+  and 8.762 confirmed it is the guard that actually fires.
+
+**The honest limit on G1, stated so the next reader does not have to
+derive it.** "A `QWidget`-based screen compiles once and runs as both
+GUI and TUI" holds **wherever a font with integral metrics can be
+found**. On this machine DejaVu Sans Mono provides it; on a minimal
+container or an embedded image with no such font, `setup()` refuses --
+correctly, loudly, and at startup rather than as a rendering glitch.
+
+**What remains is a licence decision and not a piece of engineering**,
+which is why it has sat: shipping somebody else's font means
+redistributing their work under their terms, and `CLAUDE.md` is
+unambiguous that such a choice is the copyright holder's alone. So this
+sharpens the carried question from "the bundled font's licence" to
+something answerable: **which font, and may it be redistributed in this
+repository** -- with the machinery, the fallback chain and the assertion
+all already in place behind it.
