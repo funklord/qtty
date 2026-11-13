@@ -4886,6 +4886,62 @@ int suite_runtime() {
 		}
 	}
 
+	// ---- the fatal a deployment meets says how to recover ----------------
+	//
+	// A font whose metrics are not integral ends the program at startup,
+	// and that is right: a grid that cannot be laid is not a program that
+	// should carry on. But the sentence was mute about recovery -- "the
+	// grid needs a font with integral metrics: line height is 18.6406 px,
+	// which is not a whole number" tells a reader exactly what is wrong
+	// and nothing about changing it.
+	//
+	// The history is why this matters more than a wording preference.
+	// application.cpp records that stock Debian's slight hinting gave
+	// advance 9.625 and height 18.6406, so every qtty program failed to
+	// start for any user who had not turned full hinting on in their own
+	// fontconfig. That cause is pinned now, which leaves the case where a
+	// font genuinely cannot carry the grid -- and the two things that
+	// change it are QTTY_FONT and Qtty::set_font().
+	//
+	// Driven through a CHILD PROCESS, because the refusal is in setup()
+	// and this one has already run it. The pattern is the screen-file
+	// check's above: spawn our own binary with an argument that names no
+	// suite, so it reaches setup() and leaves.
+	//
+	// SKIPS RATHER THAN FAILS when the environment will not produce a
+	// refusal. Asking for a proportional family is the way to provoke one,
+	// and whether a given name resolves to something proportional is a
+	// property of the machine's fonts rather than of this library -- so a
+	// child that started normally says so and asserts nothing, which is
+	// honest about what the fixture can control.
+	{
+		QProcess child;
+		QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+		env.insert(QStringLiteral("QTTY_FONT"), QStringLiteral("DejaVu Sans"));
+		child.setProcessEnvironment(env);
+		child.start(QCoreApplication::applicationFilePath(),
+		            {QStringLiteral("no-such-suite")});
+		const bool ran = child.waitForFinished(30000);
+		const QByteArray err = child.readAllStandardError();
+		const bool refused = ran
+		    && child.exitStatus() != QProcess::NormalExit
+		    && err.contains("integral metrics");
+		if (!refused) {
+			printf("SKIP: asking for a proportional family did not produce a"
+			       " refusal on this machine, so the advice could not be"
+			       " read -- exit %d, status %d\n", child.exitCode(),
+			       int(child.exitStatus()));
+		} else {
+			printf("info: the refusal said: %s\n",
+			       err.trimmed().constData());
+			CHECK(err.contains("QTTY_FONT")
+			      && err.contains("Qtty::set_font"),
+			      "the startup font refusal names the two levers that"
+			      " change it, a fatal that cannot be acted on being the"
+			      " one message a deployment is sure to meet");
+		}
+	}
+
 	return fails;
 }
 

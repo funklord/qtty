@@ -801,8 +801,27 @@ void setup(QApplication &app) {
 	// leading, and a font that is merely odd should say so while it still can.
 	if (const QString lead = grid_font_leading(f); !lead.isEmpty())
 		qWarning("qtty: %s", qPrintable(lead));
+	// AND THE LEVERS, because this is the fatal a deployment actually
+	// meets and it was mute about recovery. The comment on apply_font_now()
+	// says the substitution and leading warnings "are startup advice about
+	// a font the program is stuck with" -- so startup is where advice
+	// belongs, and the sentence that ends the process carried none of it.
+	//
+	// The history is the argument: stock Debian's slight hinting gave
+	// advance 9.625 and height 18.6406, so every qtty program failed to
+	// start for any user who had not turned full hinting on somewhere in
+	// their own fontconfig. That cause is pinned now, a few lines above.
+	// What is left is a font that genuinely cannot carry the grid, and the
+	// two things that change it are an environment variable and a call.
+	//
+	// prepare_environment() is deliberately NOT named: the hinting pin is
+	// in setup() itself, so it applies whether or not the application
+	// called it, and sending a reader there would be sending them to
+	// something that is not wrong.
 	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
-		qFatal("qtty: the grid needs a font with integral metrics: %s",
+		qFatal("qtty: the grid needs a font with integral metrics: %s"
+		       " -- set QTTY_FONT to a fixed-pitch font, or call"
+		       " Qtty::set_font()",
 		       qPrintable(problem));
 	}
 

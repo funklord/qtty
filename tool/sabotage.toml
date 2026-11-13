@@ -9419,3 +9419,18 @@ find = "\t\tfor (int id = 0; id < live_overlay_ids_; ++id)"
 into = "\t\tfor (int id = 0; id < live_overlay_ids_ - 1; ++id)"
 count = 1
 check = "redraw() retires EVERY live overlay"
+
+# THE ADVICE STRIPPED FROM THE ONE FATAL A DEPLOYMENT MEETS. A font whose
+# metrics are not integral ends the program at startup, correctly; the two
+# things that change it are QTTY_FONT and Qtty::set_font(), and the sentence
+# carried neither until 8.764. Stock Debian's slight hinting once made this
+# fire for every user who had not turned full hinting on, so this is the
+# library's highest-traffic abort. Removing the advice leaves the diagnosis
+# intact, so only a check that reads the ADVICE says so. 8.764.
+[[sabotage]]
+name = "the font refusal stops saying how to recover"
+file = "src/runtime/application.cpp"
+find = "\t\t       \" -- set QTTY_FONT to a fixed-pitch font, or call\"\n\t\t       \" Qtty::set_font()\","
+into = "\t\t       \"\","
+count = 1
+check = "the startup font refusal names the two levers that change it"

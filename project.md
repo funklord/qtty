@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2527 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2528 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -61639,3 +61639,89 @@ sharpens the carried question from "the bundled font's licence" to
 something answerable: **which font, and may it be redistributed in this
 repository** -- with the machinery, the fallback chain and the assertion
 all already in place behind it.
+
+### 8.764 The one fatal a deployment meets was mute about recovery (2026-11-13)
+
+**Derived from 8.763 rather than found separately.** Having written down
+G1's honest limit -- a screen runs as both GUI and TUI *wherever a font
+with integral metrics can be found* -- the next question is what a
+deployment sees when it cannot be found. It saw this:
+
+    qtty: the grid needs a font with integral metrics: line height is
+    18.6406 px, which is not a whole number
+
+Exact about what is wrong, silent about what to do. Neither `QTTY_FONT`
+nor `Qtty::set_font()` appears, and those are the only two things that
+change it.
+
+**The history is the argument, and it is in the tree.**
+`application.cpp` records that stock Debian's slight hinting gave
+advance 9.625 and height 18.6406, so **every qtty program failed to
+start for any user who had not turned full hinting on somewhere in their
+own fontconfig** -- found by running the suite from a second account on
+the machine that had always passed it. That cause is pinned now. What is
+left is a font that genuinely cannot carry the grid, which is the
+highest-traffic abort this library has, and it ended the process without
+saying how to get past it.
+
+**The project had already decided where advice belongs**, which is why
+this is a gap rather than a preference. `apply_font_now()`'s comment
+says the substitution and leading warnings are "startup advice about a
+font the program is stuck with" and are deliberately not repeated on the
+late path. So startup is the place for advice, by the tree's own
+reasoning, and the sentence that ends the process carried none.
+
+**`prepare_environment()` is deliberately not named**, and checking that
+is what kept the message honest: the hinting pin is in `setup()` itself,
+a few lines above the refusal, so it applies whether or not the
+application called `prepare_environment()`. Naming it would send a
+reader to something that is not wrong. The first draft of this message
+said it; the measurement removed it.
+
+**Verified through a child process**, because the refusal is in `setup()`
+and the suite has already run it -- the pattern is the screen-file
+check's: spawn our own binary with an argument naming no suite, so it
+reaches `setup()` and leaves. Measured, the child now says:
+
+    qtty: the grid needs a font with integral metrics: 'DejaVu Sans'
+    resolved to 'DejaVu Sans', which is not fixed pitch -- set
+    QTTY_FONT to a fixed-pitch font, or call Qtty::set_font()
+
+**And it SKIPS rather than fails where the fixture cannot control the
+answer.** Provoking a refusal means asking for a proportional family,
+and whether a given name resolves to one is a property of the machine's
+fonts rather than of this library. So a child that started normally says
+so and asserts nothing. The sabotage strips the advice and leaves the
+diagnosis intact, which only a check reading the advice can catch; it
+reddens that check and nothing else.
+
+**This also exercises a path coverage called unexercised.** The refusal
+and the two warnings above it were among `application.cpp`'s uncovered
+lines in 8.758's ranking. gcov still will not see them -- the work
+happens in a forked child that dies by a signal, which is the blind spot
+8.736 recorded -- but the behaviour is now asserted, which is the half
+that matters.
+
+**AND THE CLASS WAS SWEPT RATHER THAN LEFT AT THE INSTANCE**, which is
+8.735's lesson twice in one run. The shape is *a message that diagnoses
+without directing*, so: every `qFatal` in `src/` -- there is exactly
+**one**, this one -- and every distinct `qWarning`, which is twelve. Of
+the twelve, none is in this class, and the reasons are worth keeping
+because they are what a remedy looks like when it is not a lever:
+
+- most say what they did INSTEAD, which directs by implication: a
+  non-positive cell "was refused ... so 10x19 is kept"; a late font "was
+  not taken ... the grid is unchanged"; an empty overlay rect "so
+  nothing" is drawn;
+- two name the measurement AND the target, which is a remedy stated as
+  numbers: the contrast warning gives the luminance delta and the one it
+  wanted;
+- one was already fixed for exactly this reason: `GridGuard`'s off-grid
+  warning names the widget's DYNAMIC type, because 8.585 found it saying
+  `QWidget` about every custom widget and so sending an author nowhere;
+- and two have no lever to name at all -- the paste and clipboard byte
+  limits are compile-time constants, so "over the %d byte limit ...
+  nothing was delivered" is the whole of what can be said.
+
+So the fatal was the only one, and the lens is closed rather than
+abandoned. 2528 checks, 835 entries.
