@@ -211,20 +211,87 @@ int suite_widgets() {
 			host.show();
 			QCoreApplication::processEvents();
 			const QMargins m = f->contentsMargins();
-			// REPORTED, NOT ASSERTED, because the remedy is a decision
-			// rather than an edit -- see the entry this comment names.
-			// Asserting it would fail the gate on a defect nobody has
-			// chosen how to fix, and asserting the current numbers would
-			// pin it. The print keeps the measurement in front of whoever
-			// runs the suite next.
+			// ASSERTED IN BOTH AXES SINCE 8.771. It was reported and not
+			// asserted while the vertical half was a defect nobody had
+			// chosen how to fix: a CHECK would have failed the gate on it,
+			// and asserting the numbers it actually produced would have
+			// pinned the defect. The print stays, because the numbers are
+			// what a reader wants when this does fail.
 			printf("info: a frame shown at %d px caches margins "
 			       "%d,%d,%d,%d and keeps them at %d px; one row is %d "
 			       "and one column %d\n",
 			       h, m.left(), m.top(), m.right(), m.bottom(),
 			       f->height(), ch, cw);
-			CHECK(m.left() == cw && m.right() == cw,
-			      "a frame shown before a layout sized it still insets its "
-			      "viewport by whole columns once it is grown");
+			CHECK(m.left() == cw && m.right() == cw
+			      && m.top() == ch && m.bottom() == ch,
+			      "a frame shown before a layout sized it insets its "
+			      "viewport by whole cells once it is grown, in both axes");
+		}
+
+		// ONCE PER FRAME, WHICH THE MARGINS CANNOT SHOW. The insets above
+		// would look right whether the style was re-asked once or on every
+		// resize for ever, and the second costs a repolish per resize for
+		// the life of the application. The count is the only way to tell
+		// them apart from outside, which is why GridSnap publishes one.
+		{
+			const int before = GridSnap::frames_repolished();
+			QWidget host;
+			auto *hv = new QVBoxLayout(&host);
+			auto *f = new QTableWidget(1, 1);
+			f->resize(200, 40);
+			f->setAttribute(Qt::WA_DontShowOnScreen);
+			f->show();
+			QCoreApplication::processEvents();
+			hv->addWidget(f);
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(40, 8));
+			host.show();
+			QCoreApplication::processEvents();
+			const int once = GridSnap::frames_repolished() - before;
+			host.resize(GridMetrics::cells(40, 12));
+			QCoreApplication::processEvents();
+			const int twice = GridSnap::frames_repolished() - before;
+			printf("info: a frame born off the grid was re-asked %d time(s)"
+			       " and %d after a second resize\n", once, twice);
+			CHECK(once >= 1 && twice == once,
+			      "a frame's insets are re-asked once and not again, so a"
+			      " resize cannot cost a repolish for ever");
+		}
+
+		// AND A SHAPE THE STYLE DOES NOT CORRECT, which is the case that
+		// makes "off the grid" the wrong test. An HLine's inset comes from
+		// the base style and is one pixel; the style leaves it alone,
+		// because its correction applies only where the base inset is
+		// PM_DefaultFrameWidth on both edges. A mechanism keyed on "not a
+		// whole row" would therefore re-ask for this frame on every resize
+		// for the life of the application, and the frame would look no
+		// different either way -- so only a count can see it.
+		{
+			QWidget host;
+			auto *hv = new QVBoxLayout(&host);
+			auto *line = new QFrame;
+			line->setFrameShape(QFrame::HLine);
+			line->resize(200, 40);
+			line->setAttribute(Qt::WA_DontShowOnScreen);
+			line->show();
+			QCoreApplication::processEvents();
+			hv->addWidget(line);
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(40, 8));
+			host.show();
+			QCoreApplication::processEvents();
+			const int before = GridSnap::frames_repolished();
+			for (int rows : {10, 12, 14}) {
+				host.resize(GridMetrics::cells(40, rows));
+				QCoreApplication::processEvents();
+			}
+			printf("info: an HLine frame insets by %d and was re-asked %d"
+			       " time(s) over three resizes\n",
+			       line->contentsMargins().top(),
+			       GridSnap::frames_repolished() - before);
+			CHECK(GridSnap::frames_repolished() == before,
+			      "a frame shape the style does not correct is never"
+			      " re-asked, however often it is resized");
 		}
 	}
 	// A TITLED GROUP BOX'S CONTENTS MARGINS ARE COMPUTED ONCE, FROM A

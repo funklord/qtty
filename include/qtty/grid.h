@@ -258,6 +258,11 @@ public:
 	// widget.
 	static QRect snap(const QRect &px);
 	static int snapped();             // geometries corrected since the last reset
+	// Frames whose cached insets were re-asked for, since the last reset.
+	// Public for the same reason snap() is: what makes the mechanism safe is
+	// that it fires ONCE per frame, and a count is the only way to assert
+	// that from outside.
+	static int frames_repolished();
 	static void reset();
 
 	bool eventFilter(QObject *, QEvent *) override;

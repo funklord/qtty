@@ -4971,6 +4971,7 @@ Priority priority_of(const QWidget *w) {
 // round-to-nearest and nothing else.
 static GridSnap *s_snap = nullptr;
 static int s_snapped = 0;
+static int s_repolished = 0;
 static bool s_snapping = false;
 
 QRect GridSnap::snap(const QRect &px) {
@@ -4986,7 +4987,8 @@ QRect GridSnap::snap(const QRect &px) {
 }
 
 int GridSnap::snapped() { return s_snapped; }
-void GridSnap::reset() { s_snapped = 0; }
+int GridSnap::frames_repolished() { return s_repolished; }
+void GridSnap::reset() { s_snapped = 0; s_repolished = 0; }
 bool GridSnap::installed() { return s_snap != nullptr; }
 
 // design.md section 7's third Tier-2 hint: "qtty.cells" says how many cells a
@@ -5160,6 +5162,74 @@ static void apply_cells(QWidget *w) {
 	w->setMaximumHeight(c.height() * GridMetrics::ch());
 }
 
+// A FRAME'S CACHED INSETS, RE-ASKED AT THE MOMENT THEY BECOME WRONG. 8.749
+// found the defect and 8.771 measured this remedy.
+// `QFramePrivate::updateStyledFrameWidths()` turns `SE_ShapedFrameContents`
+// into four cached widths, and Qt calls it from a style change, a parent
+// change, `Polish` and the frame setters -- never from a resize. So a frame
+// shown or resized under three rows falls past both of this style's branches
+// onto the base style's `PM_DefaultFrameWidth`, ten pixels, and keeps it for
+// life: the viewport sits ten pixels down a nineteen-pixel row, permanently
+// and silently, however large the frame later becomes.
+//
+// THE OBVIOUS FIX WAS TRIED FIRST AND COSTS A MEASURED CASE. Answering the
+// unlaid-out query with constant insets, the way the group box's arm does,
+// shrinks the combo popup -- which SIZES itself from that same rectangle
+// while unlaid-out: 76 px became 86 with a remainder of 10. The unlaid-out
+// query has a sizing consumer as well as a caching one, and one rectangle
+// cannot serve both. This leaves every style answer exactly as it was and
+// re-asks the question instead.
+//
+// It cannot fire twice for one frame: recomputing makes the top inset a
+// whole row, which the first test then rejects. Loop-free by construction
+// rather than by a flag -- and measured rather than argued: a trace build
+// sent 19 of these over the suite's entire run, and the suite asserts the
+// once-per-frame property as a count, since the margins look right whether
+// this fires once or on every resize for ever.
+static void repolish_frame_insets(QWidget *w) {
+	auto *f = qobject_cast<QFrame *>(w);
+	if (!f) return;
+	// A WINDOW IS THE SIZING CONSUMER, AND THAT IS MEASURED. 8.749's second
+	// option was to tell the caching consumer from the sizing one and
+	// recorded that no way had been found; this is the way. A combo box's
+	// popup container IS a QFrame, and a window: it sizes itself from the
+	// frame rect while unlaid-out, so re-asking the style mid-flight moved
+	// its items -- two checks went red, `an open drop-down draws the items
+	// below the first` and the three-layer modal case, and the fixture this
+	// mechanism exists for is a child inside a layout. So the distinction is
+	// not "which consumer asked" but "is this frame laid out by somebody
+	// else", and a window never is.
+	if (f->isWindow()) return;
+	const int ch = GridMetrics::ch(), cw = GridMetrics::cw();
+	if (ch <= 0 || cw <= 0) return;
+	// THE FALL-THROUGH'S SIGNATURE, not merely "off the grid", and the
+	// difference is what makes this fire once rather than on every resize.
+	// `subElementRect()` corrects a frame only where the base style insets
+	// by `PM_DefaultFrameWidth` on BOTH the top and the bottom -- so a shape
+	// it does not touch keeps whatever the base style gave it, which for an
+	// HLine is one pixel. A test of `inset % ch` would therefore re-ask for
+	// such a frame on every resize for ever, since its answer never becomes
+	// a whole row: a trace build showed exactly that, `QFrame h=95 top=1`,
+	// twice.
+	//
+	// Matching the signature is narrower and self-limiting. The corrected
+	// inset is one ROW, which is not `fw`, so the test fails the second time
+	// round -- and the first clause also means this is inert under a style
+	// that is not this one, `PM_DefaultFrameWidth` being a whole cell here
+	// against Fusion's single pixel.
+	const int fw = f->style()->pixelMetric(QStyle::PM_DefaultFrameWidth,
+	                                       nullptr, f);
+	if (fw != cw || cw % ch == 0) return;
+	const QMargins m = f->contentsMargins();
+	if (m.top() != fw || m.bottom() != fw) return;
+	// Under three rows the fall-through IS the current answer, so re-asking
+	// would cache the same number again.
+	if (f->height() < 3 * ch) return;
+	++s_repolished;
+	QEvent ev(QEvent::StyleChange);
+	QCoreApplication::sendEvent(f, &ev);
+}
+
 bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
 	if (s_snapping) return false;                // our own setGeometry coming back
 	// Polish catches a property set at construction, the property change
@@ -5187,6 +5257,11 @@ bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
 	if (event->type() != QEvent::Resize && event->type() != QEvent::Move)
 		return false;
 	QWidget *w = qobject_cast<QWidget *>(obj);
+	// Before the exemptions below, and on a resize only: what follows
+	// rewrites a GEOMETRY, which is not this one's business -- it only asks
+	// the style again. The window case IS excluded, inside the helper and
+	// for a measured reason.
+	if (w && event->type() == QEvent::Resize) repolish_frame_insets(w);
 	// A top-level is left alone for the reason GridGuard does not check its
 	// position: there is no window manager, and Compositor::compose() places
 	// and snaps every top-level itself (section 8.1). Snapping one here would

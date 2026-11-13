@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2531 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2533 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -60719,9 +60719,14 @@ shrink it. The guard that protects the popper is the same
 `% ch == 0` test that would have protected the group box, pointed the
 other way.
 
-**Three options, their costs, and whose they are.** Not mine: each
-changes behaviour somebody measured, and the first is already shown to
-break a check.
+**Three options, and their costs. The third was taken, in 8.771, once
+it had been measured** -- this paragraph said the choice was not mine
+because each option changed behaviour somebody had measured, and that
+was right while the third option's own cost was a guess. It is not a
+guess now: the mechanism it needs already existed, and the suite is
+green including the check the first option broke. The costs are kept
+because the first two remain closed and the reasons are what close
+them.
 
 1. **Constant insets for the unlaid-out query.** Costs the popup, as
    above. Measured.
@@ -60730,9 +60735,9 @@ break a check.
 3. **Force the cache to be recomputed when the frame is resized onto the
    grid** -- post a `StyleChange` at the one moment the cached value
    becomes wrong. This leaves every style answer alone, so the popup is
-   untouched. **Unmeasured**, and it is the one I would cost first: it
-   needs an event filter on framed widgets and `StyleChange` re-polishes,
-   so the risk is expense and loops rather than correctness.
+   untouched. **Measured in 8.771 and taken**: the event filter it was
+   thought to need is already there, and the expense is 19 events over
+   the suite's whole run.
 
 **Reachability, stated plainly so the holder can weigh it.** It needs an
 application to `show()` a framed widget, or resize one under three rows,
@@ -60740,12 +60745,13 @@ before a layout has sized it. A widget laid out normally is always a
 whole number of rows here and never enters the branch. So this is narrow
 -- and it is permanent when it happens, and silent.
 
-**Reported, not asserted.** The suite prints the measured margins as an
-`info:` line on every run rather than asserting them: a `CHECK` would
-fail the gate on a defect nobody has chosen how to fix, and asserting
-today's numbers would pin it. The horizontal half IS asserted, since it
-was never in doubt and the contrast is what localises the fault -- three
-checks, and the same axis separation 8.748 had. 2519 checks.
+**Asserted in both axes since 8.771**, where the remedy landed. While
+the vertical half was a defect nobody had chosen how to fix, the suite
+printed the margins as an `info:` line and asserted the horizontal half
+only -- a `CHECK` would have failed the gate on the defect, and
+asserting the numbers it produced would have pinned it. The print
+stayed, because the numbers are what a reader wants when the check does
+fail. 2519 checks when this entry was written.
 
 ### 8.750 The answer was in section 0a, and I wrote "I cannot say why" instead (2026-11-10)
 
@@ -62142,3 +62148,113 @@ rather than settling while fixing something else.
 says in as many words that the canonical lists are left alone; before
 the fix the same command wrote the canonical names, which is not a
 reconstruction -- it is what the stopped chunk did, in its log.
+
+### 8.771 The feared cost was an event filter the tree already had (2026-11-13)
+
+**8.749 left three options and called the choice the holder's, because
+each changed behaviour somebody had measured. Option 3's own cost was
+the one thing nobody had measured**, and it was described as needing
+"an event filter on framed widgets" with a risk of "expense and loops".
+Measuring it dissolved the question rather than informing it, which is
+`working-practice.md`'s rule and the second time it has paid in this
+tree.
+
+**The filter is already there.** `GridSnap::eventFilter` has watched
+`QEvent::Resize` on every widget since it was written -- it is what
+snaps a child's geometry to the grid -- and it already carries a
+reentrancy flag for its own `setGeometry`. So option 3 is not new
+machinery: it is one call in an existing `Resize` branch and a
+twelve-line helper beside `raise_frame_line()`, which is the same kind
+of accommodation applied in the same place.
+
+**What it does.** When a resized `QFrame`'s cached top inset is not a
+whole row and the frame is now at least three rows tall, it sends the
+frame a `StyleChange`, which is the event `QFramePrivate` already
+recomputes its four cached widths from. Every style answer is left
+exactly as it was, so the combo popup that option 1 shrank is
+untouched.
+
+**It cannot fire twice for one frame, and that is not a flag.**
+Recomputing makes the top inset a whole row, which the first test then
+rejects. The suite asserts it as a count rather than from the margins,
+because the margins look right either way -- including if the mechanism
+fired on every resize for the life of the application, which is the
+expense 8.749 was afraid of. `GridSnap::frames_repolished()` is public
+for exactly that reason, as `snap()` is.
+
+**THREE ATTEMPTS, EACH WRONG FOR A DIFFERENT REASON, AND THE THIRD IS
+THE FINDING.** The remedy is four lines; getting the CONDITION right
+took three measured passes, and each failure is worth more than the
+fix.
+
+**First, "the cached inset is not a whole row" -- which loops.** That is
+the defect's symptom, not its signature. `subElementRect()` corrects a
+frame only where the base style insets by `PM_DefaultFrameWidth` on BOTH
+edges, so a shape it does not touch keeps whatever the base style gave
+it: an `HLine`'s inset is one pixel, never a whole row, so such a frame
+would have been re-asked on every resize for the life of the
+application. **Its own trace said so and I read past it** -- `QFrame
+h=95 top=1`, twice, five rows tall. Nothing else would have shown it:
+the frame looks identical either way, and the fixture's `QTableWidget`
+is a `StyledPanel` whose inset IS the metric, so the once-per-frame
+check passed over a fixture that could not reach the hazard.
+
+**Second, the signature -- which broke the popup, exactly where 8.749
+said it would.** Keying on "inset equals `PM_DefaultFrameWidth` top and
+bottom, and that metric is a whole cell" is self-limiting: the corrected
+inset is one ROW, which is not the metric, so it cannot fire twice. The
+`HLine` was re-asked 0 times over three resizes and the fixture's frame
+once, still once after a second resize. **And two checks went red**: `an
+open drop-down draws the items below the first`, and the three-layer
+modal case. A combo box's popup container is itself a `QFrame`, so
+re-asking the style mid-flight moved its items -- which is 8.749's own
+sentence, *the unlaid-out query has a sizing consumer as well as a
+caching one*, arriving by a route that leaves every style answer alone.
+
+**Third, and this is the part worth keeping: the two consumers CAN be
+told apart.** 8.749's option 2 was "tell the two consumers apart. No way
+found." The way is not which consumer asked but **whether the frame is
+laid out by somebody else**: a window never is -- it sizes itself, which
+is what makes it the sizing consumer -- and the frame this mechanism
+exists for is a child inside a layout. `if (f->isWindow()) return;` is
+the whole of it. So option 2 is answered as a by-product of taking
+option 3, and the distinction is one line rather than the heuristic
+nobody could find.
+
+**The measurements, after the third pass:**
+
+- **The defect is gone.** The fixture's frame, born at 30, 40 and 56 px
+  and grown to eight rows, caches `10,19,10,19` where it cached
+  `10,10,10,10` -- so the viewport sits on a row boundary instead of ten
+  pixels down a nineteen-pixel row.
+- **Once per frame**: re-asked 1 time, and 1 after a second resize.
+- **Never for a shape the style does not correct**: an `HLine` insets by
+  1 and was re-asked 0 times over three resizes.
+- **The popup checks are green again**, including `a popup is a whole
+  number of rows tall`, which option 1 broke and the second pass here
+  broke differently.
+- **The whole suite**: 2533 checks, 0 failures, and the
+  expense is 19 sends over the entire run on a trace
+  build.
+
+**And the lens was pointed at the rest of Qt's caches, with a clean
+negative result worth recording so nobody sweeps it again.** 8.749 named
+three widgets that turn a style rect into cached state; the question
+left over is whether anything caches a style ANSWER of another kind that
+this style makes depend on a transient size. Of Qt 6.8's private
+headers, `QHeaderViewPrivate` and `QAbstractSpinBoxPrivate` cache SIZE
+HINTS, and `QComboBoxPrivate` queries `PM_DefaultFrameWidth` live rather
+than keeping it. A size hint is only a hazard if the style's answer
+depends on the widget's current size -- and `GridStyle::sizeFromContents`
+reads neither `opt->rect` nor the widget's width, height or size
+anywhere in its four hundred lines. So the two rect caches remain the
+only sites, which is a bound rather than a guess.
+
+**Landed on a measurement rather than on an instruction, which is worth
+saying plainly.** 8.749 reserved the choice, and the reservation rested
+on option 3 being unmeasured; the aims decide the rest -- a viewport
+permanently off the grid is the opposite of what this library is for.
+What the three passes change about that is the confidence: the condition
+is now the one the suite's own red lines chose, not the one that looked
+right. It is one commit, and reverting it restores the `info:` line and
+the defect together.
