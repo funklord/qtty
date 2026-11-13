@@ -62383,3 +62383,70 @@ witness is a check written as the negative half of a pair.
 ****Four written, four reddened on the
 first attempt**, after an instalment where one of four could not be
 written at all. 2533 checks, 854 entries.**
+
+### 8.774 The mechanism 8.751 called untraced was in the comment of the code that does it (2026-11-13)
+
+**8.751 measured a fixed-width table's separators appearing with one
+populated row and vanishing with three, with a horizontal rule per empty
+row, and closed on: "the mechanism is not established and I am not
+claiming one... which is a drawing order I have not traced."** It is
+established, it needed no tracing, and it is written out with its own
+whole-suite measurement in `CellPaintEngine::line()` -- the function
+that decides whether a rule is drawn.
+
+**The rule is "a rule that meets any content is not drawn at all."**
+That comment records why: writing only into a blank cell cannot tell a
+space a LABEL wrote from a cell nothing has touched, so a rule crossing
+a row of text filled the gaps between the words -- measured as a
+`QTableView`'s own grid putting a rule in place of every space in "a
+label far wider than its column". It also carries the blast radius it
+was adopted on: of the suite's horizontal rules, 510 land on entirely
+clear cells and are untouched, 8 land on entirely occupied ones and
+already drew nothing, **and every one of the 426 that were partial
+belongs to a table's grid, as do all 102 vertical rules, which run down
+columns already carrying the horizontal grid they crossed.**
+
+That last clause is the answer. **The content test is applied to the
+engine's OWN output:**
+
+- **An empty row's horizontal grid line lands on entirely clear cells**,
+  so it is drawn -- which is the rule 8.751 saw where row 1 should be.
+- **The verticals then run down columns that now carry those rules**,
+  meet content, and are refused. And the test is ALL-OR-NOTHING --
+  `clear_run()` walks the whole span and refuses on the first cell whose
+  glyph is not a space -- so one crossing refuses the entire separator,
+  which is why all of them vanish rather than only the cells where they
+  cross. Both branches apply it: the horizontal and the vertical each
+  call `clear_run()` and return.
+- **With one populated row there is no empty row to rule**, the
+  horizontal between the text and the table's edge meets the text and is
+  refused, and the verticals meet nothing -- so Qt's separators appear.
+
+**The observation fixes the order rather than the other way round**, so
+nothing here rests on a reading of Qt's paint loop -- which is just as
+well, since the engine sees only `drawLines` calls and could not say
+which widget code emitted them: a frame with the
+rules present and the separators absent can only arise if the rule was
+already there when the separator was asked for. 8.751's own `info:`
+line is the pair of data points -- 2 separators and 0 rules at one row,
+0 and 2 at three -- and they agree with no other order.
+
+**Nothing to fix, and that was already decided.** The same comment says
+what a real table grid would need -- the buffer knowing a cell was
+WRITTEN, a per-cell flag and a change to the model every tier reads --
+and that until then "a table renders" the way it does. What a drawn mark
+becomes on a character grid is row 0b's single pending decision, which
+8.751 was right to file this under. So this entry removes an
+"unexplained", not a defect.
+
+**Why it was missed, which is the part worth keeping.** The record
+asked a question the code had already answered IN THE FUNCTION BEING
+ASKED ABOUT, measured, in a comment written during an earlier pass. The
+reader -- me, both times -- read the style's table-grid decision
+(`grid_sep_cells()`, 8.706, 8.709) because that is where "separators"
+lives, and the engine's rule is one layer down where "a rule" lives.
+`working-practice.md` says a working sibling explaining itself is a
+cheaper source of a project's decisions than the document is; here it
+was not even a sibling, and the lesson is narrower and sharper: **when a
+record says a mechanism is untraced, read the comment on the code that
+performs it before writing anything else down.**
