@@ -9786,3 +9786,56 @@ find = "\t\t\tfor (int stale = id; stale < live_overlay_ids_; ++stale)"
 into = "\t\t\tfor (int stale = id; stale < id; ++stale)"
 count = 1
 check = "an overlay that goes away is retired from the terminal"
+# A TILE AT THE SCREEN'S EDGE IS NOT CLIPPED TO IT. dirty_tiles() walks a
+# fixed grid of tiles and intersects each with the screen, because the last
+# tile in a row or column is a partial one whenever the grid is not a multiple
+# of the tile size. Without the intersection the edge tiles extend past the
+# screen, so a transmitter is handed a rectangle with cells that do not exist
+# -- and every INTERIOR tile is still exactly right, which is why a grid whose
+# size happens to divide evenly would notice nothing.
+#
+# IT CLIPS TO ONE CELL TOO MANY rather than not clipping at all, for a
+# measured reason. Dropping the intersection entirely DOES redden the check
+# -- and it took the suite from about a minute to nearly five, close enough
+# to the 300-second limit that it would fail on a loaded machine. Why is not
+# established and is not claimed here; what it costs is: the spec is run as
+# a whole, so an entry five times the price of its neighbours is a tax on
+# every sweep for evidence no better than this. The check reads one tile's
+# rectangle on a 20x12 grid in tiles of 8, so one cell of overrun is the
+# smallest break it can see. 8.776.
+[[sabotage]]
+name = "a tile at the screen's edge is not clipped to the screen"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tconst QRect t = QRect(tx * tile, ty * tile, tile, tile)\n\t\t\t                    .intersected(QRect(QPoint(0, 0), grid));"
+into = "\t\t\tconst QRect t = QRect(tx * tile, ty * tile, tile, tile)\n\t\t\t                    .intersected(QRect(QPoint(0, 0), grid + QSize(1, 1)));"
+count = 1
+check = "and a tile at the edge is clipped to the screen"
+
+
+# THE Z ORDER IS REVERSED. visible_overlays() sorts bottom-to-top so the
+# compositor can paint them in one pass and the GUI twin can restack real
+# windows in the same order. Reversing the comparator paints the lowest
+# overlay last, so a scrim meant to sit under an icon covers it -- every
+# overlay is still drawn, in full, with the right pixels, and only their
+# ORDER is wrong. A frame with one overlay is unaffected, which is most of
+# them.
+[[sabotage]]
+name = "the overlay z order is reversed"
+file = "src/graphics/overlay.cpp"
+find = "\t                 [](Overlay *a, Overlay *b) { return a->z() < b->z(); });"
+into = "\t                 [](Overlay *a, Overlay *b) { return a->z() > b->z(); });"
+count = 1
+check = "overlays z-ordered"
+
+# A HIDDEN OVERLAY IS STILL LISTED. visible_overlays() filters on visibility
+# and on having an image, and both halves are load-bearing: the compositor
+# ships what this returns, so an overlay that has been hidden goes on being
+# transmitted. hide() then means nothing at all -- while show(), the z order,
+# the opacity and the pixels are all still right.
+[[sabotage]]
+name = "a hidden overlay is still listed as visible"
+file = "src/graphics/overlay.cpp"
+find = "\t\tif (o->isVisible() && !o->image().isNull()) out.append(o);"
+into = "\t\tif (!o->image().isNull()) out.append(o);"
+count = 1
+check = "hidden overlay not listed"

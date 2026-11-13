@@ -62497,3 +62497,71 @@ the narrowest of the four instalments this session, which is what the
 lens predicts: state somebody else holds is read back by one check,
 where a rendering invariant is read by several. 2533 checks, 858
 entries.**
+
+### 8.776 Three entries on choosing what to send, and a break that was not a break (2026-11-13)
+
+**The lens: the code that decides WHAT to send and IN WHAT ORDER, rather
+than the code that draws it.** `dirty_tiles()` chooses which tiles a
+frame transmits; `visible_overlays()` chooses which overlays go and in
+which order. A break in either leaves the drawing perfect.
+
+- **A tile at the screen's edge is not clipped to it.** The last tile in
+  a row or column is partial whenever the grid is not a multiple of the
+  tile size, so the intersection with the screen is load-bearing:
+  without it a transmitter is handed a rectangle covering cells that do
+  not exist, while every interior tile stays exactly right.
+- **The overlay z order is reversed.** The sort is bottom-to-top so the
+  compositor can paint in one pass and the GUI twin can restack real
+  windows in the same order. Reversed, a scrim meant to sit under an
+  icon covers it -- every overlay still drawn, in full, with the right
+  pixels, and only the order wrong. A frame with one overlay is
+  unaffected, which is most frames.
+- **A hidden overlay is still listed as visible.** The compositor ships
+  what `visible_overlays()` returns, so dropping the visibility half of
+  its filter makes `hide()` mean nothing, while `show()`, the z order,
+  the opacity and the pixels stay right.
+
+**The fourth entry was wrong, and the way it was wrong is new.** It
+replaced `damage.intersects(tile)` with `damage.contains(tile)`,
+expecting a one-cell edit to stop dirtying its tile. Nothing changed:
+not the named check, not one other check in 2531.
+
+**`QRegion::contains(const QRect &)` does not mean containment.** Qt
+implements it as `RectInRegion(...) != RectangleOut`, which is true for
+`RectangleIn` AND `RectanglePart` -- so it answers "does this rectangle
+overlap the region at all", and for a boolean overlap test it is
+interchangeable with `intersects()`. The suite saw no difference because
+there was none to see. **The entry was the thing that was wrong, and the
+harness said so correctly.**
+
+**Nothing in this tree relies on the strict reading**, which is the half
+worth checking before writing it down rather than after: the only
+`contains` calls on a geometry here are `QRect::contains(QPoint)`, which
+is strict and correct, and `QRegion::contains` appears nowhere in `src/`,
+`include/` or `test/`. So this is a trap recorded, not a defect found.
+
+**That makes four causes for one message, in two days.** `FAILED: the
+named check PASSED against broken code` has meant, now:
+
+1. **a weak check** -- `contains` where the property was positional, and
+   the only one of the four that is a defect in the suite (8.766);
+2. **an entry naming a check that does not own the property** -- the
+   40-byte bound that a 16-byte addition cannot breach (8.772);
+3. **a property with two independent guards**, where no single-site
+   break can reach the check at all (8.772);
+4. **a break that is not a break**, because the API does not mean what
+   its name says (here).
+
+Only the first asks for a change to the suite. The instrument that tells
+them apart is `--diff`, which answers the one question the verdict does
+not: did the broken code change any observable at all.
+
+**And one entry was narrowed after it passed, for cost.** Dropping the
+tile intersection entirely DOES redden the check -- and it took the
+suite from about a minute to nearly five, close enough to the
+300-second limit to fail on a loaded machine. The spec is run as a
+whole, so an entry five times the price of its neighbours is a tax on
+every future sweep for evidence no better than a one-cell overrun's.
+Why it slowed down is not established and is not claimed.
+
+2533 checks, 861 entries.
