@@ -6083,6 +6083,65 @@ int suite_widgets() {
 		                     "three rows, not only the first");
 	}
 
+	// ---- the icon registry's BOUND, which its own header asked for -------
+	//
+	// `src/standard_icons.h` says why the two accessors exist: "Exposed
+	// because a cache nobody can measure is one nobody can say is bounded,
+	// which is the shape this project keeps meeting." Nothing called
+	// either of them. So the bound was documented, the instrument for
+	// checking it was provided, and the check was never written -- which
+	// is a cache nobody can say is bounded, one step removed.
+	//
+	// Found by coverage after 8.758 made its exit status readable: the
+	// turnover arm, `g_forgotten_icons += g_noted_icons.size()` and the
+	// clear beside it, had never executed, because no fixture had ever
+	// noted 256 distinct pixmaps.
+	//
+	// What a wrong turnover costs is identity, silently: the comment at
+	// that arm says losing it "degrades to exactly the state before this
+	// existed -- a pixmap nobody can name", so a glyph substitution would
+	// stop finding its icon and nothing would fail. The cap clears
+	// WHOLESALE rather than evicting the oldest, deliberately, because
+	// evicting oldest needs an order the hash does not keep -- so the
+	// assertion is that the count turns over, not that the eldest went.
+	//
+	// Placed after every check that reads the registry for a key it minted
+	// earlier, because crossing the cap is exactly what clears those.
+	{
+		const int noted_before = standard_icons_noted();
+		const int forgotten_before = standard_icons_forgotten();
+		// One below the cap, counted from wherever the suite had got to,
+		// so this does not assume an empty registry.
+		quint64 first = 0;
+		for (int i = 0; i < 256; ++i) {
+			const quint64 key = 0x5100000000ull + quint64(i);
+			if (i == 0) first = key;
+			note_standard_icon(key, int(QStyle::SP_ComputerIcon));
+		}
+		const int noted_after = standard_icons_noted();
+		const int forgotten_after = standard_icons_forgotten();
+		printf("info: the icon registry held %d, now holds %d, having"
+		       " forgotten %d (was %d)\n", noted_before, noted_after,
+		       forgotten_after, forgotten_before);
+		CHECK(noted_after <= 256,
+		      "the icon registry never holds more than its cap, which is"
+		      " the bound its header exposes the counters to prove");
+		CHECK(forgotten_after > forgotten_before,
+		      "and crossing the cap turns it over rather than growing, the"
+		      " forgotten count rising by what it dropped");
+		// The consequence, which is the part a count alone does not show:
+		// a key noted before the turnover has lost its identity, and one
+		// noted after it still has its own.
+		const quint64 recent = 0x5100000000ull + 255ull;
+		CHECK(standard_icon_of(first) == -1
+		      || standard_icons_noted() == 256,
+		      "a pixmap dropped by the turnover resolves to nothing again,"
+		      " rather than to a stale answer");
+		CHECK(standard_icon_of(recent) == int(QStyle::SP_ComputerIcon),
+		      "while the one noted most recently keeps the icon it came"
+		      " from, so the turnover drops rather than corrupts");
+	}
+
 	// ---- editable combo and the text editors (section 17.2) ------------------
 	//
 	// Both were recorded as gaps -- "editable variant untested/unhandled" and

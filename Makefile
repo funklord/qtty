@@ -1637,6 +1637,14 @@ coverage:
 	$(MAKE) test BUILD_DIR=$(COV_DIR) \
 		QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
 		              QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage' >/dev/null
+# ONE SHELL, IF/ELSE, because `exit 0` ends a recipe LINE and not the
+# recipe. The whole-tree branch above was added by 8.736 ending in
+# `exit 0; fi`, which reads as "stop here" and is not: make runs the next
+# line regardless, so `gcov .cpp` ran with an empty name and the `test -f`
+# after it failed. `make coverage` therefore printed a correct ranking and
+# exited 1, every time, for two days -- the inverse of a vacuous pass, and
+# as misleading. Found by reading the exit code of a run whose output was
+# right. 8.758.
 	@if [ -z "$(F)" ]; then \
 		cd $(COV_DIR)/src && for g in *.gcno; do \
 			[ -f "$$g" ] || continue; gcov "$${g%.gcno}" >/dev/null 2>&1; \
@@ -1649,15 +1657,15 @@ coverage:
 			         printf "%6d uncovered of %6d  %6.2f%%  %s\n", \
 			                un, t, 100.0 * ex / t, n }' "$$f"; \
 		done | sort -rn; \
-		exit 0; \
+	else \
+		( cd $(COV_DIR)/src && gcov $(F).cpp >/dev/null 2>&1 ); \
+		test -f $(COV_DIR)/src/$(F).cpp.gcov \
+			|| { echo "coverage: no data for $(F)" >&2; exit 1; }; \
+		awk -F: '$$1 ~ /^ *[0-9]+$$/ { ex++ } $$1 ~ /^ *#####/ { un++; print "  uncovered: " $$2 ": " $$3 } \
+		     END { t = ex + un; \
+		           printf "%s: %d of %d lines, %.2f%%\n", "$(F).cpp", ex, t, t ? 100.0 * ex / t : 0 } ' \
+		    $(COV_DIR)/src/$(F).cpp.gcov; \
 	fi
-	@( cd $(COV_DIR)/src && gcov $(F).cpp >/dev/null 2>&1 )
-	@test -f $(COV_DIR)/src/$(F).cpp.gcov \
-		|| { echo "coverage: no data for $(F)" >&2; exit 1; }
-	@awk -F: '$$1 ~ /^ *[0-9]+$$/ { ex++ } $$1 ~ /^ *#####/ { un++; print "  uncovered: " $$2 ": " $$3 } \
-	     END { t = ex + un; \
-	           printf "%s: %d of %d lines, %.2f%%\n", "$(F).cpp", ex, t, t ? 100.0 * ex / t : 0 } ' \
-	    $(COV_DIR)/src/$(F).cpp.gcov
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
 record: tests-build

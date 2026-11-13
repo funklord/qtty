@@ -9404,3 +9404,18 @@ find = "\t\tconst int i = c.kind() == Color::Indexed ? c.index() % 16 : 7;"
 into = "\t\tconst int i = c.kind() == Color::Indexed ? c.index() % 8 : 7;"
 count = 1
 check = "a bright colour and Attr::Bold stay separate bytes"
+
+# THE LAST LIVE OVERLAY LEFT ON A REPAIRED SCREEN. FrameScheduler::redraw()
+# is the recourse for a screen corrupted by something this library did not
+# do, and it clears every live overlay id before re-rendering.
+# live_overlay_ids_ is a COUNT used as an exclusive bound, so subtracting one
+# retires all but the last -- which leaves a ghost image at full size on the
+# screen redraw() has just repaired, the fault it exists to fix. Two overlays
+# in the fixture are what make this visible; one would pass. 8.759.
+[[sabotage]]
+name = "redraw leaves the last live overlay on the terminal"
+file = "src/runtime/compositor.cpp"
+find = "\t\tfor (int id = 0; id < live_overlay_ids_; ++id)"
+into = "\t\tfor (int id = 0; id < live_overlay_ids_ - 1; ++id)"
+count = 1
+check = "redraw() retires EVERY live overlay"

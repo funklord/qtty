@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2521 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2527 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -61335,3 +61335,132 @@ document had never named the products; once named, it took two notes and
 under an hour. 8.756 asked it because the document said to. **An open
 question nobody has put to anybody is not blocked -- it is unasked**, and
 the two are easy to confuse because both look like waiting.
+
+### 8.758 `make coverage` printed the right answer and exited 1, for two days (2026-11-13)
+
+**I wrote the defect and found it by reading the exit code of a run whose
+output was correct.** 8.736 added the whole-tree form, whose branch ends:
+
+    done | sort -rn; \
+    exit 0; \
+    fi
+
+`exit 0` reads as "stop here". **It ends the recipe LINE's shell, not the
+recipe** -- make then runs the next line regardless, so `gcov $(F).cpp`
+ran with an empty `F`, the `test -f .../.cpp.gcov` after it found nothing,
+and its `|| exit 1` failed the target. So `make coverage` with no `F`
+ranked all sixteen sources correctly and then reported failure, every
+time, since 8.736.
+
+**The inverse of a vacuous pass, and as misleading.** `evidence.md` says a
+count and an exit code are halves of one result; this is the half nobody
+checks when the other half looks right. I read the ranking, acted on it,
+and only then noticed `EXIT=2` at the foot of the log. A caller that read
+the status rather than the output -- a script, or this target becoming a
+receipt-tracked arm, which is the obvious next thing to want -- would
+have seen coverage as broken while it worked.
+
+**The fix is structural rather than a bigger `exit`**: one shell, `if`
+/`else`, so the whole-tree branch IS the recipe's last act and its status
+is the recipe's. The `makefile-hazards` skill's first lesson is that a
+recipe line is its own shell; this is that, met from the other side --
+not a rule that fired and was ignored, but one whose consequence I had
+not drawn.
+
+**Verified on three paths, the third being the control:** no `F` now
+exits 0 with the ranking, `F=cell_buffer` exits 0 with its uncovered
+lines, and `F=nosuch` still exits non-zero saying "no data for nosuch" --
+which is the path a restructure could easily have swallowed.
+
+**And the ranking itself, triaged.** Nothing new: `tray.cpp` at 0 of 139
+is 0b's standing question and is explained by `test-tray` being an arm
+outside the suite; `cell_buffer.cpp`'s single uncovered line is
+`colour_kind_name()`'s trailing `return QStringLiteral("?")`, after a
+switch with an arm for every `Color::Kind`, so it is the return the
+compiler demands and nothing can reach. The remaining five files sit
+between 95 and 99 per cent, and triaging the two smallest found
+something -- 8.759, which exists because the exit code was fixed.
+
+### 8.759 The recovery path cleared overlays and had never been run (2026-11-13)
+
+**Found by triaging the ranking 8.758 made usable**, which is the point
+of fixing an instrument rather than reading around it. Of the two
+smallest uncovered counts, `compositor.cpp`'s two lines include a real
+statement rather than a switch arm: `gfx->clear_overlay(id)`, inside
+`FrameScheduler::redraw()`.
+
+**`redraw()` is the recourse for a screen this library did not corrupt**
+-- another process writing to the tty, a sequence dropped over a slow
+link -- where `prev_` describes a screen that no longer exists and every
+cell diffs to nothing. It drops `prev_` and `prev_overlays_`, clears
+every live overlay id, and re-renders.
+
+**That loop had never executed.** The retire loop in `render_now()` is
+exercised and asserted -- "an overlay that goes away is retired from the
+terminal", written after a capture showed 2592 px of dropped overlay
+sitting on the terminal for the life of the program. So **two paths call
+`clear_overlay()` and only one was covered**, and the uncovered one is
+the RECOVERY path: the fault it would hide is a ghost image at full size
+on a screen the program has just repaired, which is 8.237's handover
+fault arriving with no handover to notice it.
+
+**Two overlays in the fixture, deliberately.** `live_overlay_ids_` is a
+count used as an exclusive bound, which is exactly where an off-by-one
+lives, and a one-overlay fixture cannot tell a loop that clears all from
+one that clears all-but-the-last. Measured: 2 live, 2 retired by
+`redraw()`, 1 extra frame -- the second half asserted too, because
+clearing without re-rendering would be a clearing rather than a
+recovery.
+
+**The sabotage is the fault the check names.** `id < live_overlay_ids_`
+becomes `id < live_overlay_ids_ - 1`, and it reddens that check and
+nothing else -- one reddened check, which is as precise as an
+entry gets. 834 entries.
+
+**What the pair of entries is really about.** The instrument said
+`EXIT=2` and printed the truth; I read the truth and nearly left the
+status alone, because the output looked right. Fixing it cost a
+restructure and bought a finding the same afternoon. **An instrument
+whose verdict you have learned to ignore is one you are no longer
+using** -- and `coverage` was the one arm with no receipt, which is what
+that looks like from the outside.
+
+### 8.760 The counters were exposed to prove a bound, and nothing called them (2026-11-13)
+
+**`src/standard_icons.h` says why they exist, in its own words:**
+*"Exposed because a cache nobody can measure is one nobody can say is
+bounded, which is the shape this project keeps meeting."* Neither
+`standard_icons_noted()` nor `standard_icons_forgotten()` had a caller
+anywhere -- only the declaration and the definition. So the bound was
+documented, the instrument for proving it was built and explained, and
+the check was never written. **That is a cache nobody can say is
+bounded, one step removed**: the measurement exists and no one takes it.
+
+Found by the same coverage ranking as 8.759, two lines further down: the
+turnover arm -- `g_forgotten_icons += g_noted_icons.size()` and the
+`clear()` beside it -- had never executed, because no fixture had ever
+noted 256 distinct pixmaps.
+
+**The registry is bounded and the bound is real**: `kMaxNotedIcons` is
+256, and crossing it drops the whole hash rather than evicting the
+eldest, deliberately, because evicting the eldest needs an order a
+`QHash` does not keep. So what a wrong turnover costs is identity and
+nothing louder -- the comment there says losing it "degrades to exactly
+the state before this existed, a pixmap nobody can name", so a glyph
+substitution would quietly stop finding its icon.
+
+Four checks, which is what it takes to say that honestly: the cap holds;
+crossing it raises the forgotten count rather than growing the hash; a
+pixmap dropped by the turnover resolves to nothing again rather than to
+a stale answer; and the one noted most recently keeps its icon, so the
+turnover **drops rather than corrupts**. The third and fourth are the
+pair that matters -- a turnover that cleared nothing would satisfy the
+first two.
+
+**Counted from wherever the suite had got to rather than from zero**,
+because this is process-global state and the registry is not empty when
+the check runs -- it held 36 entries. And placed after every check that
+reads a key it minted earlier, because crossing the cap is precisely
+what clears those. Measured: 36 held, 36 held after, 256 forgotten.
+
+2527 checks.

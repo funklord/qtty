@@ -2366,6 +2366,69 @@ int suite_graphics() {
 			CHECK(sent >= 1 && cleared_before == 0 && rec.cleared >= 1,
 			      "an overlay that goes away is retired from the terminal");
 		}
+
+		// AND THE RECOVERY PATH RETIRES THEM TOO, which nothing reached.
+		//
+		// FrameScheduler::redraw() is the recourse for a screen corrupted
+		// by something this library did not do -- another process writing
+		// to the tty, a sequence dropped over a slow link -- where prev_
+		// describes a screen that no longer exists and every cell diffs to
+		// nothing. It drops prev_ and prev_overlays_, clears every live
+		// overlay id, and re-renders.
+		//
+		// That loop had never run. Coverage put `gfx->clear_overlay(id)`
+		// inside redraw() at zero executions while the retire loop above
+		// was exercised -- so the two paths that call the same method were
+		// covered one of two, and the uncovered one is the RECOVERY path.
+		// What it would hide is the fault redraw() exists to fix: a ghost
+		// image left at full size on a screen the program has just
+		// repaired, which is 8.237's handover fault arriving without a
+		// handover to notice it.
+		//
+		// TWO overlays, deliberately. A loop that cleared one, or that
+		// stopped at the first id, would satisfy a one-overlay fixture and
+		// leave the second ghost on the terminal -- and `live_overlay_ids_`
+		// is a count used as an exclusive bound, which is exactly where an
+		// off-by-one lives.
+		{
+			Recorder rec;
+			rec.caps.graphics = Qtty::Capabilities::KittyAlpha;
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(20, 6));
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rec, &comp, &win);
+
+			Overlay lower, upper;
+			lower.set_image(art);
+			lower.set_rect(QRectF(1, 1, 4, 2));
+			lower.set_z(1);
+			lower.show();
+			upper.set_image(art);
+			upper.set_rect(QRectF(8, 2, 4, 2));
+			upper.set_z(2);
+			upper.show();
+			sched.render_now();
+			const int live = rec.overlays, cleared_before = rec.cleared;
+			const int frames_before = rec.frames;
+
+			sched.redraw();
+
+			printf("info: %d overlay(s) live, %d retired by redraw(), %d"
+			       " extra frame(s)\n", live, rec.cleared - cleared_before,
+			       rec.frames - frames_before);
+			CHECK(live >= 2 && cleared_before == 0
+			      && rec.cleared - cleared_before >= 2,
+			      "redraw() retires EVERY live overlay, a count used as an"
+			      " exclusive bound being where an off-by-one would leave"
+			      " the last one on the terminal");
+			CHECK(rec.frames - frames_before >= 1,
+			      "and re-renders afterwards, which is what makes it a"
+			      " recovery rather than a clearing");
+		}
 	}
 
 	// ---- the terminal's own ground, at the sites it never reached ----
