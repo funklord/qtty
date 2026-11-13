@@ -62450,3 +62450,50 @@ cheaper source of a project's decisions than the document is; here it
 was not even a sibling, and the lesson is narrower and sharper: **when a
 record says a mechanism is untraced, read the comment on the code that
 performs it before writing anything else down.**
+
+### 8.775 Four entries on what somebody else is still holding (2026-11-13)
+
+**The lens this time is state the library does not own.** A terminal
+holds the placements it was sent; a `QTextDocument` holds the sizes it
+was given; the compositor holds one picture between frames. Each must be
+kept in step, and each break leaves the current frame looking right
+while what the other side holds goes wrong.
+
+- **A hidden overlay's placement is never retired.** The kitty tier
+  ships an overlay as a placement whose id IS its index in the z-sorted
+  list, so a shrinking list leaves a tail the terminal is still showing.
+  The loop that clears them exists because this was measured on a screen
+  capture -- an overlay presented and then dropped stayed at full size
+  for as long as the program ran -- and `clear_overlay()` had no caller
+  anywhere when the tier was written. Every overlay still shown stays
+  correct and the frame's cells are untouched, so no cell check can see
+  it. It reddens its own check and nothing else.
+- **The kept picture survives a grid it no longer fits.** The pixel
+  tiers keep one `QImage` between frames and rebuild it when the grid's
+  size or the terminal's background changes. Dropping the size half
+  keeps an image sized for the old grid: the colours are right, the
+  ground is right, and the rows that fit are drawn correctly.
+  It reddens its own check alone -- the
+  one that prints its two sizes on failure, because two `QSize`
+  comparisons behind one boolean cannot separate "the first render never
+  happened" from "the second kept the old size".
+- **The virtual transmit drops `U=1`.** That key is what asks the
+  terminal for a VIRTUAL placement, the kind the placeholder cells then
+  position. Without it the terminal places the image itself, at the
+  cursor, over whatever is there -- while every other key is right, the
+  payload is the image, and the placeholder cells still carry their
+  diacritics. It reddens its own check alone.
+- **The alignment pass rewrites an image that is already aligned.**
+  `align_text_document()` skips a fragment whose size already matches
+  the rounding, which is what makes a second pass a no-op. Without the
+  skip every call rewrites every image format -- the sizes stay exactly
+  right, so only the count of edits can see it, and a pass that is not
+  idempotent is one a caller cannot put in a resize handler.
+  It reddens its own check alone.
+
+****Four written, four reddened on the
+first attempt, and each exactly the check it names and nothing else** --
+the narrowest of the four instalments this session, which is what the
+lens predicts: state somebody else holds is read back by one check,
+where a rendering invariant is read by several. 2533 checks, 858
+entries.**

@@ -9725,3 +9725,64 @@ find = "\tif (has_clip) visible = visible.intersected(clip);"
 into = "\tvisible = visible.intersected(clip);"
 count = 1
 check = "a placement with has_clip false restricts nothing"
+# THE ALIGNMENT PASS EDITS EVERY IMAGE, EVERY TIME. align_text_document()
+# skips a fragment whose size already matches what the rounding wants, which
+# is what makes a second pass a no-op; dropping the skip rewrites every image
+# format on every call. The SIZES are still exactly right -- the document
+# renders the same -- so only the count of edits can see it, and the check
+# that reads the count is the one asserting a second run changes nothing. A
+# pass that is not idempotent is one a caller cannot put in a resize handler.
+[[sabotage]]
+name = "the alignment pass rewrites an image that is already aligned"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (aw == img.width() && ah == img.height()) continue;"
+into = "\t\t\tif (false) continue;"
+count = 1
+check = "running it again changes nothing"
+
+# THE TRANSMIT NO LONGER ASKS FOR A VIRTUAL PLACEMENT. encode_kitty_virtual()
+# sends a=T with U=1, which is what tells the terminal to create a VIRTUAL
+# placement -- one the placeholder cells then position. Without U=1 the
+# terminal places the image itself, at the cursor, over whatever is on the
+# screen at that moment: every other key is still right, the payload is still
+# the image, and the placeholder cells still carry their diacritics, so the
+# stream is valid and the picture lands in the wrong place.
+[[sabotage]]
+name = "the virtual transmit drops U=1 and places the image at the cursor"
+file = "src/graphics/graphics.cpp"
+find = "\tconst QByteArray ctrl = \"a=T,U=1,q=2,f=100,i=\" + QByteArray::number(id)"
+into = "\tconst QByteArray ctrl = \"a=T,q=2,f=100,i=\" + QByteArray::number(id)"
+count = 1
+check = "the transmit creates a virtual placement quietly"
+
+# THE KEPT PICTURE SURVIVES A GRID IT NO LONGER FITS. The pixel tiers keep one
+# QImage between frames and rebuild it when the terminal's grid changes size
+# or its background changes; dropping the size half of that test keeps an
+# image sized for the old grid. Every later frame then rasterises into a
+# picture of the wrong dimensions -- the colours are right, the ground is
+# right, and the rows that fit are drawn correctly, which is what makes this
+# survivable enough to ship and invisible to a check that reads pixels rather
+# than the picture's SIZE.
+[[sabotage]]
+name = "the kept picture is not rebuilt when the grid is resized"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (pixels_.size() != want || pixels_ground_ != ground.default_bg) {"
+into = "\t\tif (pixels_ground_ != ground.default_bg) {"
+count = 1
+check = "a resized grid discards the kept picture and rebuilds it"
+
+# A HIDDEN OVERLAY IS NEVER RETIRED FROM THE TERMINAL. The kitty tier ships an
+# overlay as a placement whose id IS its index in the z-sorted list, so a
+# shrinking list leaves a tail of placements the terminal is still showing.
+# Retiring none of them is the fault the loop was written for, and the comment
+# beside it records it measured on a screen capture: an overlay presented and
+# then dropped stayed on the terminal at full size for as long as the program
+# ran. Every overlay still SHOWN is still correct, and the frame's cells are
+# untouched, so nothing a cell check reads can see it.
+[[sabotage]]
+name = "a hidden overlay's placement is never retired"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tfor (int stale = id; stale < live_overlay_ids_; ++stale)"
+into = "\t\t\tfor (int stale = id; stale < id; ++stale)"
+count = 1
+check = "an overlay that goes away is retired from the terminal"
