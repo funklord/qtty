@@ -1285,11 +1285,24 @@ regression harness.
 
 **Phase 2 — Library core.** L2–L6 plus the snapshot harness and `qtty-inspect`.
 Exit criterion: the Phase 0 dialog renders and is fully interactive under snapshot test.
+**Met, and asserted rather than declared** (checked 2026-11-13): that dialog — a
+`QTreeView` and a `QComboBox` in a `QDialog` — renders under snapshot test as
+`tree_combo_dialog` and is *driven* under one as `tree_combo_dialog_driven`, with focus
+moved to the combo and to the tree, Right to expand a node, Down to walk into it, and
+the tree's own contribution captured separately so that one widget's change cannot
+stand in for the other's. `qtty-inspect` and `qtty-replay` are built and installed by
+`make install`. project.md 8.780.
 
 **Phase 3 — First product, first screen.** Pick the *simplest* screen in the product with
 the most maintainable existing TUI (best fallback if it goes badly). Characterisation
 snapshots first, then delete the old screen's TUI code when the shared one matches.
 Exit criterion: one screen, one source, both targets, in production.
+
+**Its first step is the library's and is served**: characterisation snapshots are public
+API — `Qtty::test::snapshot_of()` in `qtty/testing.h`, documented in the README — so a
+product can capture its existing screens before porting them, which is what "snapshots
+first" asks for. What remains is which screen, in which product, and that is what this
+phase has always waited on rather than on anything here.
 
 **Phase 4 — Roll out.** Screen by screen, product by product, deleting legacy TUI code as
 each lands. Expect Tier 3 variants (§7) for the two or three densest screens; that is a
@@ -1548,6 +1561,17 @@ kitty chunking, iTerm2 base64) and terminal negotiation, all confined to backend
 ---
 
 ## 17. Widget coverage: remaining effort
+
+**This table is the Phase 0 estimate. It is kept for its basis and its method, not as a
+statement of the work ahead** — re-read against the tree 2026-11-13, and most of what it
+prices has landed. Every component §17.1 names is in the tree and exercised by the
+suite; §17.3's rows are all there too, including all four transports and the
+alpha-over-text path (`Capabilities::GraphicsMode` carries `Halfblocks`, `Sixel`,
+`ITerm2`, `Kitty` and `KittyAlpha`); and §17.2's widgets are the Native class of §8.4's
+matrix, which is the list that says what is style-drawn and snapshot-tested. What the
+numbers still describe honestly is the per-product migration of Phases 3 and 4, which
+§17.4 already puts on top of them. A reader wanting today's coverage reads §8.4 and the
+suite; a reader wanting to know how long such work takes reads this. project.md 8.780.
 
 Estimate basis: the three spikes (≈700 lines, roughly three working days of effort all
 told) produced working checkbox, radio, button, combo + popup, menu + click dispatch,

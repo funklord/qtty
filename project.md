@@ -62660,3 +62660,58 @@ right.
 
 ****Three written, three reddened on the
 first attempt.** 2534 checks, 864 entries.**
+
+### 8.780 The roadmap could not say where the project had got to (2026-11-13)
+
+**Walked from design.md's own aims and phases rather than from the last
+run's backlog**, which is what found this: the document that is
+authoritative over the code was understating the code, in three places,
+and a reader asking "what can I not do yet" would have been told the
+wrong answer.
+
+- **Phase 2's exit criterion was met and unmarked.** "The Phase 0 dialog
+  renders and is fully interactive under snapshot test" -- it does, and
+  the suite asserts both halves: `tree_combo_dialog` for the still
+  render and `tree_combo_dialog_driven` for the driven one, which moves
+  focus to the combo and the tree, expands a node with Right, walks into
+  it with Down, and captures the tree's own contribution separately so
+  one widget's change cannot stand in for the other's. `qtty-inspect`
+  and `qtty-replay`, the other two things that phase names, are built
+  and installed by `make install`. §12 said none of that, so the phase
+  read as open.
+- **Phase 3's first step is the library's, and is served.**
+  Characterisation snapshots are public API --
+  `Qtty::test::snapshot_of()` in `qtty/testing.h`, documented in the
+  README -- so a product can capture its screens before porting them.
+  What that phase waits on is which screen in which product, and saying
+  so is different from leaving the step unattributed.
+- **§17's remaining-effort table reads as the work ahead and is the
+  Phase 0 estimate.** It prices 46 to 64 developer-days for "commonly
+  used widgets work well, graphics overlays work everywhere,
+  snapshot-tested" -- and every component §17.1 names is in the tree
+  and exercised, §17.3's five rows are all there (all four transports
+  and the alpha-over-text path, which `Capabilities::GraphicsMode`
+  carries as `Halfblocks`, `Sixel`, `ITerm2`, `Kitty`, `KittyAlpha`),
+  and §17.2's widgets are §8.4's Native class. The table is kept,
+  because its basis and its method are worth having; what it gets is a
+  header saying which question it answers.
+
+**The matrix was checked rather than trusted, and it holds.** §8.4 says
+coverage is "declared, not discovered", so the declaration is a claim
+about the code: for each Native row -- `QSplitter`, `QProgressBar`,
+`QSlider`, `QScrollBar`, `QScrollArea`, `QTabWidget`, `QTabBar`,
+`QMenuBar`, `QDialogButtonBox`, `QHeaderView` -- there is both style
+handling and suite coverage. Nothing in that class is undrawn or
+untested, which is the one answer this walk could have turned up as a
+defect and did not.
+
+**What the walk did not find is worth recording too**, because an empty
+result from a goal-gap walk is normally a sign the walk was not done:
+G1, G2, G4 and G5 are served and asserted (G5 by the private-header arm,
+577 includes and none reaching one), and every aim that is NOT served
+waits on a decision that is not the library's -- G3 on OQ-4's
+consequence, Phase 0's non-X11 smoke test on the platform scope, the
+bundled font on its licence, and §8.4's open design question on what a
+drawn mark becomes on a character grid. **The gap was in the document's
+account of itself rather than in the software**, which is a thing a walk
+can only find by starting from the document.
