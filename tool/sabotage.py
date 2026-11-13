@@ -518,6 +518,74 @@ def drop_lock():
 			pass
 
 
+# Both halves of the pair are written through here, so that the green set can
+# be written the moment it is known and the reddened set at the end without
+# two spellings of the same thing.
+#
+# Reported rather than raised: the sweep's verdict is the product and these
+# files are a by-product, so a read-only build directory must not turn a clean
+# run into a failure.
+def write_checks(name, rows, suffix):
+	out = os.path.join(ROOT, "build", "sabotage-%s%s.txt" % (name, suffix))
+	try:
+		os.makedirs(os.path.dirname(out), exist_ok=True)
+		with open(out, "w", encoding="utf-8") as f:
+			f.write("\n".join(sorted(rows)) + "\n")
+		say("sabotage: wrote %d %s check(s) to %s"
+		    % (len(rows), name, os.path.relpath(out, ROOT)))
+	except OSError as e:
+		say("sabotage: could not write %s (%s)" % (out, e))
+
+
+# WHAT AN INTERRUPTED SWEEP KEEPS. The canonical pair is written when the run
+# reaches its last line, which for a full sweep is eight hours in, and 8.752
+# measured what losing that costs: the per-entry lines in the log are
+# truncated with "... and N more", and reconstructing the set from one
+# recovered 746 of 1498 distinct checks while counting truncation markers as
+# checks. So the reddened half is journalled as it is earned -- one line per
+# check per entry, flushed, so the bytes are the kernel's and not this
+# process's -- and the green half, which is complete the moment the baseline
+# passes and cannot change afterwards, is written straight away instead of
+# being held hostage to the other eight hours.
+#
+# The journal is deliberately NOT the canonical file: it is per-entry and
+# ordered, which the set is not, and a reader wanting the set of a run that
+# did not finish takes column three of it. It carries the same -partial
+# suffix for the same reason the sets do -- a partial run's complement means
+# untried rather than unguarded.
+class Journal:
+	def __init__(self, partial, green):
+		self.suffix = "-partial" if partial else ""
+		self.handle = None
+		self.path = os.path.join(ROOT, "build",
+		                         "sabotage-journal%s.txt" % self.suffix)
+		write_checks("green", green, self.suffix)
+		try:
+			os.makedirs(os.path.dirname(self.path), exist_ok=True)
+			self.handle = open(self.path, "w", encoding="utf-8")
+			self.handle.write("# entry\tentry name\treddened check -- written as"
+			                  " each entry ran, so this\n")
+			self.handle.write("# file is what survives a run that was stopped."
+			                  " The sets beside it are\n")
+			self.handle.write("# the finished run's answer.\n")
+			self.handle.flush()
+			say("sabotage: journalling each entry's reddened checks to %s"
+			    % os.path.relpath(self.path, ROOT))
+		except OSError as e:
+			say("sabotage: could not open the journal (%s)" % e)
+
+	def note(self, index, name, checks):
+		if not self.handle:
+			return
+		try:
+			for c in sorted(checks):
+				self.handle.write("%d\t%s\t%s\n" % (index, name, c))
+			self.handle.flush()
+		except OSError as e:
+			self.handle = None
+			say("sabotage: the journal stopped taking writes (%s)" % e)
+
+
 def main():
 	if "--help" in sys.argv or "-h" in sys.argv:
 		sys.stdout.write(usage())
@@ -837,6 +905,7 @@ def main():
 		green = set(passing_checks(out))
 		base_out = out
 		say("sabotage: baseline green, %d checks passing" % len(green))
+		journal = Journal(only is not None or start > 1, green)
 
 		# THE CONTROL FOR --diff, and it is not optional: see
 		# volatile_forms(). The second run rebuilds nothing, the sources
@@ -961,9 +1030,12 @@ def main():
 			red = [c for c in failing_checks(out) if check in c]
 			if red:
 				say("  ok -- reddened: %s" % red[0])
+				mine = set()
 				for fl in failing_checks(out):
 					hit = check_of(fl, green)
-					reddened.add(hit if hit else fl)
+					mine.add(hit if hit else fl)
+				reddened |= mine
+				journal.note(i, name, mine)
 				others = [c for c in failing_checks(out) if check not in c]
 				if others:
 					# NAMED rather than counted. The question a new check
@@ -1141,20 +1213,9 @@ def main():
 			    " alone and")
 			say("          these carry -partial: a green set here means"
 			    " untried, not unguarded.")
-		for name, rows in (("reddened", reddened), ("green", green)):
-			out = os.path.join(ROOT, "build",
-			                   "sabotage-%s%s.txt" % (name, suffix))
-			try:
-				os.makedirs(os.path.dirname(out), exist_ok=True)
-				with open(out, "w", encoding="utf-8") as f:
-					f.write("\n".join(sorted(rows)) + "\n")
-				say("sabotage: wrote %d %s check(s) to %s"
-				    % (len(rows), name, os.path.relpath(out, ROOT)))
-			except OSError as e:
-				# Reported rather than raised: the sweep's verdict is the
-				# product and this is a by-product, so a read-only build
-				# directory must not turn a clean run into a failure.
-				say("sabotage: could not write %s (%s)" % (out, e))
+		# The green set went out at the baseline, where it was already
+		# complete; this is the half that needed every entry to run.
+		write_checks("reddened", reddened, suffix)
 	if rc == 0:
 		say("sabotage: %d sabotage(s), each reddened the check it names"
 		    % len(spec))

@@ -61904,3 +61904,65 @@ multiplier leaves a double-width grapheme's second cell showing
 whatever was behind it -- a half-coloured selection or a half-tinted
 row wherever CJK or an emoji appears -- with the glyph still drawn and
 every narrow cell still right. 2531 checks, 842 entries.
+
+### 8.767 An eight-hour artifact written in the last line is one kill from nothing (2026-11-13)
+
+**8.752 made the sweep's record harder to overwrite and left it as easy
+to lose.** That entry's finding was a one-entry `--only` run replacing
+the canonical pair at the same filenames; the fix renamed a partial
+run's output, and its closing line is *"an artifact worth 8.1 hours
+needs to be harder to overwrite than a log."* What it did not change is
+WHEN the pair is written: both files went out after the last entry, so
+a sweep stopped at hour seven left nothing but the log -- and the same
+entry measured what a log is worth, recovering **746 of 1498** distinct
+checks while silently counting truncation markers as checks.
+
+**And the case is not hypothetical, because the stop that matters is
+not one the tool can catch.** `sabotage.py` restores the tree under
+`SIGINT`, `SIGTERM` and `atexit`, which is why the interrupt test below
+leaves a clean tree -- but `running-code.md` names the other half:
+anything that KILLS a process rather than signalling it, the harness's
+own way of stopping a background task included, never reaches a
+handler. So the record could not be written on the way out; it had to
+be written on the way through.
+
+**Two halves, and they needed different fixes.**
+
+- **The green set is complete the moment the baseline passes**, and
+  cannot change while the run goes on -- the sources are restored
+  between entries. Holding it to the end bought nothing, so it is
+  written there now, 2529 distinct checks and 200 kB, for free.
+- **The reddened set is earned entry by entry**, so it is journalled as
+  it happens: `build/sabotage-journal[-partial].txt`, one line per
+  reddened check per entry, flushed, so the bytes belong to the kernel
+  rather than to a process that may be killed. The canonical pair is
+  still written at the end and is still the finished run's answer; the
+  journal is per-entry and ordered, which a set is not, and a reader who
+  wants the set of a run that stopped takes its third column.
+
+**Proved by stopping one.** A three-entry run (`--from 840`) was
+interrupted with `SIGINT` while the second entry was building, after
+the first had reddened three checks. The journal held exactly those
+three lines; `sabotage-green-partial.txt` was on disk with its
+timestamp at the baseline; `sabotage-reddened-partial.txt` still
+carried an earlier run's mtime, which is the old behaviour visible as
+an absence -- the interrupted run wrote no set at all. The tree came
+back clean, one file restored.
+
+**One accounting note, since the numbers do not match and the
+difference is not a fault.** The suite emits 2530 `PASS` lines for
+2531 checks: one check sits behind a session-leader condition that is
+false under the harness, as section 0a records, and the distinct count
+is 2529 because one `CHECK` inside a three-iteration loop emits the
+same text three times. A set collapses it to one element, which the
+harness's own "the named check matches 1 passing check" test is happy
+with, so nothing downstream reads it wrong.
+
+**The shape.** The instrument that proves the suite's checks can fail
+had its own most expensive output on a code path that only a clean exit
+reaches. 8.752 called this *"the same thing one level up"* about the
+overwrite; the loss is the same thing again, and the general form is
+worth keeping over either instance: **an artifact that takes hours to
+earn is written as it is earned, not when the process is finished with
+it** -- and the test of that is to stop the process, not to read the
+code.
