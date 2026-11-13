@@ -35,6 +35,7 @@ import signal
 import difflib
 import subprocess
 import sys
+import time
 import tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -333,8 +334,8 @@ def usage():
 USAGE = """\
 sabotage.py -- break the code on purpose and confirm the suite says so.
 
-usage: sabotage.py [--validate] [--only TEXT] [--from N] [--dirty-ok]
-                   [--diff] [--names FILE] [--help]
+usage: sabotage.py [--validate] [--only TEXT] [--from N] [--to N]
+                   [--dirty-ok] [--diff] [--names FILE] [--help]
 
 Runs every entry in tool/sabotage.toml: applies it, builds, runs the
 suite, and requires the check the entry names to go red. Restores the
@@ -361,6 +362,11 @@ and so is invisible to it. project.md 8.683.
   --from N       start at the Nth entry of the spec, numbered as the
                  per-entry line prints it. For resuming a run that was
                  interrupted: %(resume)s.
+  --to N         stop after the Nth entry, so a sweep can be run in
+                 affordable pieces rather than in one sitting:
+                 `--from 1 --to 120`, then `--from 121 --to 240`, each
+                 appending to the same journal. Refuses an --only, which
+                 is a sparse selection with no range to bound.
   --names FILE   read a suite run's output and refuse any entry whose
                  check matches more than ONE passing check. Milliseconds,
                  like --validate, and it catches the one class of refusal
@@ -383,6 +389,27 @@ and so is invisible to it. project.md 8.683.
   --dirty-ok     run although src/, test/ or include/ has uncommitted
                  changes. The refusal exists because more than one
                  session works these trees.
+
+WHAT IT LEAVES BEHIND, in build/, because a reader asking afterwards
+which checks nothing reddens cannot get that from a log:
+
+  sabotage-green[-partial].txt     every check the suite passes, written
+                                   the moment the baseline passes
+  sabotage-reddened[-partial].txt  every check the entries moved, written
+                                   when the run reaches its end
+  sabotage-journal.txt             entry, name and reddened check, one
+                                   line each, flushed as every entry
+                                   finishes -- so a run that is KILLED
+                                   still says what it proved, and a
+                                   resumed run appends rather than
+                                   truncating
+
+A partial run -- an --only, or a --from -- carries the -partial suffix on
+the two sets, because the useful half of that pair is the complement and
+only a whole sweep has one. The journal has no complement, so a --from
+chunk writes into the same file as the rest of the sweep, while an --only
+gets a journal of its own: a forty-second probe must not be able to erase
+eight hours of record. project.md 8.767, 8.768.
 """
 
 
@@ -463,7 +490,7 @@ def known_arguments(argv):
 	until this was written. A tool that edits the tree owes its caller a
 	refusal it can read instead of an hour of work it did not ask for.
 	"""
-	takes_value = {"--only", "--from", "--names"}
+	takes_value = {"--only", "--from", "--to", "--names"}
 	flags = takes_value | {"--validate", "--dirty-ok", "--diff", "--help",
 	                       "-h"}
 	i = 0
@@ -518,6 +545,15 @@ def drop_lock():
 			pass
 
 
+def head_commit():
+	try:
+		out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
+		                              cwd=ROOT, stderr=subprocess.DEVNULL)
+		return out.decode("utf-8", "replace").strip() or "unknown commit"
+	except (OSError, subprocess.SubprocessError):
+		return "unknown commit"
+
+
 # Both halves of the pair are written through here, so that the green set can
 # be written the moment it is known and the reddened set at the end without
 # two spellings of the same thing.
@@ -550,27 +586,56 @@ def write_checks(name, rows, suffix):
 #
 # The journal is deliberately NOT the canonical file: it is per-entry and
 # ordered, which the set is not, and a reader wanting the set of a run that
-# did not finish takes column three of it. It carries the same -partial
-# suffix for the same reason the sets do -- a partial run's complement means
-# untried rather than unguarded.
+# did not finish takes column three of it.
 class Journal:
-	def __init__(self, partial, green):
-		self.suffix = "-partial" if partial else ""
+	# TWO PATHS, BECAUSE A FORTY-SECOND RUN MUST NOT BE ABLE TO ERASE AN
+	# EIGHT-HOUR ONE -- which is 8.752's finding, met again one artifact
+	# along. An `--only` probe journals to its own `-only` file and truncates
+	# it freely; a sweep, whole or resumed with `--from`, journals to
+	# `sabotage-journal.txt` and truncates only when it starts at entry 1.
+	#
+	# The sets are the other way round -- an `--only` and a `--from` are both
+	# "partial" there, because the useful half of that pair is the COMPLEMENT
+	# and only a whole sweep has one. A journal has no complement: it is a
+	# list of what happened, so a `--from` chunk contributes to it honestly
+	# and belongs in the same file as the rest of the sweep.
+	#
+	# WHICH MAKES THE SWEEP DIVISIBLE, and that is the point rather than a
+	# side effect. Several `--from` runs journalling into one file produce
+	# the union a single whole run would, without holding this tree's
+	# sources for the eight hours one takes. Each run writes a header
+	# naming its range, the commit and the time, so a journal spanning
+	# several says where its boundaries are and which tree each part was
+	# measured against.
+	def __init__(self, only, start, total, green, suffix):
 		self.handle = None
-		self.path = os.path.join(ROOT, "build",
-		                         "sabotage-journal%s.txt" % self.suffix)
-		write_checks("green", green, self.suffix)
+		self.path = os.path.join(ROOT, "build", "sabotage-journal%s.txt"
+		                         % ("-only" if only is not None else ""))
+		write_checks("green", green, suffix)
 		try:
 			os.makedirs(os.path.dirname(self.path), exist_ok=True)
-			self.handle = open(self.path, "w", encoding="utf-8")
-			self.handle.write("# entry\tentry name\treddened check -- written as"
-			                  " each entry ran, so this\n")
-			self.handle.write("# file is what survives a run that was stopped."
-			                  " The sets beside it are\n")
-			self.handle.write("# the finished run's answer.\n")
+			fresh = (only is not None or start <= 1
+			         or not os.path.exists(self.path))
+			self.handle = open(self.path, "w" if fresh else "a",
+			                   encoding="utf-8")
+			if fresh:
+				self.handle.write("# entry\tentry name\treddened check --"
+				                  " written as each entry ran, so\n")
+				self.handle.write("# this file is what survives a run that was"
+				                  " stopped. A set beside\n")
+				self.handle.write("# it is a finished run's answer; this is"
+				                  " every run's, as far as each got.\n")
+			where = ("--only, %d entr%s" % (total, "y" if total == 1
+			                                       else "ies")
+			         if only is not None else "entries %d..%d" % (start, total))
+			self.handle.write("# run: %s, %s, %s\n"
+			                  % (where, head_commit(),
+			                     time.strftime("%Y-%m-%d %H:%M:%S")))
 			self.handle.flush()
-			say("sabotage: journalling each entry's reddened checks to %s"
-			    % os.path.relpath(self.path, ROOT))
+			say("sabotage: %s each entry's reddened checks %s %s"
+			    % ("journalling" if fresh else "appending",
+			       "to" if fresh else "onto",
+			       os.path.relpath(self.path, ROOT)))
 		except OSError as e:
 			say("sabotage: could not open the journal (%s)" % e)
 
@@ -827,6 +892,39 @@ def main():
 		    % (start, start - 1, len(spec)))
 		spec = spec[start - 1:]
 
+	# AND A CEILING, which is what makes a sweep DIVISIBLE rather than
+	# merely resumable. `--from` runs to the end, so splitting a sweep's
+	# eight hours into affordable chunks meant interrupting each one -- which
+	# the journal now survives, but an interrupted entry's result is
+	# ambiguous and the next chunk's starting point is therefore a guess.
+	# `--from 121 --to 240` is an exact chunk, repeatable, and the journal
+	# header records the range it covered.
+	#
+	# It refuses an --only, for the reason the numbering comment below
+	# gives: a sparse selection has no range to bound.
+	stop = None
+	for i, a in enumerate(sys.argv):
+		if a == "--to" and i + 1 < len(sys.argv):
+			try:
+				stop = int(sys.argv[i + 1])
+			except ValueError:
+				say("sabotage: --to wants a number")
+				return 2
+	if stop is not None:
+		if only is not None:
+			say("sabotage: --to bounds the spec's own order, which an"
+			    " --only selection does not have")
+			return 2
+		if stop < start:
+			say("sabotage: --to %d is before --from %d" % (stop, start))
+			return 2
+		if stop - start + 1 < len(spec):
+			left = len(spec) - (stop - start + 1)
+			say("sabotage: --to %d, so %d entr%s after it %s left for"
+			    " another run" % (stop, left, "y" if left == 1 else "ies",
+			                      "is" if left == 1 else "are"))
+			spec = spec[:stop - start + 1]
+
 	# Number the entries as the WHOLE spec numbers them, so that the line a
 	# reader copies into the next --from is the one they just saw. Only
 	# where the set has not also been filtered: an --only selects a sparse
@@ -905,7 +1003,10 @@ def main():
 		green = set(passing_checks(out))
 		base_out = out
 		say("sabotage: baseline green, %d checks passing" % len(green))
-		journal = Journal(only is not None or start > 1, green)
+		# The suffix the SETS carry, computed here rather than at the end
+		# now that one of them is written before any entry runs.
+		suffix = "-partial" if (only is not None or start > 1) else ""
+		journal = Journal(only, start, total, green, suffix)
 
 		# THE CONTROL FOR --diff, and it is not optional: see
 		# volatile_forms(). The second run rebuilds nothing, the sources
@@ -1206,9 +1307,7 @@ def main():
 		# reconstruct the set. The reddened half of a partial run is still
 		# worth keeping -- it says which checks those entries hit -- so
 		# this renames rather than skips.
-		partial = only is not None or start > 1
-		suffix = "-partial" if partial else ""
-		if partial:
+		if suffix:
 			say("sabotage: a partial run, so the canonical lists are left"
 			    " alone and")
 			say("          these carry -partial: a green set here means"

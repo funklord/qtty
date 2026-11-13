@@ -61933,9 +61933,10 @@ be written on the way through.
   between entries. Holding it to the end bought nothing, so it is
   written there now, 2529 distinct checks and 200 kB, for free.
 - **The reddened set is earned entry by entry**, so it is journalled as
-  it happens: `build/sabotage-journal[-partial].txt`, one line per
-  reddened check per entry, flushed, so the bytes belong to the kernel
-  rather than to a process that may be killed. The canonical pair is
+  it happens: `build/sabotage-journal.txt`, one line per reddened check
+  per entry, flushed, so the bytes belong to the kernel rather than to a
+  process that may be killed. (This said `sabotage-journal[-partial]`
+  when it was written; 8.768 took the suffix off, and why.) The canonical pair is
   still written at the end and is still the finished run's answer; the
   journal is per-entry and ordered, which a set is not, and a reader who
   wants the set of a run that stopped takes its third column.
@@ -61966,3 +61967,73 @@ worth keeping over either instance: **an artifact that takes hours to
 earn is written as it is earned, not when the process is finished with
 it** -- and the test of that is to stop the process, not to read the
 code.
+
+### 8.768 The journal carried the defect it was written against, and a ceiling makes the sweep divisible (2026-11-13)
+
+**One commit later, and by the hand that had just quoted the rule.**
+8.767's journal took the `-partial` suffix from the set files beside it,
+so an `--only` probe -- forty seconds -- would have truncated a sweep's
+journal at the same filename. That is 8.752's finding exactly, which is
+the entry 8.767 cites twice and whose closing line it quotes.
+
+**What transferred was the instance and not the shape.** 8.752 is filed
+in my head as being about the two SET files, because that is where it
+happened; the rule it actually states is about any artifact that costs
+hours and has a fixed name. The new file was the same kind of thing and
+got the same bug an hour later. **A lesson written down as a case does
+not generalise itself** -- which is the argument `working-practice.md`
+makes for recording the shape beside the incident, met from the losing
+side.
+
+**Two paths, then.** An `--only` journals to `sabotage-journal-only.txt`
+and truncates it freely; a sweep, whole or resumed with `--from`,
+journals to `sabotage-journal.txt` and truncates only when it starts at
+entry 1. **The sets stay the other way round, and the reason is worth
+stating because the asymmetry looks like an inconsistency**: a partial
+run's sets carry `-partial` because the useful half of that pair is the
+COMPLEMENT, and only a whole sweep has one. A journal has no
+complement -- it is a list of what happened -- so a `--from` chunk
+contributes to it honestly and belongs in the same file as the rest of
+the sweep.
+
+**And `--to N`, because resumable is not divisible.** Chunking the sweep
+before this meant interrupting each chunk: the journal survives that
+now, but an interrupted entry's result is ambiguous and the next chunk's
+starting point is therefore a guess. `--from 121 --to 240` is an exact,
+repeatable piece, and the journal's header records the range it covered.
+`tools-check` compares the flags the tool accepts against the flags it
+documents, in both directions, so `--help` gained the `--to` line and a
+*WHAT IT LEAVES BEHIND* section naming all three files and what each one
+is for -- which is where a reader will look for where the record is
+read from.
+
+**Proved by running the cases rather than by reading the code.**
+`--from 842` created the journal with one run header and one line. An
+`--only` then ran: the canonical journal's mtime did not move
+(1794560117 before and after) and `sabotage-journal-only.txt` appeared
+beside it. `--from 841` appended, leaving two headers and three lines --
+entry 841 reddening two checks and 842 one. `--from 841 --to 841` ran
+one entry and said one was left for another run, and `--only kitty --to
+5` was refused with exit 2 rather than silently bounding a selection
+that has no order. Every run restored the
+tree, and `git status` showed only the edit under test throughout.
+
+**One figure corrected, which nobody could have caught by measuring
+again.** 8.767's commit message says eleven hours of machine time for a
+full sweep, and three comments written with it carried the same number.
+It came from arithmetic over a remembered 617-entry run rather than from
+the constant in the file being edited: `PER_ENTRY_SECONDS = 35`, so
+today's 842 entries are about **8.2 hours**, which `--help` has printed
+all along. The comments are corrected; the pushed commit message cannot
+be, so the number is corrected here, where a reader of this project
+looks. `evidence.md`'s *an invented value cannot be caught by measuring
+again* is the rule, and the measurement it wanted was two screens above
+the edit.
+
+**What it unblocks.** The exact set of checks nothing reddens is still a
+bound rather than a set -- 8.752 recovered 746 of 1498 from a log and
+says only another full sweep can answer it. That sweep is 8.2 hours in
+one sitting, which is why it has not happened since; it is now seven
+chunks of about seventy minutes, each a declared background job, each
+appending to one journal whose headers say which commit every chunk
+measured.
