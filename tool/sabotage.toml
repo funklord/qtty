@@ -9535,3 +9535,78 @@ find = "\t\t\t\tp.fillRect(x * cw, y * ch, cw * c.width, ch, QColor::fromRgb(bg)
 into = "\t\t\t\tp.fillRect(x * cw, y * ch, cw, ch, QColor::fromRgb(bg));"
 count = 1
 check = "a wide cluster's background covers both of its cells"
+
+# THE ROW DIACRITIC IS THE COLUMN'S. kitty's placeholder protocol encodes a
+# cell's position as two combining marks after U+10EEEE, row first and column
+# second, and the suite's expected clusters are copied from the worked example
+# in kitty's own specification rather than from a decoder written here.
+# Writing the column mark in both places leaves every cell on the diagonal
+# correct and transposes the rest, so a wide image arrives sheared and a
+# square one looks right. The placeholder, the id in the foreground colour,
+# the cell count and the widths are all untouched. 8.768.
+[[sabotage]]
+name = "the row diacritic is the column's, so placements transpose"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tcluster += QString::fromUcs4(&KITTY_DIACRITICS[r], 1);"
+into = "\t\t\tcluster += QString::fromUcs4(&KITTY_DIACRITICS[c], 1);"
+count = 1
+check = "and (1,0), so the row diacritic comes first"
+
+# THE IMAGE ID'S BYTES GO INTO THE WRONG CHANNELS. A placeholder cell carries
+# the image id in its foreground colour, 24 bits of it, so the terminal knows
+# which transmitted image the cell belongs to. Swapping the green and blue
+# bytes leaves every id below 256 pointing at an image 256 times its number --
+# which no transmit created, so the terminal draws nothing at all and the
+# cells show their (blank) text instead. Every diacritic is still right.
+# 8.768.
+[[sabotage]]
+name = "the image id's green and blue bytes are swapped"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t                          int((id >> 8) & 0xFF), int(id & 0xFF)));"
+into = "\t\t\t                          int(id & 0xFF), int((id >> 8) & 0xFF)));"
+count = 1
+check = "the image id is carried in the foreground colour"
+
+# THE TOP BYTE OF A BIG ID IS READ ONE BIT OVER. A colour carries 24 bits, so
+# an id above that needs a third diacritic for its most significant byte.
+# Reading it from bit 25 rather than 24 halves the value, so the spec's own
+# example id 33554474 (42 + (2 << 24)) announces byte 1 where it means 2 --
+# an id of 16819242, which nothing transmitted. Ids under 2^24 are unaffected,
+# which is every id this library hands out today, so the break lives entirely
+# in the branch only a host application reaches. 8.768.
+[[sabotage]]
+name = "a big id's most-significant byte is read from bit 25"
+file = "src/graphics/graphics.cpp"
+find = "\tconst int msb = int((id >> 24) & 0xFF);"
+into = "\tconst int msb = int((id >> 25) & 0xFF);"
+count = 1
+check = "a big id adds the most-significant-byte diacritic"
+
+# AN IMAGE IS CROPPED RATHER THAN GIVEN A GAP. cells() answers how many cells
+# an image occupies, and it rounds up on purpose: the comment beside its check
+# says a picture missing its last row is worse than one with a gap under it.
+# Truncating instead loses the partial cell, so every image whose pixels are
+# not an exact multiple of the cell loses its bottom and right edges -- and an
+# image that happens to fit exactly is still perfect, which is why the pair of
+# checks exists rather than one. 8.768.
+[[sabotage]]
+name = "cells() truncates instead of rounding up"
+file = "src/graphics/graphics.cpp"
+find = "\treturn QSize((image_px.width() + cell_px.width() - 1) / cell_px.width(),"
+into = "\treturn QSize((image_px.width()) / cell_px.width(),"
+count = 1
+check = "and a partial cell is rounded up rather than cropped"
+
+# THE SAME CROP, ONE LAYER UP. align_text_document() rewrites an image
+# fragment's size in a QTextDocument to a whole number of cells, so a
+# QTextBrowser's pictures land on the grid; its round_up truncating instead
+# writes a SMALLER size than the image, and the layout then scales every
+# picture down to it. The document still has its images, the count of edits is
+# still right, and an image that already fits is untouched. 8.768.
+[[sabotage]]
+name = "align_text_document rounds an image down to the cell"
+file = "src/graphics/graphics.cpp"
+find = "\t\treturn double((int(v) + step - 1) / step * step);"
+into = "\t\treturn double((int(v)) / step * step);"
+count = 1
+check = "an explicit size is rounded up"

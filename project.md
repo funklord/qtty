@@ -62037,3 +62037,51 @@ one sitting, which is why it has not happened since; it is now seven
 chunks of about seventy minutes, each a declared background job, each
 appending to one journal whose headers say which commit every chunk
 measured.
+
+### 8.769 Five entries aimed at the one property a `contains` cannot read (2026-11-13)
+
+**The lens is 8.766's finding rather than a category list.** The check
+that could not be made red asserted a POSITIONAL property -- which chunk
+of a kitty upload carries which flag -- with a substring test, so this
+instalment went looking for blocks where every claim is a position or a
+byte order, and broke position rather than presence in each.
+
+**kitty's Unicode placeholders are that block end to end.** A
+placeholder cell is U+10EEEE followed by a row mark and a column mark,
+with the image id in the foreground colour and a third mark for an id
+above 2^24; the suite's expected clusters are copied from the worked
+example in kitty's own specification rather than from a decoder written
+here, which is the one witness that file cannot supply for itself. Three
+entries:
+
+- **The row mark written where the column's belongs.** Every cell on the
+  diagonal stays correct and the rest transpose, so a square image looks
+  right and a wide one arrives sheared. It reddens its own check and
+  three more -- and leaves `(0,0)` and `(1,1)` green, which is the
+  diagonal argument confirmed rather than asserted.
+- **The id's green and blue bytes swapped.** An id under 256 then points
+  at an image 256 times its number, which no transmit created, so the
+  terminal draws nothing at all. Every diacritic is still right, and the
+  check reading the colour is the only one that moves.
+- **A big id's top byte read from bit 25.** The specification's own
+  example, 42 + (2 << 24), announces byte 1 where it means 2. Ids under
+  2^24 are untouched, which is every id this library hands out today, so
+  the break lives entirely in the branch only a host application
+  reaches -- and it reddens "on every cell, not only the first" with it.
+
+**Then the pair of checks that exists because rounding has two cases.**
+`cells()` rounds up on purpose: a picture missing its last row is worse
+than one with a gap under it, which its own comment says. Truncating
+instead loses the partial cell, so every image whose pixels are not an
+exact multiple of the cell loses its bottom and right edges -- and the
+exact-fit check stays GREEN, which is precisely why that check is there
+beside the partial one rather than alone. The same arithmetic one layer
+up, in `align_text_document()`, writes a QTextBrowser's image fragments
+a size SMALLER than the image and the layout scales every picture down
+to it; that one takes the natural-size check with it.
+
+**Five entries, five reddened on the first attempt.** No audit this
+time, which is worth saying beside 8.766: an entry that passes
+immediately confirms a check, and a block whose every entry passes is a
+block whose checks read what their names promise. 2531 checks, 847
+entries.
