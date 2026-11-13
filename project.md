@@ -61034,11 +61034,19 @@ than the honest absence.
 
 **What this leaves for G3**, stated so nobody re-derives it: Phase 3's
 exit criterion is "one screen, one source, both targets, in production",
-and the work is each product rebuilding a screen as `QWidget`s and
-deleting its old TUI. netcfgd already reaches qtty from a production
-entry point and has a Qt GUI to reuse, so it is the near case. None of
+and the work is each product rebuilding a screen as `QWidget`s. None of
 that is this tree's to do, and none of it waits on this tree. 2521
 checks.
+
+**The sentence that stood here said netcfgd was "the near case" because
+it reaches qtty from production and has a Qt GUI to reuse, and that the
+work was rebuilding a screen "and deleting its old TUI". The second half
+is false and netcfgd said so two hours later** -- `ncfg tui` must run
+where Qt cannot be linked and is not deletable at all. Corrected rather
+than struck, because the first half is still true and the two were
+conflated: netcfgd is the near case for qtty IN ITS GUI SCREENS, and no
+case at all for retiring its terminal UI. 8.757 has the answer and what
+it costs Phase 3's criterion.
 
 **AND THE SAME WALK CHECKED §8.4's OTHER PROMISE, since coverage is
 declared rather than discovered.** The Unsupported row promises "renders
@@ -61267,3 +61275,63 @@ a filename does.
 R1 and R6 are Phase 0 and Phase 2 triggers long past, R4 is a review
 rule, R5's trigger is a Channel B share no screen here reaches, and
 13.3's platform scope is 0b's reserved question.
+
+### 8.757 OQ-4 answered by both products, and one answer is a yes (2026-11-13)
+
+**Asked 2026-11-11, answered within the hour by both, and the answers
+are in this tree's inbox rather than inferred.** OQ-4: *"do any of the
+four products need the TUI where QtWidgets cannot be linked (embedded,
+serial console)?"* design.md says a yes puts that product on 13.2
+permanently and changes Phase 4's scope.
+
+**netcfgd: YES, with a route rather than a worry** (`.git/cc-inbox/`
+20261111T0220Z, recorded their side as netcfgd 10.797). Its first
+targets are OpenWrt routers, and one of the groups its brief names is
+whoever edits the configuration over a **serial console on a machine
+with no network**. `ncfg tui` is a subcommand of `ncfg`, built from every
+source under `c/src`, and the MIPS cross build -- `make hull-mips` --
+carries it **linking libc and nothing else**. A router has no Qt, so that
+TUI stays on its own escape sequences everywhere.
+
+**And they separated what I had conflated.** It does not follow that
+netcfgd declines qtty: their GUI's screens may use it where they choose,
+and they say so. What follows is only that **qtty does not replace `ncfg
+tui` itself.**
+
+**fuzzypickles: no present requirement, and the direction is the
+holder's** (20261111T0214Z). `fzptui` is plain C on ncurses linking no
+Qt, so it runs wherever a node and a terminal do; their targets in order
+are Linux, Android, then macOS and Windows, then embedded -- and the
+embedded target as built is the smallest host, a button or a light behind
+a gateway, **with no terminal UI on it at all**. Nothing in their
+`project.md` names a serial-console, initrd or Qt-free container
+deployment of the terminal client, and nothing rules one out. They have
+put the direction to the holder and ask that it be recorded as the
+holder's.
+
+**WHAT THIS MOVES, AND WHAT IT DOES NOT.** The decision is the holder's
+and nothing here takes it. But two things are now facts rather than
+unknowns:
+
+- **G3's arithmetic.** The goal is four implementations consolidated with
+  three retired. Of the two that 8.641 found, **one is now confirmed
+  unretirable** -- not for want of effort but because it serves a
+  deployment qtty structurally cannot reach, a router with no Qt. That
+  leaves `fzptui` as the only retirement candidate among the two, pending
+  the holder's answer on fuzzypickles' direction.
+- **Phase 3's exit criterion conflates two things netcfgd's answer
+  separates.** §12 reads "Characterisation snapshots first, then delete
+  the old screen's TUI code when the shared one matches." For netcfgd the
+  shared one can match and the old TUI still cannot be deleted, because
+  it serves a target the shared one cannot be built for. So "one screen,
+  one source, both targets, in production" is reachable there while
+  "delete the old screen's TUI code" is not, and the criterion as written
+  cannot be met by the product that is otherwise closest to meeting it.
+  **Flagged rather than rewritten**: which half gives is a scope decision.
+
+**The thing worth keeping about how this went.** The question had been
+open since the design was written and unanswerable only because the
+document had never named the products; once named, it took two notes and
+under an hour. 8.756 asked it because the document said to. **An open
+question nobody has put to anybody is not blocked -- it is unasked**, and
+the two are easy to confuse because both look like waiting.

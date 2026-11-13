@@ -84,6 +84,17 @@ mechanism was retired 2026-10-27 (§5.1), so what a product moves onto is
   > fourth consumer" to "what are the other two implementations". The search cannot see
   > a TUI whose escapes are assembled from variables rather than written as literals,
   > which is its one real hole. project.md 8.641.
+
+  > **And one of the two is now confirmed unretirable, which moves this goal's
+  > arithmetic rather than its wording (2026-11-13).** OQ-4 was put to both products
+  > and netcfgd answered yes: `ncfg tui` must run on an OpenWrt router over a serial
+  > console, cross-built for MIPS linking libc alone, where there is no Qt to link.
+  > So it is not a candidate for retirement at any cost — not for want of effort, but
+  > because it serves a target qtty structurally cannot be built for. The goal asks
+  > for three of four retired; of the two implementations that were found, one is out
+  > of reach and `fzptui` is the only candidate left, pending the holder on
+  > fuzzypickles' direction. What the count of four should become is the holder's.
+  > project.md 8.757.
 - **G4.** Deterministic, snapshot-testable rendering in CI with no tty attached.
 - **G5.** No dependency on Qt private headers or a patched Qt. (One documented exception:
   `WA_DontShowOnScreen`'s lifecycle behaviour is public API but undocumented behaviour —
@@ -1311,6 +1322,32 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
   qtty from production and never had a terminal UI of its own, so it has nothing to
   keep in the case this question is about — see G3, where the same measurement moves
   the count.
+
+  > **ASKED AND ANSWERED 2026-11-13, by both products, and one answer is a yes.**
+  > The question had never been put to anybody; once the products were named it took
+  > two notes and under an hour. project.md 8.757 has the detail and the inbox
+  > citations.
+  >
+  > **netcfgd: yes.** Its first targets are OpenWrt routers, and one group its brief
+  > names edits the configuration over a serial console on a machine with no network.
+  > `ncfg tui` is a subcommand of `ncfg` built from every source under `c/src`, and
+  > its MIPS cross build links libc and nothing else. A router has no Qt, so that TUI
+  > stays on its own escape sequences — this question's 13.2 case. It does **not**
+  > follow that netcfgd declines qtty: its GUI's screens may use it where netcfgd
+  > chooses, and only `ncfg tui` itself is out of reach.
+  >
+  > **fuzzypickles: no present requirement, and the direction is the holder's.**
+  > `fzptui` is plain C on ncurses linking no Qt; their targets in order are Linux,
+  > Android, then macOS and Windows, then embedded — and the embedded target as built
+  > is the smallest host, with no terminal UI on it. Nothing in their notes names a
+  > serial-console, initrd or Qt-free container deployment, and nothing rules one out.
+  >
+  > **What this leaves open is the scope decision, not the fact.** Whether Phase 4
+  > changes, and what becomes of §12's "delete the old screen's TUI code" for a
+  > product that cannot delete it, is the copyright holder's. 8.757 records that
+  > Phase 3's exit criterion conflates two things this answer separates: netcfgd can
+  > reach "one screen, one source, both targets, in production" while that deletion
+  > stays impossible.
 - **OQ-5.** Accessibility: is a `QAccessible` bridge worth it, given the terminal already
   exposes text to screen readers when the cursor is placed correctly (§5.5)?
 
