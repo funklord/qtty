@@ -62085,3 +62085,60 @@ time, which is worth saying beside 8.766: an entry that passes
 immediately confirms a check, and a block whose every entry passes is a
 block whose checks read what their names promise. 2531 checks, 847
 entries.
+
+### 8.770 The third time one enumeration was wrong, found by watching a run start (2026-11-13)
+
+**The same finding, a third time, in one afternoon, and each time
+through the hole the previous fix left.**
+
+- **8.752**: an `--only` run wrote its one-entry set over the canonical
+  pair at the same filenames. The fix enumerated the flags that mean a
+  run is partial -- `only is not None or start > 1`.
+- **8.768**: the journal added beside those files inherited the same
+  suffix, so an `--only` probe would have truncated a sweep's journal.
+  Fixed by giving the journal two paths of its own.
+- **Here**: `--to`, added in that very commit so the sweep could be run
+  in pieces, walks straight through the enumeration. `--from 1 --to 121`
+  leaves `only` unset and `start` at 1, so by that test it is a whole
+  sweep -- and a 121-entry run would have written its reddened set to
+  `build/sabotage-reddened.txt` and claimed to be the answer for 847.
+
+**Found by reading the first chunk's own first lines**, two minutes in:
+it announced *"wrote 2529 green check(s) to build/sabotage-green.txt"*,
+the canonical name, where a chunk should carry `-partial`. Stopping it
+was the mechanism from 8.767 paying for itself on its first production
+run -- `SIGINT`, the tree came back clean, the journal kept the entry it
+had earned, and nothing had to be rebuilt to find out where it stood.
+
+**The remedy is a question, not another flag.** The test now asks
+whether the run COVERS THE SPEC -- `only is None and start == 1 and
+(stop is None or stop >= spec_size)` -- rather than listing the ways it
+might not. A flag added later to narrow a run cannot slip past a
+question about coverage, where it slips through an enumeration without
+anybody noticing, which is what all three of these are. `spec_size` is
+taken before anything slices the list, because nothing downstream can
+recover it.
+
+**The shape, which is worth more than the three instances:** an
+enumeration of the ways a thing can be true is a list the next feature
+does not know it belongs on. The three were found three different ways
+-- by doing it, by re-reading the code an hour later, and by watching a
+log -- and no test would have caught any of them, because each was a
+new case rather than a regression. Where a predicate can be written as
+a property of the whole instead, write it that way and there is no list
+to keep.
+
+**One honest consequence, named rather than guessed at.** A sweep run in
+chunks now never writes the canonical reddened set at all: each chunk is
+partial, so its answer lives in the journal, whose third column is the
+union. Turning a finished journal into the canonical pair is a step the
+tool does not have, and whether it should have one -- or whether the
+journal simply IS the artifact now, with the sets kept for a run that
+happens in one sitting -- is a design question this entry leaves open
+rather than settling while fixing something else.
+
+**Proved both ways round.** `--from 1 --to 1` writes
+`sabotage-green-partial.txt` and `sabotage-reddened-partial.txt` and
+says in as many words that the canonical lists are left alone; before
+the fix the same command wrote the canonical names, which is not a
+reconstruction -- it is what the stopped chunk did, in its log.

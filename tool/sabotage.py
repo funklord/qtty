@@ -854,6 +854,16 @@ def main():
 
 	with open(SPEC, "rb") as f:
 		spec = tomllib.load(f).get("sabotage", [])
+	# Kept before anything slices the list, because whether this run is a
+	# WHOLE sweep is decided against the spec's size and nothing downstream
+	# can recover it: `--from 1 --to 121` leaves `start` at 1 and `only`
+	# unset, which is what the first version of the partial test read, so a
+	# 121-entry run would have written its reddened set to the canonical
+	# filename and claimed to be the answer for 847. That is 8.752's
+	# finding arriving through the flag added to divide the sweep up --
+	# third time, so the test is now "does this run cover the spec" rather
+	# than a list of the flags that mean it does not.
+	spec_size = len(spec)
 
 
 	# --only <substring> runs the entries whose name matches. It exists so
@@ -1005,7 +1015,9 @@ def main():
 		say("sabotage: baseline green, %d checks passing" % len(green))
 		# The suffix the SETS carry, computed here rather than at the end
 		# now that one of them is written before any entry runs.
-		suffix = "-partial" if (only is not None or start > 1) else ""
+		whole = (only is None and start == 1
+		         and (stop is None or stop >= spec_size))
+		suffix = "" if whole else "-partial"
 		journal = Journal(only, start, total, green, suffix)
 
 		# THE CONTROL FOR --diff, and it is not optional: see
