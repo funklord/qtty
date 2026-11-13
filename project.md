@@ -62624,3 +62624,39 @@ wider line is the safe-looking one. "Safe" here meant leaving the defect
 in place for every window a user actually resizes.
 
 2534 checks, 861 entries.
+
+### 8.779 Three entries on the half-block tier's three decisions (2026-11-13)
+
+**The lens is the classification itself.** `compose_halfblocks()` decides,
+per cell, which of three things a pair of pixel halves becomes: one glyph
+carrying two colours, a lean towards the half that dominates, or a tint
+of the background with the frame's own glyph left alone. Each entry
+breaks one decision and leaves the other two, and the colours, exactly
+right.
+
+- **A replayed tint brings the first frame's text with it.** The cache
+  stores what a composite WROTE per cell rather than the resulting cell,
+  which is what lets a scrim be replayed over a window whose text has
+  changed: a Tint writes the background alone. Replaying the glyph as
+  well puts the first frame's characters back under the scrim, so a
+  window under a translucent overlay stops updating -- with the tint,
+  the colours and every opaque cell still right. It reddens that check and nothing else.
+- **The whole-cell half-block is upside down.** Where both halves are
+  covered in different colours the composer writes an upper half-block
+  with the top colour as foreground and the bottom as background, one
+  glyph carrying two pixels. Writing the lower block keeps both colours
+  and swaps which half each lands in, so every two-tone cell is flipped
+  vertically. It reddens its own check and four
+  more, which is what "every two-tone cell" means from the suite.
+- **A translucent pixel is painted flat instead of blended.** The tint
+  is the overlay colour composited over what is behind it, which is what
+  makes a scrim a scrim. Using the overlay's colour directly paints
+  every scrimmed cell the same flat colour -- and the cell's kind is
+  still `Rgb` and its glyph still the frame's own, so the two checks
+  that read those pass and only the one that reads WHICH colour sees it.
+  It reddens its own check and five more,
+  including the two that assert the ground a tint is composited over --
+  the indexed case and the terminal's own.
+
+****Three written, three reddened on the
+first attempt.** 2534 checks, 864 entries.**

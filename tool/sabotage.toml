@@ -9839,3 +9839,48 @@ find = "\t\tif (o->isVisible() && !o->image().isNull()) out.append(o);"
 into = "\t\tif (!o->image().isNull()) out.append(o);"
 count = 1
 check = "hidden overlay not listed"
+# A REPLAYED TINT BRINGS THE FIRST FRAME'S TEXT WITH IT. compose_halfblocks()
+# caches what a composite WROTE per cell rather than the resulting cell,
+# which is what lets a scrim be replayed over a window whose text has
+# changed: a Tint writes the background alone and keeps whatever glyph the
+# new frame holds. Replaying the glyph as well puts the FIRST frame's
+# characters back under the scrim, so a window under a translucent overlay
+# stops updating -- while the tint, the colours and every opaque cell stay
+# exactly right.
+[[sabotage]]
+name = "a replayed tint writes the cached glyph over the new frame's"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (w.wrote != Tint) {"
+into = "\t\t\tif (true) {"
+count = 1
+check = "a scrim composited a second time tints the same ground"
+
+# THE WHOLE-CELL HALF-BLOCK IS UPSIDE DOWN. Where both halves of a cell are
+# covered and their colours differ, the composer writes an upper half-block
+# with the top colour as the foreground and the bottom as the background --
+# one glyph carrying two pixels. Writing the LOWER half-block instead keeps
+# both colours and swaps which half each lands in, so every two-tone cell in
+# every picture is flipped vertically. Each colour is still exactly right,
+# which is why only a check reading the GLYPH sees it.
+[[sabotage]]
+name = "a whole-cell half-block is the lower one, not the upper"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\t\tcell.ch = QStringLiteral(\"\u2580\");"
+into = "\t\t\t\t\tcell.ch = QStringLiteral(\"\u2584\");"
+count = 1
+check = "opaque overlay becomes half-block pixels"
+
+# A TRANSLUCENT PIXEL IS PAINTED FLAT RATHER THAN BLENDED. The translucent
+# tier tints a cell's background with the overlay colour composited over
+# what is behind it, which is what makes a scrim a scrim: the window shows
+# through. Using the overlay's colour directly paints every scrimmed cell
+# the same flat colour, and the cell's kind is still Rgb and its glyph still
+# the frame's own -- so the two checks that read those pass, and the one
+# that reads WHICH colour is the only witness.
+[[sabotage]]
+name = "a translucent pixel is painted flat instead of blended"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tcell.bg = Color::rgb(blend(over, a, under));   // glyph stays"
+into = "\t\t\t\tcell.bg = Color::rgb(over);   // glyph stays"
+count = 1
+check = "a translucent pixel composites against the terminal's background"
