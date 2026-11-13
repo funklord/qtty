@@ -61613,6 +61613,24 @@ found**. On this machine DejaVu Sans Mono provides it; on a minimal
 container or an embedded image with no such font, `setup()` refuses --
 correctly, loudly, and at startup rather than as a rendering glitch.
 
+**AND THE CLASS, NOT THE INSTANCE, WHICH IS 8.735'S LESSON APPLIED
+RATHER THAN RE-LEARNED.** Having corrected §5.3 I swept for the claim
+instead of stopping, and design.md asserts a bundled font in **five**
+places: §5.3's paragraph, §5.7's "one cell is CW x CH device pixels, the
+bundled font", the graphics-tier table's "rasterize the CellBuffer with
+QPainter using the bundled font", R3's mitigation, and D7's decision.
+The first three describe present behaviour and were simply wrong; the
+last two are a mitigation and a decision whose bundling half is pending,
+so those are marked pending rather than rewritten -- D7's decision
+stands, it is the implementation that has not happened.
+
+**The two documents a user reads were already honest**, which is the
+part worth noticing: README.md says "DejaVu Sans Mono for now; bundled
+font planned" and `doc/keyboard-first.md` says "qtty bundles none".
+So **design.md was the only document that got it wrong, and it got it
+wrong five times** -- the document that `project.md` outranks but that a
+reader reaches for first.
+
 **What remains is a licence decision and not a piece of engineering**,
 which is why it has sat: shipping somebody else's font means
 redistributing their work under their terms, and `CLAUDE.md` is

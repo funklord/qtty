@@ -783,7 +783,7 @@ whatever mode the terminal supports — and the architecture must be prepared fo
 even where implementation comes later.
 
 The design lands on friendly ground here, for one structural reason: **Qtty's cell
-space is already pixel-addressed.** One cell ≡ CW×CH device pixels, the bundled font
+space is already pixel-addressed.** One cell ≡ CW×CH device pixels, the grid's font
 is a real raster font Qt can draw with, and the compositor already produces a complete
 `CellBuffer` each frame. So "UI + pixel overlay" is a compositing problem we can solve
 entirely on our side of the backend seam whenever the terminal itself cannot.
@@ -815,7 +815,7 @@ widget's cell geometry instead of letting Channel B mangle it through `drawPixma
 | Mode | Who blends | Mechanism |
 |---|---|---|
 | `KittyAlpha` | the terminal | `presentOverlay()`: ship the RGBA image with a z above the text plane; text stays live text — selection, copy, and screen readers keep working under translucent regions. The only true native path. |
-| `Sixel` / `ITerm2` / `Kitty` (no alpha-over-text) | **GraphicsPlane** | Software composite: rasterize the `CellBuffer` with QPainter using the bundled font (measured: **3.8 ms** for 60×16 → 600×304 px), `SourceOver`-blend all overlays (**0.2 ms**), hand the finished frame to `presentPixels()` for encoding. The terminal shows one image; correctness is trivial because we control every pixel. |
+| `Sixel` / `ITerm2` / `Kitty` (no alpha-over-text) | **GraphicsPlane** | Software composite: rasterize the `CellBuffer` with QPainter using the grid's font (measured: **3.8 ms** for 60×16 → 600×304 px), `SourceOver`-blend all overlays (**0.2 ms**), hand the finished frame to `presentPixels()` for encoding. The terminal shows one image; correctness is trivial because we control every pixel. |
 | `NoGraphics` / `Halfblocks` | **GraphicsPlane, in cells** | Pure L2 transform on the composed `CellBuffer`: opaque overlay pixels become blocks, translucent ones shade empty cells (`░▒▓`) while **UI text under them survives**, transparent ones leave the UI untouched. Reaches all four legacy backends through the ordinary `present()` with zero backend changes. With the colour model of §6, this upgrades to half-block (`▀`) rendering at 2× vertical resolution with fg/bg per cell. |
 
 *Spike-validated (§16.2):* both non-native paths run today in `spike/spike3.cpp` — the
@@ -1311,7 +1311,7 @@ front door instead. The interface stays, because what it bought — diffing in L
 | R1 | Popups don't composite acceptably | M | H | §8.1; fall back to 13.2 | Phase 0 gate 2 |
 | R2 | **Offscreen plugin is documented as "only fully supported on X11"** | H | H | See §13.3 — scope decision required before Phase 2 | Now |
 | R2b | Offscreen plugin behaves differently across Qt versions; absent from some packaged builds | M | M | CI matrix Qt 5.15/6.x; vendor-check the plugin's presence at startup | Any version-specific snapshot diff |
-| R3 | Font metrics not integral on some backend | L | H | Startup assert; bundled font; documented hard failure | Assert fires |
+| R3 | Font metrics not integral on some backend | L | H | Startup assert; bundled font (**planned**, §5.3); documented hard failure | Assert fires |
 | R4 | Shared screens degrade the GUI to suit the TUI | M | H | G2 is a review rule; GUI snapshot tests; Tier 3 is encouraged | Any GUI regression traced to a Tier 2 hint |
 | R5 | Channel B output too poor for a heavily custom-painted product | M | M | Widen Channel A / `ICellPainted` per widget | >30% of a screen's cells from Channel B |
 | R6 | Effort exceeds the value of unifying four TUIs | M | M | Phase 1 ships value standalone; phases are independently abandonable | Phase 2 slips >50% |
@@ -1418,7 +1418,7 @@ Vendor it in-tree (Boost licence permits it) given the project's small size.
 | D4 | Style-driven gridding | Subclass every widget | Reaches Qt-internal children we never construct |
 | D5 | Explicit `render()` on a damage schedule | Backingstore paint events | Public API, controls frame rate, and preserves Channel A — at the cost of double painting (§5.6) |
 | D6 | Backend interface, four adapters | Adopt termpaint immediately | Preserves accumulated bug fixes; consolidation becomes optional. **Superseded 2026-10-27 (§5.1): no adapter was written and `AnsiBackend` is the reference. The reasoning held — the fixes it preserved are in `AnsiBackend`.** |
-| D7 | 1 cell = 8×16 px, bundled fixed-metric font | Sub-pixel metrics with rounding | Rounding once at the style beats rounding everywhere |
+| D7 | 1 cell = 8×16 px, bundled fixed-metric font (the decision stands; the **bundling is pending**, §5.3) | Sub-pixel metrics with rounding | Rounding once at the style beats rounding everywhere |
 | D8 | No Qt fork | Patched qtbase | LGPLv3 publication duty + rebuild per release across four products |
 
 ---
