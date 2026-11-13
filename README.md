@@ -106,27 +106,10 @@ The `Makefile` at the root is the entry point:
     make style          # the shared source gate
     make hooks          # install the commit-msg hook
 
-Or with [fmake](../fmake), which needs no build file and nothing beyond the
-Python standard library:
+Or with **fmake**, which needs no build file and nothing beyond the Python
+standard library:
 
     fmake                        # the four tools, the probe and the example
-
-**`python3 ~/src/fmake/fmake` builds it too**, and that used to be the
-only line here. That line used to say it did not
--- the packaged build predated `$root` and left the reference in the value
-as text -- and the warning outlived the package. Re-take it rather than
-trusting either sentence, since both are claims about whatever is
-installed on your machine:
-
-    fmake --version                         # what is packaged here
-    python3 ~/src/fmake/fmake --version     # what the tree has
-
-    fmake -n | grep -o 'QTTY_SOURCE_DIR=[^ ]*' | head -1
-
-The third prints an absolute path if `$root` is understood and the literal
-`$root` if it is not. Measured 2026-09-19 against the packaged `1.0
-(5af02348)`: expanded, a full build exits 0, and no built binary carries
-the literal.
 
 `fmake.toml` beside it says what fmake cannot read off the tree, and each
 entry is a fact qmake states in a `.pro`: that the tests find their
