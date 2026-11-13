@@ -9503,3 +9503,35 @@ find = "\t\t\tfor (int y = band; y < qMin(band + 6, h) && !present; ++y)"
 into = "\t\t\tfor (int y = band; y < qMin(band + 5, h) && !present; ++y)"
 count = 1
 check = "sixel round-trip: band-boundary stripes stay on rows 5 and 6"
+
+# EVERY CHUNK CARRIES THE PAYLOAD'S FIRST SLICE. The chunk count, the m= flags,
+# the control keys and the byte total are all still exactly right -- only the
+# CONTENT of chunks two onward is wrong, so what reassembles is the first 4096
+# bytes repeated. An image uploaded this way is its own top strip, over and
+# over, and nothing short of reassembling the payload and comparing pixels can
+# tell. Audited deliberately: this is the neighbour of the m= check that
+# passed against broken code, and a block with one weak check earns a look at
+# the rest. 8.766.
+[[sabotage]]
+name = "every kitty chunk repeats the first slice of the payload"
+file = "src/graphics/graphics.cpp"
+find = "\t\tout += payload.mid(off, N);"
+into = "\t\tout += payload.mid(0, N);"
+count = 1
+check = "kitty round-trip: chunk order preserved, every pixel exact"
+
+# A WIDE CLUSTER'S BACKGROUND COVERS ONE CELL OF ITS TWO. The rasterizer fills
+# cw * c.width so a double-width grapheme's background spans both cells;
+# dropping the multiplier leaves the second cell showing whatever was behind
+# it, which is a half-coloured selection or a half-tinted row wherever CJK or
+# an emoji appears. The glyph is still drawn and every narrow cell is still
+# right. section 5.2 calls writing into a continuation cell "a classic
+# corruption", and section 9 names wide-cluster handling as property-tested.
+# 8.766.
+[[sabotage]]
+name = "a wide cluster's background covers only its first cell"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tp.fillRect(x * cw, y * ch, cw * c.width, ch, QColor::fromRgb(bg));"
+into = "\t\t\t\tp.fillRect(x * cw, y * ch, cw, ch, QColor::fromRgb(bg));"
+count = 1
+check = "a wide cluster's background covers both of its cells"

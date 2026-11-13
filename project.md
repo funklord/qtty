@@ -61866,7 +61866,7 @@ check and two more.
 confirmed a check, one condemned it. **A sabotage that fails is not a
 wasted entry -- it is the only way a check gets audited**, and this one
 had been green since it was written because nothing could make it red.
-Three entries, 839.
+Three entries, 840.
 
 **AND THE OBVIOUS LENS WAS TRIED AND IS THE WRONG INSTRUMENT**, which is
 worth recording so nobody spends the afternoon I nearly did. The shape
@@ -61885,3 +61885,22 @@ answers it is the one that found this: write the break and see whether
 the check goes red. A textual sweep suggests; a sabotage proves. The
 general remedy is therefore more entries rather than a cleverer grep --
 which is the instalment work this entry is part of.
+
+**Two more entries, aimed at the block that held the weak check.** A
+check that could not be made red is a reason to doubt its neighbours,
+so the next entry went to the strongest-sounding claim in the same
+function. `encode_kitty_image()`'s loop appends `payload.mid(off, N)`;
+dropping the offset makes every chunk carry the payload's first 4096
+bytes, so what reassembles is the image's top strip repeated down the
+frame -- while the chunk count, the `m=` flags, the control keys and
+the byte total are all exactly right. It reddened "kitty round-trip:
+chunk order preserved, every pixel exact" and one more, so that
+neighbour does read the bytes it claims to and the weakness was local
+to one assertion rather than a habit in the block.
+
+The last is wide clusters, which section 5.2 calls "a classic
+corruption": the rasterizer fills `cw * c.width`, and dropping the
+multiplier leaves a double-width grapheme's second cell showing
+whatever was behind it -- a half-coloured selection or a half-tinted
+row wherever CJK or an emoji appears -- with the glyph still drawn and
+every narrow cell still right. 2531 checks, 842 entries.
