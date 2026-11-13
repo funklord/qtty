@@ -62565,3 +62565,24 @@ every future sweep for evidence no better than a one-cell overrun's.
 Why it slowed down is not established and is not claimed.
 
 2533 checks, 861 entries.
+
+### 8.777 The harness now says which question to ask when it fails (2026-11-13)
+
+**8.776 ended with four causes for one verdict and the instrument that
+tells them apart, and then left the harness saying nothing about it.**
+`FAILED: the named check PASSED against broken code` is printed where a
+reader is standing when they need it, and `--diff` -- which answers the
+one question that separates a weak check from a break that is not a
+break -- was documented in `--help` and mentioned in two project
+entries. Neither is where the reader is.
+
+So the failure branch now prints, when `--diff` was not passed, that
+re-running with it says whether the break changed ANY line the suite
+prints, and that an entry which is not a break reports exactly like a
+check that is weak. Three lines, in the one place the question arises.
+
+**Seen to print rather than reasoned about.** The entry 8.776 dropped
+was re-added as a probe, run without `--diff`, and the hint appeared
+under the verdict; the probe was then removed. A message nobody has
+watched print is a message that may not.
+

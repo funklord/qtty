@@ -1220,6 +1220,24 @@ def main():
 				say("          one thing this target exists to find.")
 				for c in failing_checks(out)[:5]:
 					say("          (it did report: %s)" % c)
+				if "--diff" not in sys.argv:
+					# THE HINT THAT WAS MISSING, and it was missing in the
+					# one place a reader needs it. This verdict has at
+					# least four causes and only one of them is a weak
+					# check: the entry may name a check that does not own
+					# the property, the property may have two independent
+					# guards so no single break reaches it, or the break
+					# may not be a break at all -- which is what
+					# QRegion::contains(QRect) turned out to be, meaning
+					# "overlaps" rather than "contains". --diff answers the
+					# question that separates them, and nothing said so
+					# here. project.md 8.772 and 8.776.
+					say("          Re-run this entry with --diff: it says"
+					    " whether the break")
+					say("          changed ANY line the suite prints. An"
+					    " entry that is not a")
+					say("          break reports exactly like a check that"
+					    " is weak.")
 				if "--diff" in sys.argv:
 					# The next question, asked here because this is the
 					# only branch where it has an answer: did the broken
