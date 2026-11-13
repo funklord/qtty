@@ -60730,8 +60730,14 @@ them.
 
 1. **Constant insets for the unlaid-out query.** Costs the popup, as
    above. Measured.
-2. **Tell the two consumers apart.** No way found. Both ask the same
-   sub-element about their own rect, and `w` is an item view in both.
+2. **Tell the two consumers apart.** ~~No way found.~~ **Found, in
+   8.771**, and by having to: the remedy below broke the popup until it
+   excluded windows. Both consumers ask the same sub-element about their
+   own rect, and `w` is an item view in both -- so the distinction is not
+   who asked but **whether somebody else lays the frame out**. A window
+   never does; it sizes itself, which is what makes it the sizing
+   consumer. One line, where the heuristic was the thing nobody could
+   find.
 3. **Force the cache to be recomputed when the frame is resized onto the
    grid** -- post a `StyleChange` at the one moment the cached value
    becomes wrong. This leaves every style answer alone, so the popup is
