@@ -9447,3 +9447,15 @@ find = "\t\tif (!grid_font_problem(f).isEmpty()) continue;"
 into = "\t\tif (grid_font_problem(f).isEmpty()) continue;"
 count = 1
 check = "and the family the grid is actually laid on is among the ones it names"
+
+# THE CAP THAT DOES NOT BIND, so the startup refusal names every usable family
+# the machine has -- 101 of them here -- in a message that is the process's
+# last words. Nothing else notices: the wording check matches any list and the
+# direct assertion needs only one name in it. 8.765.
+[[sabotage]]
+name = "the font candidate limit never binds"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (limit > 0 && out.size() >= limit) break;"
+into = "\t\tif (limit < 0 && out.size() >= limit) break;"
+count = 1
+check = "and the limit binds, so the refusal names a few families"

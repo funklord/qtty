@@ -826,8 +826,16 @@ void setup(QApplication &app) {
 		// image gives -- worth saying plainly, because "no family here
 		// works" sends somebody to install one instead of trying names.
 		const QStringList ok = grid_font_candidates(f.pixelSize(), 6);
+		// THE EMPTY BRANCH NEEDS A LEVER OF ITS OWN, and it is the one
+		// that fires where this matters: a minimal image with no usable
+		// family installed cannot act on "set QTTY_FONT to a fixed-pitch
+		// font", there being none to name. QTTY_FONT_FILE is the answer
+		// grid_font_request() already implements -- a file supplies a
+		// family the machine has not installed -- and saying so turns the
+		// one hopeless-looking case into the one with a definite remedy.
 		const QString advice = ok.isEmpty()
-		    ? QStringLiteral("no family on this machine passes that test")
+		    ? QStringLiteral("no family on this machine passes that test,"
+		                     " so set QTTY_FONT_FILE to a font file")
 		    : QStringLiteral("these pass: %1")
 		          .arg(ok.join(QStringLiteral(", ")));
 		qFatal("qtty: the grid needs a font with integral metrics: %s"

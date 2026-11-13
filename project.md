@@ -20,7 +20,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2530 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2531 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -61778,8 +61778,32 @@ answer, the wording check still passes, and only the direct assertion
 catches it. Two entries, each reddening the check it names. 2530 checks,
 836 entries.
 
+**AND THE SAME QUESTION, ASKED AGAIN, FOUND THE BRANCH I HAD JUST
+WRITTEN MUTE.** "No family on this machine passes that test" is the
+answer a minimal image gets -- and it named no lever, because
+`QTTY_FONT` cannot be acted on where there is nothing to name. But
+`grid_font_request()` already reads **`QTTY_FONT_FILE`**: a file supplies
+a family the machine has not installed. So the one hopeless-looking case
+is the one with the most definite remedy, and the branch now says so.
+That gap was an hour old and in code I had called complete.
+
+**The cap is asserted too**, because nothing else would notice it
+failing. A limit that did not bind would make that fatal name all 101
+usable families -- the wording check matches any list, and the direct
+assertion needs only one name in it. Its sabotage makes the limit never
+bind and reddens that check alone. 2531 checks, 837 entries.
+
+**The empty branch's wording is NOT asserted, and that is worth saying
+rather than leaving to be discovered.** It cannot be reached from a
+fixture on a machine where 101 families pass, and the wording check
+matches both branches by design -- so what is proved is that the message
+carries one of the two forms, not that it carries the right one. The
+function behind both is asserted directly, which is the half that can be.
+
 **The transferable part is how this was found.** Three runs of goal-gap
 walking read design.md section by section and asked what the document
-claimed. This came from asking what somebody holding the error message
-does next -- and the gap was one sentence past where the previous run
-stopped, in work I had finished an hour earlier and called complete.
+claimed. These two came from asking what somebody holding the error
+message does next -- and both gaps were one sentence past where the
+previous step stopped, in work finished minutes earlier and called
+complete. **The question that pays is not "what does the document say"
+but "what does the person do now".**

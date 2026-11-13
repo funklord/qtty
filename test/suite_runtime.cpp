@@ -4968,6 +4968,17 @@ int suite_runtime() {
 			      "and the family the grid is actually laid on is among"
 			      " the ones it names, which no check on the message's"
 			      " wording could show");
+			// AND THE CAP, because the fatal is the process's last words
+			// and a desktop answers with a hundred families. A limit that
+			// did not bind would turn one sentence into a catalogue, and
+			// nothing else would notice -- the wording check matches any
+			// list and the assertion above only needs one name in it.
+			const QStringList two = grid_font_candidates(in_use.pixelSize(),
+			                                             2);
+			CHECK(two.size() <= 2 && !two.isEmpty()
+			      && all.size() >= two.size(),
+			      "and the limit binds, so the refusal names a few"
+			      " families rather than every one the machine has");
 		}
 	}
 
