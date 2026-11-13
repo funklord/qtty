@@ -9610,3 +9610,56 @@ find = "\t\treturn double((int(v) + step - 1) / step * step);"
 into = "\t\treturn double((int(v)) / step * step);"
 count = 1
 check = "an explicit size is rounded up"
+# AN ORDINARY RE-PLACE CARRIES A SOURCE RECTANGLE IT DOES NOT NEED. kitty's
+# upload-once path re-places a stored image by id in about thirty bytes;
+# x/y/w/h are emitted only when the placement is actually cropped. An
+# inverted guard emits them always, so every uncropped re-place says
+# x=0,y=0,w=0,h=0 -- a zero-sized source rectangle, which is a different
+# request from "the whole image". The cropped path stays exactly right.
+#
+# IT NAMES THE CHECK BESIDE THE OBVIOUS ONE, and that is a measurement
+# rather than a preference. Pointed at "re-place by id is ~30 bytes
+# (upload-once)" this FAILED: that check allows 40 bytes and the zero
+# rectangle adds about sixteen, so the re-place is still small and the check
+# is still right. The property belongs to the check that reads the keys.
+# 8.772.
+[[sabotage]]
+name = "an uncropped re-place carries a zero source rectangle"
+file = "src/graphics/graphics.cpp"
+find = "\tif (!source.isNull() && !source.isEmpty())"
+into = "\tif (source.isNull() || !source.isEmpty())"
+count = 1
+check = "an uncropped re-place carries no source rectangle"
+
+# THE WIDENING IS COMPUTED AND THEN DISCARDED. rasterize_into() walks the
+# damage rectangle's left edge back to the start of a wide cluster it cuts in
+# half, because a continuation cell carries no glyph: a region beginning there
+# paints nothing and leaves the previous frame showing through, which that
+# code's own comment calls "the one way a smaller repaint can be WRONG rather
+# than merely partial". Dropping the assignment leaves the loop in place and
+# throws its answer away -- so the rectangle the compositor clips to is the
+# one it asked for, and a wide glyph at the left edge of the damage keeps a
+# one-cell hole in whatever is drawn back over it.
+[[sabotage]]
+name = "the damage rectangle's widening is computed and discarded"
+file = "src/graphics/graphics.cpp"
+find = "\tr.setLeft(from);"
+into = "\t(void)from;"
+count = 1
+check = "the rasteriser widens to a wide cluster's start and says so"
+
+
+# THE PIXEL DAMAGE FORGETS THE CELLS THAT CHANGED. pixel_damage() seeds the
+# repaint region with the cell diff and then adds both the old and the new
+# overlay rectangles; starting from an empty region keeps every overlay
+# position and loses the text underneath, so a frame where only characters
+# changed repaints the overlays and nothing else -- the edit is invisible
+# until something moves. The overlay half, which is the half with a ghost to
+# leave behind, is still perfectly right.
+[[sabotage]]
+name = "the pixel damage is not seeded with the cells that changed"
+file = "src/runtime/compositor.cpp"
+find = "\tQRegion out = cells;"
+into = "\tQRegion out;"
+count = 1
+check = "an overlay that stayed put is still repainted"

@@ -62264,3 +62264,68 @@ What the three passes change about that is the confidence: the condition
 is now the one the suite's own red lines chose, not the one that looked
 right. It is one commit, and reverting it restores the `info:` line and
 the defect together.
+
+### 8.772 Four entries written, two landed, one mis-named, and one cannot exist (2026-11-13)
+
+**The lens is 8.771's shape rather than a category.** That defect was a
+value computed when it was right, cached, and never re-asked -- so this
+instalment went looking for the same thing in the rendering path:
+something kept across frames that a later frame must re-derive or
+widen.
+
+**The two that landed first time.**
+
+- **The damage widening, computed and discarded.** `rasterize_into()`
+  walks the damage rectangle's left edge back to the start of a wide
+  cluster it cuts in half, because a continuation cell carries no glyph
+  -- its own comment calls this "the one way a smaller repaint can be
+  WRONG rather than merely partial". Dropping the assignment keeps the
+  loop and throws its answer away, so a wide glyph at the damage's left
+  edge keeps a one-cell hole in whatever is drawn over it.
+- **The pixel damage, not seeded with the cells that changed.**
+  `pixel_damage()` starts from the cell diff and adds both the old and
+  the new overlay rectangles. Starting from an empty region keeps every
+  overlay position and loses the text underneath, so a frame where only
+  characters changed repaints the overlays and nothing else: the edit is
+  invisible until something moves. The overlay half -- the half with a
+  ghost to leave behind -- stays perfectly right, and the check it
+  reddens is the one that watches a frame where nothing moved.
+
+**The one that was pointed at the wrong check.** An inverted guard in
+`kitty_place()` emits `x=0,y=0,w=0,h=0` on every uncropped re-place: a
+zero-sized source rectangle, which is a different request from "the
+whole image". Pointed at `re-place by id is ~30 bytes (upload-once)` it
+FAILED -- **and the check is right**: it allows 40 bytes, the rectangle
+adds about sixteen, and a 38-byte re-place is still the upload-once
+path doing its job. The property belongs to the check beside it, which
+reads the keys rather than the length, and the entry names that one now.
+**A FAILED line can be the entry's fault rather than the suite's**, and
+the two read identically.
+
+**The one that cannot be written at all, which is the finding.**
+`Overlay::image()` keys its cached fade on the image's identity AND the
+opacity. Breaking the opacity clause changed nothing: **`set_opacity()`
+already clears the cache**, twenty lines above. Breaking the clear
+instead would leave the key to catch it. Two independent invalidations,
+so no single-site break can reach the check that watches the property,
+and the check is therefore unreddenable while being in no way weak.
+
+**So the harness's one failure message has at least three causes, and
+they need telling apart.** `FAILED: the named check PASSED against
+broken code` means the suite did not notice -- which is a defect in the
+suite when the check is weak (8.766's `contains` that could not read a
+sequence), the entry's fault when it names a check that does not own the
+property (above), and a **property of the code** when two guards protect
+one invariant. Only the first is something to fix, and the message
+cannot distinguish them: that is what `--diff` is for, and what reading
+the code around the anchor is for.
+
+**One thing to fix in the code, and it is a comment.** `image()`'s
+comment says the key is "the image's identity and the opacity and
+nothing else", which reads as though the key is what keeps the cache
+honest. What actually keeps it honest is the clear in `set_opacity()`;
+the key is belt-and-braces over it. The invariant is now stated where it
+is decided, which is the remedy the unreachable `continue` in
+`compose_kitty_placeholders()` got for the same reason.
+
+2533 checks, 850 entries.

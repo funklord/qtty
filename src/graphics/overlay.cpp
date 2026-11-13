@@ -62,6 +62,12 @@ void Overlay::set_rect(const QRectF &cell_rect) {
 }
 void Overlay::set_opacity(qreal o) {
 	opacity_ = qBound(0.0, o, 1.0);
+	// AND THIS IS WHAT KEEPS image()'s CACHE HONEST, said here because this
+	// is where it is decided. The cache is also keyed on the opacity, which
+	// reads over there as though the key were doing the work -- it is
+	// belt-and-braces over this line, and 8.772 is the measurement: breaking
+	// the key's opacity clause changes nothing observable, because this
+	// clear has already happened. Nothing else writes opacity_.
 	faded_ = QImage();
 	sync_gui_twin();
 }
@@ -82,8 +88,12 @@ void Overlay::hide() { visible_ = false; sync_gui_twin(); }
 QImage Overlay::image() const {
 	if (opacity_ >= 1.0) return img_;
 	// Remembered rather than re-derived: see the members in overlay.h for
-	// what this cost per frame and why the key is the image's identity and
-	// the opacity and nothing else. 8.598.
+	// what this cost per frame. The key is the image's identity and the
+	// opacity -- and the opacity half is a second line of defence rather
+	// than the first, since set_opacity() clears this cache itself. Said
+	// both ways round because a reader who removes one needs to know the
+	// other exists: 8.598 added the cache, 8.772 measured which half holds
+	// it up.
 	if (!faded_.isNull() && faded_key_ == img_.cacheKey()
 	    && faded_opacity_ == opacity_)
 		return faded_;
