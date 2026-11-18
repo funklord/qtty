@@ -23,6 +23,7 @@
 #include <QWheelEvent>
 #include <QEvent>
 #include <QAction>
+#include <QLibraryInfo>
 
 // Qt 6.6 added QPalette::Accent. There is no older equivalent and it cannot
 // be aliased to Highlight: theme.cpp switches on both and its own comment
@@ -260,3 +261,16 @@ inline QList<QObject *> associated_objects(const QAction *a) {
 }
 
 } // namespace Qtty
+
+// WHERE QT KEEPS ITS PLUGINS, which Qt 6 spells `path()` and Qt 5 spells
+// `location()` -- the same enumerator, a renamed accessor, and the eighth
+// construct this file carries. prepare_environment() asks for it to say
+// whether the offscreen platform plugin it is about to force is installed
+// at all (R2b's second mitigation; project.md 8.783).
+inline QString qtty_plugins_path() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	return QLibraryInfo::path(QLibraryInfo::PluginsPath);
+#else
+	return QLibraryInfo::location(QLibraryInfo::PluginsPath);
+#endif
+}

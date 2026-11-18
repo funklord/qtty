@@ -12,6 +12,7 @@
 // no handler at all.
 #include "src/runtime/url_opener.h"
 #include "src/runtime/placement_paint.h"
+#include "src/runtime/platform_probe.h"
 #include <QSocketNotifier>
 #include <unistd.h>
 #include <QtWidgets>
@@ -4980,6 +4981,40 @@ int suite_runtime() {
 			      "and the limit binds, so the refusal names a few"
 			      " families rather than every one the machine has");
 		}
+	}
+
+	// ---- R2b's vendor-check: is the platform qtty forces installed? -------
+	//
+	// design.md section 13 names two mitigations for R2b and this is the one
+	// nothing did until 8.783. The predicate is pure and takes both facts as
+	// arguments, so every way of NOT knowing is testable on a Qt that is
+	// missing nothing -- which is the only Qt this suite ever runs on.
+	{
+		const QString here = qtty_plugins_path();
+		CHECK(!Qtty::offscreen_plugin_absent(here, false),
+		      "the offscreen plugin is found where this Qt keeps its"
+		      " plugins, so the startup notice stays silent here");
+		// A directory with no offscreen plugin in it, which is the one case
+		// worth reporting. QDir::tempPath() has no `platforms` child, so
+		// build one and leave it empty.
+		QTemporaryDir empty;
+		CHECK(empty.isValid()
+		      && QDir(empty.path()).mkdir(QStringLiteral("platforms")),
+		      "and the fixture for the absent case is a real empty"
+		      " platforms directory, not a path that does not exist");
+		CHECK(Qtty::offscreen_plugin_absent(empty.path(), false),
+		      "an installed Qt with no offscreen plugin is reported");
+		// THE TWO WAYS OF NOT KNOWING, which must stay quiet. A static Qt
+		// has no plugin files at all, so a file test proves nothing about
+		// it; and a directory that is not there means Qt is somewhere this
+		// cannot see, which is not evidence either.
+		CHECK(!Qtty::offscreen_plugin_absent(empty.path(), true),
+		      "a build linking static plugins is not reported, having no"
+		      " files to find");
+		CHECK(!Qtty::offscreen_plugin_absent(
+		          empty.path() + QStringLiteral("/nowhere"), false),
+		      "and neither is a plugins directory that does not exist,"
+		      " which says nothing about the plugin");
 	}
 
 	return fails;

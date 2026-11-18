@@ -12,6 +12,8 @@
 #include "qtty/theme.h"
 #include "../backend/ansi/ansi_backend.h"
 #include "../cell_geometry.h"
+#include "platform_probe.h"
+#include <QPluginLoader>
 #include <QtWidgets>
 #include "../qt_compat.h"
 #include <cstdlib>
@@ -303,6 +305,23 @@ void prepare_environment() {
 		if (config)
 			platform += ":configfile=" + QFile::encodeName(config->fileName());
 	}
+	// R2b's second mitigation, which nothing did until 2026-11-18: say so
+	// when the platform about to be forced is not installed. Only when qtty
+	// is the one choosing it -- a caller who set QTTY_QPA_PLATFORM to xcb is
+	// answering for their own platform -- and only as a line on stderr, for
+	// the reason platform_probe.h gives: a static Qt ships no plugin files,
+	// so a file test must not be allowed to refuse a working build. Qt's own
+	// abort still follows; what this adds is that the platform was qtty's
+	// choice. project.md 8.783.
+	if (platform.startsWith("offscreen")
+	    && offscreen_plugin_absent(qtty_plugins_path(),
+	                               !QPluginLoader::staticPlugins().isEmpty()))
+		fprintf(stderr, "qtty: this Qt has no offscreen platform plugin in"
+		                " %s/platforms, and qtty needs it -- the terminal"
+		                " build forces QT_QPA_PLATFORM=offscreen, so Qt is"
+		                " about to refuse a platform qtty chose rather than"
+		                " one you asked for\n",
+		        qtty_plugins_path().toLocal8Bit().constData());
 	qputenv("QT_QPA_PLATFORM", platform);
 
 	// The platform THEME is pinned for the same reason and by the same rule,

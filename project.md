@@ -20,8 +20,8 @@ number rather than restating it.
 
 ## 0a. State
 
-2534 checks, 0 failures. **The duration is 8.54 seconds of user time, taken
-2026-11-18 over these 2534 checks** -- `/usr/bin/time
+2539 checks, 0 failures. **The duration is 8.54 seconds of user time, taken
+2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
 1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
 to 25.54 by the end of the three runs, with nine other sessions' jobs on
@@ -62817,3 +62817,57 @@ satisfy a backticked path. **The source gate passes against this tree in
 both modes**, so taking the update would not turn this gate red; the
 spread is `sync.py --commit` from the account that owns the checkout,
 which is not the one that noticed.
+
+### 8.783 R2b's second mitigation was never built, and the record did not say so (2026-11-18)
+
+**Found by walking section 13's risk table, which is the one list in
+design.md neither goal-gap walk had read.** 8.780 reconciled sections
+12, 17 and 8.4; the walk before this one checked section 14's open
+questions, section 7's three tiers and section 11's budget, and all of
+those were served. The risk table was not checked, and it carries a
+mitigation column -- a list of things the project said it would do.
+
+**R2b's row says: "A CI matrix; vendor-check the plugin's presence at
+startup."** The paragraph under the table answers the first half three
+ways -- two Qt versions build and run, the snapshots agree across them,
+`make test-versions` is the matrix -- and **does not mention the second
+at all**, in either direction. Measured: nothing in `src/` looked for
+the plugin. So the row read as taken, the way an unmarked phase read as
+open in 8.780 -- the same defect pointing the other way, and this one is
+the more expensive direction, because a mitigation nobody wrote is not a
+mitigation anybody will miss.
+
+**What a user meets without it.** `prepare_environment()` FORCES
+`QT_QPA_PLATFORM=offscreen`, deliberately, so that a terminal program
+cannot open a window on a desktop that exported `xcb`. On a packaged Qt
+that ships no offscreen plugin, the program therefore dies in Qt's own
+abort -- *"no Qt platform plugin could be initialized"*, with a list of
+what is available. That message is not bad; what it cannot say is that
+the platform it failed on was **qtty's choice rather than the user's**,
+which is the one fact that tells somebody what to install.
+
+**A warning and never a refusal, for a reason that would otherwise have
+cost a working build.** A statically linked Qt ships no plugin files at
+all, so a file-presence test refuses a build that works -- which is why
+`offscreen_plugin_absent()` answers only the case it can be sure of and
+the caller prints rather than exits. Qt's own machinery still decides
+whether the platform loads; this adds a sentence before it does.
+
+**Three ways of not knowing, each a clause and each tested**: a build
+linking static plugins has no files to find; a plugins directory that
+does not exist means Qt is installed somewhere this cannot see; and
+only a directory that IS there and holds no `qoffscreen` is reported.
+The predicate is pure and takes both facts as arguments, which is what
+makes the absent case testable on the only Qt this suite ever runs on --
+one that is missing nothing.
+
+**And the version difference went where the others live.**
+`QLibraryInfo::path()` is Qt 6's spelling and `location()` is Qt 5's, so
+`qtty_plugins_path()` is `qt_compat.h`'s eighth construct rather than a
+conditional at the call site -- the rule section 8.1 records.
+
+**Measured, including the half that is the point.** The four clauses
+each have a check, and the fifth is that the notice **printed nothing at
+all** across a whole suite run on a Qt that has the plugin -- a warning
+that speaks where it should not is one somebody silences. 2539 checks,
+864 entries.
