@@ -62715,3 +62715,37 @@ bundled font on its licence, and §8.4's open design question on what a
 drawn mark becomes on a character grid. **The gap was in the document's
 account of itself rather than in the software**, which is a thing a walk
 can only find by starting from the document.
+
+### 8.781 What a full sweep costs here, measured rather than estimated (2026-11-18)
+
+**Folded out of a run's work file, which the next run overwrites.** The
+sabotage tool's own `--help` estimates 35 seconds an entry, and
+`PER_ENTRY_SECONDS = 35` is where that comes from. **On this machine it
+is about 2.4 minutes** -- measured over five verification runs of two to
+four entries each on 2026-11-13, at load 20 to 25 with nine other
+sessions' jobs on the box. Each entry is one compile, one link and one
+suite run, and all three contend.
+
+So a full sweep of 864 entries is **nearer 34 hours than the 8.2 the
+estimate implies**, and that is the number any decision about running one
+has to use. Three things follow:
+
+- **A partial sweep banks journal lines and no conclusion.** The useful
+  half of the pair is the COMPLEMENT -- the checks nothing reddens --
+  which is only meaningful once every entry has run (8.752). Chunks are
+  lossless now and resumable, but none of them answers the question
+  until the last one has.
+- **The instalment is the affordable instrument.** Three or four entries
+  cost about fifteen minutes and convert that many real checks from
+  untested to seen-to-fail; six instalments on 2026-11-13 also turned up
+  a weak check, a mis-named entry, a doubly-guarded property and a break
+  that was not a break (8.766, 8.772, 8.776).
+- **An entry's own cost is worth watching.** One tile entry reddened its
+  check and took the suite from a minute to nearly five; it was narrowed
+  to a one-cell overrun for the same evidence (8.776). An entry five
+  times the price of its neighbours is a tax on every sweep.
+
+The complement, once a sweep does finish, is
+
+    comm -23 <(sort -u build/sabotage-green.txt) \
+             <(grep -v '^#' build/sabotage-journal.txt | cut -f3 | sort -u)
