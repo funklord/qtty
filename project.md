@@ -20,11 +20,26 @@ number rather than restating it.
 
 ## 0a. State
 
-2534 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
-2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
-best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
-wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
-by the end of the three runs.
+2534 checks, 0 failures. **The duration is 8.54 seconds of user time, taken
+2026-11-18 over these 2534 checks** -- `/usr/bin/time
+./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
+1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
+to 25.54 by the end of the three runs, with nine other sessions' jobs on
+the machine.
+
+**What that is not is a measurement of the suite.** The previous figure was
+**4.81 user over 2059 checks, 2026-10-03, at load 1.68** -- so user time
+rose 78 per cent while the check count rose 23, and the load was eleven
+times higher. User time is CPU time and so is the comparable half of the
+pair, but it is not immune to a loaded machine, and the 47 per cent spread
+across three consecutive runs of one binary (8.54 to 12.58) is that
+machine moving rather than the suite. **How much of the 78 per cent is the
+suite is therefore not established here and is not claimed**; what both
+figures together support is that a timing taken at load 18 is a fact about
+the afternoon. Take it again on a quiet machine before reading a trend
+into it -- and note that the sabotage sweep's own cost (8.781) is one
+suite run per entry, so whatever this number really is, it is multiplied
+by 864 there.
 
 **That is the gate. For the fourteen arms OUTSIDE it, ask `make arms`**
 rather than reading for a date: each records a receipt carrying its
