@@ -1232,7 +1232,16 @@ the library commits to:
   ones. Macros are the one C++ clash no namespace can fix.
 - **Prefixed string namespaces** everywhere strings act as identifiers: dynamic
   properties (`"qtty.cells"`, `"qtty.glyph"`), `Q_DECLARE_INTERFACE` IDs
-  (`"org.qtty.*"`), settings keys.
+  (`"org.qtty.*"`), settings keys. **Three spellings, and which one says who
+  writes it** — measured and stated 2026-11-18, the convention having been
+  followed for longer than it was written down (project.md 8.785):
+  `qtty.<name>` is a hint the APPLICATION sets and the library reads
+  (`qtty.cells`, `qtty.glyph`, `qtty.priority`, `qtty.blink`); `_qtty_<name>`
+  is a property the LIBRARY sets on a widget for its own bookkeeping, the
+  leading underscore marking it internal the way Qt marks its own
+  (`_qtty_grid`); and `qtty_<name>` is an `objectName` the library gives a
+  widget it created (`qtty_overlay_twin`), where a dot would be unusual. Every
+  identifier-acting string in the library carries one of the three.
 - **Qt singleton ownership is declared, not grabbed.** The real collision risk is not
   names but Qt's process-wide singletons. In TUI mode qtty owns: the application
   style (an app's custom style is not lost — it becomes `GridStyle`'s proxy base),

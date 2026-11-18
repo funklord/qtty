@@ -62912,3 +62912,31 @@ the code TAKES, which misleads an adopter about their own program. A
 count in a contract is a promise, and seven is not one.
 
 2539 checks, 864 entries.
+
+### 8.785 Three property spellings, each meaning something, one of them written down (2026-11-18)
+
+**The last loose end of section 10.1's walk.** Its third commitment is
+"prefixed string namespaces everywhere strings act as identifiers", and
+it gives `"qtty.cells"` and `"qtty.glyph"` as the form. Measured over
+`src/` and `include/`, every identifier-acting string in the library is
+prefixed, so the commitment holds -- but there are **three** spellings,
+not one, and they are not drift:
+
+- **`qtty.<name>`** is a hint the APPLICATION sets and the library reads:
+  `qtty.cells`, `qtty.glyph`, `qtty.priority`, `qtty.blink`. All four are
+  read by the library and documented for the application to write.
+- **`_qtty_<name>`** is a property the LIBRARY sets on a widget for its
+  own bookkeeping -- `_qtty_grid`, written by `polish()` and read by
+  `grid_sep_cells()`, nothing else -- with the leading underscore marking
+  it internal the way Qt marks its own.
+- **`qtty_<name>`** is an `objectName` the library gives a widget it
+  created (`qtty_overlay_twin`), where a dot would be unusual in a name
+  Qt's own tooling prints.
+
+**So the spellings carry WHO WRITES THE STRING**, which is the one thing
+a reader of a contract about clash surfaces needs, and section 10.1 named
+only the first of the three. Stated there now. Nothing in the code
+changed: the convention has been followed for longer than it was written
+down, which is why this is a sentence in the document rather than a fix.
+
+2539 checks, 864 entries.
