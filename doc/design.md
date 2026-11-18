@@ -1236,9 +1236,25 @@ the library commits to:
 - **Qt singleton ownership is declared, not grabbed.** The real collision risk is not
   names but Qt's process-wide singletons. In TUI mode qtty owns: the application
   style (an app's custom style is not lost — it becomes `GridStyle`'s proxy base),
-  the application font, `QT_QPA_PLATFORM`/scaling env vars, and one global event
-  filter (popup stamping, GridGuard). An app that must also touch these in TUI mode
-  goes through qtty's API rather than `QApplication` directly.
+  the application font, `QT_QPA_PLATFORM`/scaling env vars, and **the application's
+  event-filter chain, to which it adds seven filters** — not one, which this clause
+  said until 2026-11-18 (project.md 8.784):
+
+  | Filter | What it is for | Installed |
+  |---|---|---|
+  | `FontEnforcer` | keeps the application font qtty set | once, by `setup()` |
+  | `StyleKeeper` | keeps the application style, watching `QEvent::StyleChange` | once |
+  | `CellPaintFilter` | the §5.4 paint funnel | once, guarded |
+  | `GridGuard` | §5.3's geometry guard: reports a widget off the cell grid | once |
+  | `GridSnap` | snaps a child's geometry, and re-asks a frame's cached insets | once |
+  | `InputRouter` | §5.5 key and mouse dispatch, popup routing and stamping | one per router, so one per window |
+  | `FrameScheduler` | §5.6's frame loop and damage coalescing | one per scheduler |
+
+  **The order matters to an adopter and is the reason to state the count at all**: Qt
+  delivers to application filters in reverse order of installation, so an app that
+  installs its own after `Qtty::setup()` sees an event before any of these, and one
+  that installs before `setup()` sees it after all of them. An app that must also
+  touch these in TUI mode goes through qtty's API rather than `QApplication` directly.
 - **In GUI mode qtty touches none of the above** — G2's inertness, restated as a
   testable rule: a GUI build with the library linked but inactive must be
   byte-identical in behaviour to one without it.

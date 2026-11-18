@@ -62871,3 +62871,44 @@ each have a check, and the fifth is that the notice **printed nothing at
 all** across a whole suite run on a Qt that has the plugin -- a warning
 that speaks where it should not is one somebody silences. 2539 checks,
 864 entries.
+
+### 8.784 The contract said one event filter and the library installs seven (2026-11-18)
+
+**Still walking section 13's neighbours, and section 10.1 is the one an
+ADOPTER reads.** It is headed *Namespace and global-state contract*, its
+own sentence says *"the real collision risk is not names but Qt's
+process-wide singletons"*, and it listed what qtty owns in TUI mode:
+the application style, the application font, the platform and scaling
+environment variables, **"and one global event filter (popup stamping,
+GridGuard)"**.
+
+**Measured: seven, and the characterisation of the one it named was
+wrong too.** Every application-level `installEventFilter` in `src/`:
+`FontEnforcer` and `StyleKeeper` keep the font and the style qtty set;
+`CellPaintFilter` is the paint funnel; `GridGuard` is the geometry
+guard, which is not popup stamping -- that is `InputRouter`'s job, and
+`InputRouter` is a sixth filter; `GridSnap` is the seventh; and
+`FrameScheduler` makes a seventh kind. Two of the seven are per
+instance rather than per process: a router per window and a scheduler
+per scheduler, so a two-window application installs more than seven.
+
+**Why the count is the point rather than a detail.** Qt delivers to
+application filters in REVERSE order of installation. So an adopter who
+installs their own filter after `Qtty::setup()` sees an event before any
+of qtty's, and one who installs before `setup()` sees it after all of
+them -- which is the fact this clause exists to give, and it cannot be
+reasoned about from "one". The library was not hiding anything: each
+filter's own site explains itself. What was wrong was the one place an
+adopter is told to look.
+
+**G2 holds, and that was checked rather than assumed**: all seven are
+installed from `setup()` or from the TUI runtime's own objects, so a GUI
+build with the library linked and inactive installs none of them.
+
+**The same shape as 8.780, in the direction that costs more.** That
+entry found the roadmap UNDERSTATING what the code does, which misleads
+a reader about progress; this one found the contract understating what
+the code TAKES, which misleads an adopter about their own program. A
+count in a contract is a promise, and seven is not one.
+
+2539 checks, 864 entries.
