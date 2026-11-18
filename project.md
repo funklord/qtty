@@ -62749,3 +62749,56 @@ The complement, once a sweep does finish, is
 
     comm -23 <(sort -u build/sabotage-green.txt) \
              <(grep -v '^#' build/sabotage-journal.txt | cut -f3 | sort -u)
+
+**And this entry's own commit names the wrong stamp.** `c841bda` says
+*stamp 1dc9c4a*; the gate that passed it wrote `087fffa`. The number was
+typed from memory with the file one `cat` away -- which is 8.768's
+mistake repeated in the same shape, two days later, by the same hand. Its
+sharper form: **a figure in a commit message is the one claim that
+cannot be corrected in place**, so it is the one to read rather than
+recall. Corrected here because this is where a reader of that commit
+looks.
+
+### 8.782 Two hazards the guidelines added, swept here, both negative (2026-11-18)
+
+**The guidelines moved 31 commits while this session was idle, and two of
+them name build hazards with reproductions.** Both were swept against
+this tree rather than assumed either way, because the answer is cheap
+and the sweep is what a later reader would otherwise repeat.
+
+**A dropped qmake define rebuilds nothing** -- qmake's objects depend on
+their sources and headers, not on the generated Makefile, so a `DEFINES`
+changed on the command line leaves every object compiled with the old
+value. **qtty has the shape and it is inert.** `qtty.pri` does
+`DEFINES += QTTY_VERSION_STRING=\\\"$$VERSION\\\"`, read from the
+`VERSION` file -- and **nothing in `src/`, `include/`, `test/` or
+`example/` reads that define.** The version a consumer sees comes from
+`include/qtty/version.h`, which is a HEADER, so objects do depend on it;
+`version-check` asserts that header equals `VERSION` in three ways, and
+`tool/install-probe.cpp` pins the adopter's path in a comment that says
+why -- *"QTTY_VERSION_STRING is this build's own and an adopter never
+sees it, which is worth pinning here because reaching for it is the
+mistake a consumer makes first."* That is the guideline's own remedy
+already in place, so the define stays: it is this build's, it has a
+documented non-audience, and removing it would be churn against a
+decision already taken.
+
+**`a && b || c` is `(a && b) || c`**, so a recipe writing a record after
+a check writes it when the check fails too. Three shell sites in this
+tree have the shape and none is the hazard:
+`tool/negotiate-check` twice, where the right side is a BRACED failure
+handler, and `Makefile:407`, where it is `continue`. Both are the
+"skip or complain unless both held" reading, which is what the shape
+means and what those sites want. The gate's own `PASS`/`FAIL` stamp is
+written by an `if`/`else`, and each arm's receipt is its own recipe line,
+so make's sequencing stops a failed arm before the receipt.
+
+**One thing the same movement did turn up**, recorded because it is
+somebody else's to act on: this tree's `tool/style_gate.py` and
+`tool/test_style_gate.py` are behind `~/.claude/tool`'s, and the
+guideline commits name real defects in the older copy -- the docs mode
+asking the filesystem rather than the index, so a build product could
+satisfy a backticked path. **The source gate passes against this tree in
+both modes**, so taking the update would not turn this gate red; the
+spread is `sync.py --commit` from the account that owns the checkout,
+which is not the one that noticed.
