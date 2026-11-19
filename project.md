@@ -20,6 +20,12 @@ number rather than restating it.
 
 ## 0a. State
 
+**Last folded 2026-11-19: see section 8a, which carries what the session
+of 2026-11-13 and 11-18 knew** -- two rendering defects closed (a
+frame's cached insets, and the contract that said one event filter where
+there are seven), the sabotage spec at 864 entries, what a full sweep
+costs, and what each blocked thing waits for.
+
 2539 checks, 0 failures. **The duration is 8.54 seconds of user time, taken
 2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
@@ -62940,3 +62946,78 @@ changed: the convention has been followed for longer than it was written
 down, which is why this is a sentence in the document rather than a fix.
 
 2539 checks, 864 entries.
+
+## 8a. Fold, 2026-11-19 -- what this session knew (session fa0b4813)
+
+**Written to be found.** Section 0a points here by name, because a fold
+appended to the end of a 62,000-line file is found only by somebody
+already looking for it (`skills/session-clear`, 2026-11-19).
+
+**What this session did**, over three runs on 2026-11-13 and 2026-11-18,
+is in entries 8.766 to 8.785; what follows is only what a NEXT session
+needs and would not otherwise have.
+
+### Two rendering defects, both closed
+
+- **A frame's cached insets** (8.749, 8.771, 8.778). A `QFrame` shown or
+  resized under three rows caches the base style's ten-pixel inset for
+  life, so its viewport sits ten pixels down a nineteen-pixel row,
+  permanently and silently. `GridSnap` re-asks the style at the one
+  moment the cache becomes wrong. The condition took three passes: the
+  symptom (`inset % ch`) loops on an `HLine`; the signature
+  (`inset == PM_DefaultFrameWidth`) broke the combo popup; the answer is
+  that **a POPUP sizes itself and a window does not**, which also closes
+  8.749's option 2, recorded there as "no way found". Verified on Qt
+  6.8.2 and 5.15.15, offscreen and xcb-under-Xvfb.
+- **The record said one event filter and there are seven** (8.784). The
+  adopter-facing contract in design.md 10.1 understated what the library
+  takes from the application. Qt delivers to application filters in
+  reverse installation order, which is the fact that clause exists to
+  give.
+
+### The sabotage harness, which is how this tree verifies its suite
+
+- **The spec is 864 entries naming 822 distinct checks of 2539.** Six
+  instalments landed this session (831 -> 864).
+- **A full sweep costs about 34 hours here, not the 8.2 the tool
+  estimates** -- 2.4 minutes an entry, measured (8.781). **A partial
+  sweep answers nothing**: the useful half is the complement, which
+  needs every entry to have run. `--from N --to M` makes it divisible
+  and the journal makes an interruption lossless, so it can be spread
+  over runs; it banks no conclusion until the last chunk.
+- **"FAILED: the named check PASSED against broken code" has four
+  causes** and only one is a defect in the suite: a weak check (8.766),
+  an entry naming a check that does not own the property, a property
+  with two independent guards, and a break that is not a break (8.772,
+  8.776). `--diff` is what separates them, and the verdict now says so.
+- **The next instalment's method**: pick a block where every claim is a
+  position, an order or a byte layout, and break position rather than
+  presence. The thin suites are graphics and render.
+
+### What each blocked thing waits for
+
+- **G3** -- OQ-4's consequence for Phase 4 and the count of four. Both
+  consumers have answered (8.757, 8.761); the direction is the holder's.
+- **Phase 0's non-X11 smoke test** -- design.md 13.3's platform scope.
+- **The bundled font** -- its licence, which is never a session's.
+- **Row 0b: what a drawn mark becomes on a character grid** -- where
+  8.751, 8.774 and design.md 8.4's open question all end.
+- **netcfgd's nested frames** -- signalled to that tree.
+- **This tree's `tool/style_gate.py` and `tool/test_style_gate.py` are
+  behind the source** (8.782). The source gate passes against this tree
+  in both modes, so taking the update turns nothing red; the spread is
+  `sync.py --commit` from the account that owns the checkout.
+
+### Two instruments to trust carefully
+
+- **The gate's receipt is index-sensitive.** `make check`'s stamp hashes
+  `HEAD` + `git diff HEAD` + the untracked list, so staging a NEW file
+  moves its content between two of those and the identity changes
+  although the bytes the gate read did not. The pre-commit note fires on
+  every commit that adds a file; its own comment records the case,
+  measured 2026-09-04. `tool/arm-receipt`'s content id does not have
+  this property.
+- **A timing taken on this machine is a fact about the afternoon.**
+  Section 0a's duration was re-measured at load 18 and three
+  consecutive runs of one binary spread 47 per cent. Take it on a quiet
+  machine before reading a trend into it.
