@@ -20,8 +20,10 @@ number rather than restating it.
 
 ## 0a. State
 
-**Last folded 2026-11-19: see section 8a, which carries what the session
-of 2026-11-13 and 11-18 knew** -- two rendering defects closed (a
+**Last folded 2026-11-19 (second fold the same day: the style gate's
+copies arrived, 8.786, and section 8a's bullet about them is struck).
+See section 8a, which carries what the session of 2026-11-13 and 11-18
+knew** -- two rendering defects closed (a
 frame's cached insets, and the contract that said one event filter where
 there are seven), the sabotage spec at 864 entries, what a full sweep
 costs, and what each blocked thing waits for.
@@ -62824,6 +62826,11 @@ both modes**, so taking the update would not turn this gate red; the
 spread is `sync.py --commit` from the account that owns the checkout,
 which is not the one that noticed.
 
+**Taken on 2026-11-18 in `9e45daa`**, by `sync.py` from the guidelines at
+`4357f41` -- so this finding is closed by the receiving tree's own
+commit, which is where a reader should look for it rather than here.
+8.786 has what was checked about the result.
+
 ### 8.783 R2b's second mitigation was never built, and the record did not say so (2026-11-18)
 
 **Found by walking section 13's risk table, which is the one list in
@@ -63003,10 +63010,13 @@ needs and would not otherwise have.
 - **Row 0b: what a drawn mark becomes on a character grid** -- where
   8.751, 8.774 and design.md 8.4's open question all end.
 - **netcfgd's nested frames** -- signalled to that tree.
-- **This tree's `tool/style_gate.py` and `tool/test_style_gate.py` are
-  behind the source** (8.782). The source gate passes against this tree
-  in both modes, so taking the update turns nothing red; the spread is
-  `sync.py --commit` from the account that owns the checkout.
+- ~~This tree's `tool/style_gate.py` and `tool/test_style_gate.py` are
+  behind the source.~~ **Taken, and the finding is discharged by the
+  receiving tree's own commit**: `9e45daa`, written by `sync.py` from the
+  guidelines at `4357f41` on 2026-11-18. Verified rather than read off
+  the subject line -- each copy now differs from the source by exactly
+  two lines, its own copy header, and `make style` passes here in both
+  modes with the gate's suite green first (8.782, 8.786).
 
 ### Two instruments to trust carefully
 
@@ -63021,3 +63031,33 @@ needs and would not otherwise have.
   Section 0a's duration was re-measured at load 18 and three
   consecutive runs of one binary spread 47 per cent. Take it on a quiet
   machine before reading a trend into it.
+
+### 8.786 The style gate's copies arrived, and what was checked about them (2026-11-19)
+
+**8.782 recorded that this tree's `tool/style_gate.py` and
+`tool/test_style_gate.py` were behind the source, and said the spread
+was the owning account's run rather than the noticing session's. It
+ran.** `9e45daa`, 2026-11-18, written and committed by `sync.py` from
+the guidelines at `4357f41`.
+
+**Checked rather than taken from the subject line**, which said "each
+file is the source's apart from its copy header":
+
+- **Each copy differs from `~/.claude/tool`'s by exactly two lines** --
+  its own `Copied from ... -- the source` header -- and by nothing else.
+  Measured with `diff`, counting the differing lines, in both files.
+- **`make style` passes here in both modes**, with the gate's own suite
+  (`style-tool`) green first, which is the order the inventory asks for:
+  a checker that has stopped inspecting anything passes as loudly as one
+  that works, so its verdict is worth reading only after its suite is.
+  101 files for whitespace and indentation; `project.md` for the docs
+  mode, now reporting **"18 path(s) by the index"** -- the wording of the
+  fix that was the reason to want the update, since the old mode asked
+  the filesystem and a build product could satisfy a backticked path.
+
+**So the finding is discharged by the receiving tree's commit**, not by
+this entry: a reader who wants to know when the gate changed reads
+`9e45daa`, and 8.782's paragraph now points there. What this entry adds
+is the two measurements, because "the spread ran" and "the spread landed
+intact and the tree still passes" are different claims and only the
+second is worth relying on.
