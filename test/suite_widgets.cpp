@@ -8649,6 +8649,208 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// ---- an editable combo's COMPLETER list is drawn, not only routed ----
+	//
+	// Reported by situ, whose editor edits an enum cell with exactly this:
+	// an editable combo, PopupCompletion, MatchContains, case-insensitive.
+	// Keys reached the list -- Down selected the match and Return committed
+	// it -- and the frame drew the combo and no list at all. QCompleter
+	// sizes its popup for a 3-pixel frame and places it 2 pixels above the
+	// field's bottom, so on the grid a one-match list was 25 pixels tall
+	// with a cell of frame on each side, and its top snapped onto the
+	// field. completer_fit() in the compositor is the repair.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		const auto searchable = [](QComboBox *combo) {
+			combo->setEditable(true);
+			combo->setInsertPolicy(QComboBox::NoInsert);
+			auto *comp = new QCompleter(combo->model(), combo);
+			comp->setCompletionMode(QCompleter::PopupCompletion);
+			comp->setFilterMode(Qt::MatchContains);
+			comp->setCaseSensitivity(Qt::CaseInsensitive);
+			combo->setCompleter(comp);
+			return comp;
+		};
+		const QStringList modes = { QStringLiteral("client"),
+			                        QStringLiteral("server"),
+			                        QStringLiteral("broadcast") };
+		// Which screen rows hold `text`, from the snapshot's cell section.
+		const auto rows_of = [](const QString &screen, const QString &text) {
+			QVector<int> rows;
+			const QStringList lines =
+			    screen.left(screen.indexOf(QStringLiteral("--- ")))
+			        .split(QLatin1Char('\n'));
+			for (int y = 0; y < lines.size(); ++y)
+				if (lines.at(y).contains(text)) rows.append(y);
+			return rows;
+		};
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *combo = new QComboBox;
+		combo->addItems(modes);
+		QCompleter *const comp = searchable(combo);
+		v->addWidget(combo);
+		v->addStretch();
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		{
+			Qtty::InputRouter router(&win);
+			Qtty::set_current_window(&win);
+			combo->lineEdit()->clear();
+			combo->lineEdit()->setFocus();
+			set_focus_widget(combo->lineEdit());
+			for (const char *ch : { "c", "a", "s", "t" }) {
+				router.on_key({0, QString::fromLatin1(ch), false, false, false});
+				QCoreApplication::processEvents();
+			}
+			const QString screen =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			CHECK(comp->popup()->isVisible(),
+			      "typing into an editable combo opens its completer's list");
+			const QVector<int> at = rows_of(screen, QStringLiteral("broadcast"));
+			CHECK(at.size() == 1 && at.first() > 0,
+			      "and that list is DRAWN, below the field, so the match can "
+			      "be seen before it is chosen");
+			CHECK(rows_of(screen, QStringLiteral("cast")).contains(0),
+			      "while the field it completes stays visible above it, "
+			      "rather than being covered by the list's top");
+			if (at.size() != 1) printf("%s", qPrintable(screen));
+
+			// Two letters more, and the list is re-placed by Qt -- the
+			// position the compositor moved it to must not be read back
+			// as Qt's own.
+			router.on_key({Qt::Key_Backspace, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			const QString again =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			CHECK(rows_of(again, QStringLiteral("broadcast")) == at,
+			      "and a further keystroke leaves it where it was");
+
+			router.on_key({Qt::Key_Down, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			router.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
+				           false});
+			QCoreApplication::processEvents();
+			CHECK(combo->currentText() == QStringLiteral("broadcast")
+			          && !comp->popup()->isVisible(),
+			      "and Down and Return still choose from it once it is drawn");
+		}
+		win.hide();
+
+		// SITU'S OWN SHAPE: the combo is a table cell's delegate editor, in
+		// the last row, so there is no room below and the list has to open
+		// ABOVE the field rather than over it.
+		class SearchableEditor : public QStyledItemDelegate {
+		public:
+			std::function<QCompleter *(QComboBox *)> make;
+			QStringList items;
+			QCompleter *last = nullptr;
+			using QStyledItemDelegate::QStyledItemDelegate;
+			QWidget *createEditor(QWidget *parent,
+			                      const QStyleOptionViewItem &,
+			                      const QModelIndex &) const override {
+				auto *c = new QComboBox(parent);
+				c->addItems(items);
+				const_cast<SearchableEditor *>(this)->last = make(c);
+				return c;
+			}
+			void setEditorData(QWidget *e, const QModelIndex &) const override {
+				static_cast<QComboBox *>(e)->setEditText(QString());
+			}
+			void setModelData(QWidget *e, QAbstractItemModel *m,
+			                  const QModelIndex &i) const override {
+				m->setData(i, static_cast<QComboBox *>(e)->currentText());
+			}
+		};
+		QWidget twin;
+		twin.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tv = new QVBoxLayout(&twin);
+		tv->setContentsMargins(0, 0, 0, 0);
+		auto *table = new QTableWidget(3, 1);
+		table->horizontalHeader()->setStretchLastSection(true);
+		table->setEditTriggers(QAbstractItemView::EditKeyPressed);
+		for (int r = 0; r < 3; ++r)
+			table->setItem(r, 0, new QTableWidgetItem(modes.at(r)));
+		auto *editor = new SearchableEditor(table);
+		editor->make = searchable;
+		editor->items = modes;
+		table->setItemDelegate(editor);
+		tv->addWidget(table);
+		twin.resize(GridMetrics::cells(30, 8));
+		twin.show();
+		QCoreApplication::processEvents();
+		{
+			Qtty::InputRouter router(&twin);
+			Qtty::set_current_window(&twin);
+			table->setCurrentCell(2, 0);
+			table->setFocus();
+			set_focus_widget(table);
+			QCoreApplication::processEvents();
+			router.on_key({Qt::Key_F2, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			router.on_key({0, QStringLiteral("e"), false, false, false});
+			QCoreApplication::processEvents();
+			const QString screen =
+			    Qtty::test::snapshot_of_screen(twin, router, 30, 8);
+			const QVector<int> field = rows_of(screen, QStringLiteral("[e "));
+			CHECK(editor->last && editor->last->popup()->isVisible()
+			          && field.size() == 1,
+			      "a table cell's combo editor opens its completer's list, "
+			      "and its field stays in sight");
+			// "e" matches client and server, which are the table's first
+			// two rows too. Eight rows leave no room for two items and a
+			// frame below the last row, so the list belongs ABOVE the
+			// field -- where it covers those rows, so each name appears
+			// once, inside the list's frame.
+			const QVector<int> client = rows_of(screen, QStringLiteral("\u2502 client"));
+			const QVector<int> server = rows_of(screen, QStringLiteral("\u2502 server"));
+			CHECK(field.size() == 1 && client.size() == 1 && server.size() == 1
+			          && client.first() < server.first()
+			          && server.first() < field.first(),
+			      "and in the last row the list is drawn above the field, "
+			      "both matches in order, rather than over it or off the "
+			      "bottom");
+			if (field.size() != 1 || client.size() != 1 || server.size() != 1)
+				printf("%s", qPrintable(screen));
+
+			// Up from no selection takes the list's last match, the first
+			// Return accepts it into the field and closes the list, and a
+			// second commits the cell -- the desktop's sequence, where the
+			// completer consumes the first Return itself.
+			auto *combo_editor = qobject_cast<QComboBox *>(editor->last->widget());
+			router.on_key({Qt::Key_Up, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			router.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
+				           false});
+			QCoreApplication::processEvents();
+			CHECK(combo_editor && combo_editor->currentText() == QStringLiteral("server")
+			          && !editor->last->popup()->isVisible(),
+			      "Up and Return choose a match from the list drawn above");
+			router.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
+				           false});
+			QCoreApplication::processEvents();
+			CHECK(table->item(2, 0)->text() == QStringLiteral("server"),
+			      "and a second Return commits it to the cell");
+			if (table->item(2, 0)->text() != QStringLiteral("server"))
+				printf("committed: %s\n", qPrintable(table->item(2, 0)->text()));
+			router.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+		}
+		twin.hide();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	{
 		// Partial-line scrolling, which section 7.2 listed as the one thing
 		// text widgets that nothing exercised. It does the right thing, and

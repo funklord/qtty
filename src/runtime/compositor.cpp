@@ -134,6 +134,88 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 	return QPoint((x / cw) * cw, (y / ch) * ch);          // snap the result to the grid
 }
 
+// A COMPLETER'S LIST, sized and placed for a desktop and re-fitted to the
+// grid. QCompleter::complete() computes the popup's geometry itself, on
+// every keystroke, with two pixel constants in it:
+//
+//     h   = sizeHintForRow(0) * rows + 3 + 3      a 3-pixel frame each side
+//     pos = widget->mapToGlobal(0, height - 2)    overlapping the field
+//
+// Here a frame is a whole cell on each side, so a one-match list came out
+// 25 pixels tall -- one row of content and two rows of frame in it -- and
+// its viewport had no height left; and y = height - 2 lies inside the
+// field's last row, which placed_at()'s snap rounds DOWN, onto the field.
+// Measured with situ's editor (an editable combo, PopupCompletion,
+// MatchContains), and again here: the list was on the router's stack,
+// visible, took Down and Return, and the frame drew the combo and no list.
+//
+// Recognised by Qt's own marker, the one InputRouter::input_popups() reads:
+// QCompleter::setPopup() points the list's focus proxy at the widget being
+// edited, which is outside the list. Returns the corrected rectangle in
+// Qt's coordinates, or an invalid one when `pop` is not such a list.
+//
+// `screen_dy` maps Qt's y into the terminal's, and `limit_y` is the
+// terminal's height in pixels: the list goes below the field when it fits
+// there, above when there is more room above, and is cut to whole rows of
+// the larger side otherwise -- it scrolls, which a QListView already does.
+QRect completer_fit(QWidget *pop, int screen_dy, int limit_y, int ch) {
+	auto *view = qobject_cast<QAbstractItemView *>(pop);
+	QWidget *const field = pop->focusProxy();
+	if (!view || !field || pop->isAncestorOf(field) || !view->model())
+		return QRect();
+	const int count = view->model()->rowCount(view->rootIndex());
+	if (count <= 0) return QRect();
+	// The completer's own cap, where it can be found. A QCompleter is not
+	// reachable from its popup, so ask the two widgets that carry one;
+	// anything else gets Qt's default of seven.
+	int most = 7;
+	QCompleter *c = nullptr;
+	if (auto *e = qobject_cast<QLineEdit *>(field)) c = e->completer();
+	else if (auto *b = qobject_cast<QComboBox *>(field)) c = b->completer();
+	if (c && c->popup() == pop) most = qMax(1, c->maxVisibleItems());
+	const int row_h = qMax(ch, view->sizeHintForRow(0));
+
+	// THE FRAME, ASKED OF THE VIEW rather than assumed to be a cell: grow
+	// it until the viewport has room, then read what the frame took. At
+	// Qt's 25 pixels the viewport is clamped to nothing and the difference
+	// would say nothing.
+	const int want = row_h * qMin(most, count);
+	if (pop->height() < want + 4 * ch) pop->resize(pop->width(), want + 4 * ch);
+	const int frame = pop->height() - view->viewport()->height();
+
+	// WHERE THE FIELD ENDS. Qt's y is two pixels above the field's bottom
+	// (or one, for complete(rect)); a y within a few pixels of the field's
+	// bottom edge means "below this field", anything else is complete()
+	// given a rectangle -- a caret in a text editor -- and is taken to the
+	// next row boundary, below the row it points into.
+	const QPoint top_left = field->mapToGlobal(QPoint(0, 0));
+	const int field_bottom = top_left.y() + field->height();
+	int below = pop->y(), above = below - ch;
+	//
+	// The field's edges are taken OUTWARD to whole cells. A delegate editor
+	// is the row's height less the grid line -- 18 pixels in a 19-pixel
+	// cell, measured with situ's table -- so its bottom edge lies inside
+	// its own row, and placed_at() would snap the list back onto it.
+	if (qAbs(below - field_bottom) <= 2) {
+		below = (field_bottom + ch - 1) / ch * ch;
+		above = top_left.y() / ch * ch;
+	} else {
+		below = (below + ch - 1) / ch * ch;
+		above = below - ch;
+	}
+	const int room_below = limit_y - (below + screen_dy);
+	const int room_above = above + screen_dy;
+	int rows = qMin(most, count);
+	int y = below;
+	if (row_h * rows + frame > room_below && room_above > room_below) {
+		rows = qMin(rows, qMax(1, (room_above - frame) / row_h));
+		y = above - (row_h * rows + frame);
+	} else {
+		rows = qMin(rows, qMax(1, (room_below - frame) / row_h));
+	}
+	return QRect(pop->x(), y, pop->width(), row_h * rows + frame);
+}
+
 // Where a dialog goes when nobody has said. Centred in the terminal and
 // snapped to the grid, never negative -- a dialog bigger than the terminal
 // starts at the origin and section 7's scrolling takes over from there.
@@ -1131,6 +1213,17 @@ void Compositor::compose(CellBuffer &out) {
 		// moved ITSELF -- a submenu following its parent -- from one this
 		// function moved.
 		const PopupPlace known = popup_place_.value(pop);
+		const bool in_root = !pop->parentWidget()
+		    || pop->parentWidget()->window() == base;
+		// A completer's list re-fitted when QT has just placed it -- not on
+		// a frame where it sits where this function put it, which would
+		// read a position already moved for the terminal as Qt's.
+		if (!popup_place_.contains(pop)
+		    || known.placed != pop->geometry().topLeft()) {
+			const QRect fit = completer_fit(pop, in_root ? base_at.y() : 0,
+			                                out.rows() * ch, ch);
+			if (fit.isValid() && fit != pop->geometry()) pop->setGeometry(fit);
+		}
 		const QPoint anchor = known.placed == pop->geometry().topLeft()
 		    ? known.anchor : pop->geometry().topLeft();
 
@@ -1170,8 +1263,6 @@ void Compositor::compose(CellBuffer &out) {
 		//
 		// One expression now, taken from the variable the drawing uses, so
 		// the two cannot drift again.
-		const bool in_root = !pop->parentWidget()
-		    || pop->parentWidget()->window() == base;
 		const QPoint origin = in_root ? anchor + base_at : anchor;
 
 		QPoint at = placed_at(QRect(origin, pop->size()), out.cols(), out.rows(),

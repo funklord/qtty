@@ -20,8 +20,10 @@ number rather than restating it.
 
 ## 0a. State
 
-**Last folded 2026-11-19 (second fold the same day: the style gate's
-copies arrived, 8.786, and section 8a's bullet about them is struck).
+**2026-11-20: a completer's list is drawn now, 8.787** (situ's report;
+2548 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
+day: the style gate's copies arrived, 8.786, and section 8a's bullet
+about them is struck).
 See section 8a, which carries what the session of 2026-11-13 and 11-18
 knew** -- two rendering defects closed (a
 frame's cached insets, and the contract that said one event filter where
@@ -63061,3 +63063,63 @@ this entry: a reader who wants to know when the gate changed reads
 is the two measurements, because "the spread ran" and "the spread landed
 intact and the tree still passes" are different claims and only the
 second is worth relying on.
+
+### 8.787 A completer's list was routed and never drawn (2026-11-20)
+
+**Reported by situ** (inbox 20261120T1120Z and 1240Z), whose editor
+edits an enum cell with an editable `QComboBox` carrying a `QCompleter`
+-- `PopupCompletion`, `MatchContains`, case-insensitive -- inside a
+`QTableWidget` delegate. On a terminal the user typed, saw no list, and
+could still pick blind: Down reached it and Return committed. The holder's
+words, relayed with it: "Qtty needs to fully support basic things like
+comboboxes fully".
+
+**The cause is two pixel constants in `QCompleter::complete()`**, which
+places the list itself on every keystroke:
+
+    h   = sizeHintForRow(0) * rows + 3 + 3       a 3-pixel frame each side
+    pos = widget->mapToGlobal(0, height - 2)     two pixels into the field
+
+Here a frame is a cell on each side, so a one-match list was 25 pixels --
+two rows of frame and a viewport of nothing -- and its top lay inside the
+field's last row, which `placed_at()` snaps down onto the field. Measured:
+`300x25+0+17` for a combo on row 0, and the frame drew `[cast ▾]` and no
+list. The router had it on its stack and visible throughout; only the
+drawing was missing, as situ said.
+
+**The repair is `completer_fit()` in `src/runtime/compositor.cpp`**, run
+in the popup loop when Qt has just placed the list (not when it sits where
+the compositor moved it, which would read the terminal's position back as
+Qt's). It recognises the list by the marker 8.201 already reads -- a focus
+proxy outside the popup -- and gives it rows times the row height plus the
+frame the VIEW reports (grown first, since at 25 pixels the viewport is
+clamped and the difference says nothing), at most the completer's
+`maxVisibleItems`. It goes below the field when it fits, above it when
+there is more room above, and is cut to whole rows of the larger side
+otherwise. **The field's edges are rounded outward to cells**: a delegate
+editor is 18 pixels in a 19-pixel row, measured, so its bottom lies inside
+its own row and the first version put the list back over it.
+
+**Checked in `suite_widgets`, nine checks, both of situ's shapes**: a plain
+editable combo (list drawn below, field still visible, a further keystroke
+leaves it in place, Down and Return choose from it), and the combo as a
+table's delegate editor in the last row (list drawn above the field with
+both matches in order, Up and Return choose, a second Return commits the
+cell). **Sabotaged**: with the call removed the three drawing checks fail
+and the input ones pass, which is the split the report describes. Full
+suite 2548 checks, 0 failures; `make style` passes.
+
+**Two Returns in a delegate is Qt's behaviour, not a fault here.** The
+completer consumes the first Return (`QCompleter::eventFilter` hides the
+list, completes, and calls the widget's `event()` directly, which the
+delegate's editor filter never sees), so the first accepts the match and
+the second commits the cell -- as on a desktop. Measured: after Up and one
+Return the editor read `server` and the cell still its old value.
+
+**Not done here, and owed**: situ's real-terminal reproduction (tmux) was
+not run against this tree -- situ vendors qtty at `5eb8a85` and takes the
+update itself, then adds its own snapshot check of the open list. The
+wider ask -- an editable combo working as a desktop's does -- is otherwise
+met by what was already measured: the combo's own drop-down draws every
+item (the check above this one in `suite_widgets`), and situ's fifteen
+input cases, validator included, pass through the router.
