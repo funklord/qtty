@@ -8794,6 +8794,30 @@ int suite_widgets() {
 			      "does");
 			if (shifted != moved)
 				printf("%s%s", qPrintable(moved), qPrintable(shifted));
+
+			// A FIELD A PIXEL TALLER THAN ITS ROW. situ's field ends one
+			// pixel into the row below it -- Qt put the list at y=94 in a
+			// 19-pixel grid, the field's bottom less two, so the bottom is
+			// at 96 -- and taking the edge OUTWARD to a whole cell put the
+			// list's border a row below where tmux drew it. The field is
+			// drawn on the row it mostly covers, so the list belongs on the
+			// row after that one.
+			combo->setFixedHeight(GridMetrics::ch() + 1);
+			QCoreApplication::processEvents();
+			const QString tall =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			const QVector<int> tall_field = rows_of(tall, QStringLiteral("[cas"));
+			const QVector<int> tall_list = rows_of(tall, QStringLiteral("broadcast"));
+			CHECK(tall_field.size() == 1 && tall_list.size() == 1
+			          && tall_list.first() == tall_field.first() + 2,
+			      "and a field a pixel taller than its row has its list's "
+			      "border on the next row, not the one after");
+			if (tall_field.size() != 1 || tall_list.size() != 1
+			    || tall_list.first() != tall_field.first() + 2)
+				printf("%s", qPrintable(tall));
+			combo->setMinimumHeight(0);
+			combo->setMaximumHeight(QWIDGETSIZE_MAX);
+			QCoreApplication::processEvents();
 			if (field_rows.size() != 1 || list_rows.size() != 1
 			    || list_rows.first() != field_rows.first() + 2
 			    || moved_again != moved)

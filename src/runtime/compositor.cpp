@@ -236,16 +236,21 @@ QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
 	    ? 2 * ch + view->height() - view->viewport()->height()
 	    : pop->height() - view->viewport()->height();
 
-	// The field's edges are taken OUTWARD to whole cells. A delegate editor
-	// is the row's height less the grid line -- 18 pixels in a 19-pixel
-	// cell, measured with situ's table -- so its bottom edge lies inside
-	// its own row, and placed_at() would snap the list back onto it.
+	// The field's edges are taken to the NEAREST row boundary, the rows the
+	// field is drawn on. A delegate editor is the row's height less the
+	// grid line -- 18 pixels in a 19-pixel cell, measured with situ's table
+	// -- so its bottom edge lies inside its own row, and placed_at() would
+	// snap the list back onto it. Rounding OUTWARD fixed that and was wrong
+	// the other way: situ's field ends a pixel into the row below it (Qt
+	// put the list at y=94, the field's bottom less two), and outward put
+	// the list's border a row lower than tmux drew it, with the row under
+	// the field left showing between them.
 	const QPoint top_left = field->mapToGlobal(QPoint(0, 0));
 	int x = pop->x(), below, above;
 	if (follows_field || drop_down) {
 		x = top_left.x();
-		below = (top_left.y() + field->height() + ch - 1) / ch * ch;
-		above = top_left.y() / ch * ch;
+		below = (top_left.y() + field->height() + ch / 2) / ch * ch;
+		above = (top_left.y() + ch / 2) / ch * ch;
 	} else {
 		// complete(rect): Qt's y is the rectangle's bottom edge, inside the
 		// row it points into, so the list goes from the next row boundary.

@@ -23,7 +23,8 @@ number rather than restating it.
 **2026-11-20: a completer's list is drawn now, follows its field, and
 erases what it covers, 8.787; the window composed is held at Qt's origin,
 so a snapshot places popups as the frame loop does; an editable combo's own drop-down
-is placed under its field and sized in rows** (situ's report; 2561 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
+is placed under its field and sized in rows; a field's edge is rounded to the
+nearest row** (situ's report; 2562 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
 day: the style gate's copies arrived, 8.786, and section 8a's bullet
 about them is struck).
 See section 8a, which carries what the session of 2026-11-13 and 11-18
@@ -32,7 +33,7 @@ frame's cached insets, and the contract that said one event filter where
 there are seven), the sabotage spec at 864 entries, what a full sweep
 costs, and what each blocked thing waits for.
 
-2561 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
+2562 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
 2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
 1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
@@ -63195,8 +63196,9 @@ low. **`compose()` now moves the window it draws to the origin**, as
 drawn, because the router reads positions from geometry. A check composes
 the window off the origin and asks for the same picture; a sabotage entry
 leaving the window where it is reddens exactly that check. 2552 checks, 0
-failures. Nothing in situ's call was wrong, so situ need not change how it
-takes the frame.
+failures. **That was a real fault and not situ's**: situ's window was
+already at (0,0), and its list stayed a row low after `d798489`. See the
+next paragraph but one.
 
 **An editable combo's own drop-down, as a table cell's editor, had the
 completer list's two faults.** The holder's ask was the whole control as
@@ -63222,3 +63224,18 @@ sabotage removing it left the suite green, so it is not done. Escape
 and committing, and `QIntValidator` all worked already; the check holds
 them. One sabotage entry, which removes the fit for the drop-down,
 reddens the placement check. 2561 checks, 0 failures.
+
+
+**situ's row was the rounding, measured from its own figures.** At 90x12
+with the window at (0,0), the list's Qt geometry was 213,94 170x25 just
+before the snapshot. Qt places it at the field's bottom less two, so the
+field's bottom edge was at 96, one pixel into row 5. `completer_fit()`
+took the field's edges OUTWARD to whole cells, which was the fix for an
+18-pixel delegate editor, so a field a pixel too tall got its list's
+border on row 6 with row 5 showing between them. **Edges now round to the
+nearest row boundary**, the rows the field is drawn on: an 18-pixel editor
+and a 20-pixel field both get the list on the next row. A check gives the
+plain combo a height of one row plus a pixel, and a sabotage entry
+restoring the outward rounding reddens it. 2562 checks, 0 failures. Why
+tmux showed the field a pixel shorter than the snapshot is not known;
+nearest rounding makes the answer the same either way.

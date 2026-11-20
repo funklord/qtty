@@ -9939,3 +9939,13 @@ find = "\tif (drop_down) { view = owner->view(); field = owner; }"
 into = "\tif (drop_down) return QRect();"
 count = 1
 check = "and it is drawn under the field, the field still in sight and every item inside the list's border"
+
+# A FIELD'S EDGE TAKEN OUTWARD TO A WHOLE CELL. Right for a field inside its
+# row, a row low for one a pixel into the next -- situ's snapshot.
+[[sabotage]]
+name = "a completer list's field edge is rounded outward"
+file = "src/runtime/compositor.cpp"
+find = "\t\tbelow = (top_left.y() + field->height() + ch / 2) / ch * ch;"
+into = "\t\tbelow = (top_left.y() + field->height() + ch - 1) / ch * ch;"
+count = 1
+check = "and a field a pixel taller than its row has its list's border on the next row, not the one after"
