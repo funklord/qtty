@@ -8697,6 +8697,11 @@ int suite_widgets() {
 		combo->addItems(modes);
 		QCompleter *const comp = searchable(combo);
 		v->addWidget(combo);
+		// TEXT UNDER THE LIST, so a cell the list leaves unpainted shows.
+		auto *under = new QLabel(QStringLiteral("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+		                                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+		                                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"));
+		v->addWidget(under);
 		v->addStretch();
 		win.resize(GridMetrics::cells(30, 8));
 		win.show();
@@ -8724,6 +8729,19 @@ int suite_widgets() {
 			      "while the field it completes stays visible above it, "
 			      "rather than being covered by the list's top");
 			if (at.size() != 1) printf("%s", qPrintable(screen));
+			// NOTHING UNDER THE LIST SHOWS THROUGH IT. The row of x under the
+			// combo is what the list is drawn over; a one-match list's
+			// viewport is one row tall, and its ground erased nothing until
+			// fill_rectf()'s erase branch stopped asking for two rows.
+			const QStringList cells_of =
+			    screen.left(screen.indexOf(QStringLiteral("--- "))).split(QLatin1Char('\n'));
+			CHECK(at.size() == 1 && at.first() < cells_of.size()
+			          && !cells_of.at(at.first()).contains(QLatin1Char('x')),
+			      "and the text it is drawn over does not show through the "
+			      "cells its item leaves blank");
+			if (at.size() == 1 && at.first() < cells_of.size()
+			    && cells_of.at(at.first()).contains(QLatin1Char('x')))
+				printf("%s", qPrintable(screen));
 
 			// Two letters more, and the list is re-placed by Qt -- the
 			// position the compositor moved it to must not be read back
@@ -8734,6 +8752,35 @@ int suite_widgets() {
 			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
 			CHECK(rows_of(again, QStringLiteral("broadcast")) == at,
 			      "and a further keystroke leaves it where it was");
+
+			// THE FIELD MOVES AND THE LIST GOES WITH IT, with no keystroke
+			// to make Qt place it again. situ's --snapshot resizes the
+			// window after its keys, and a terminal can be resized with a
+			// list open; both re-lay the window out under a list Qt placed
+			// for the old layout. Measured before the list followed its
+			// field: one row too low, over the row below the field's.
+			// Composed TWICE, because each snapshot is a fresh Compositor
+			// and the second must not read the first's position as Qt's.
+			auto *above = new QLabel(QStringLiteral("moved"));
+			v->insertWidget(0, above);
+			QCoreApplication::processEvents();
+			const QString moved =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			const QString moved_again =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			const QVector<int> field_rows = rows_of(moved, QStringLiteral("[cas"));
+			const QVector<int> list_rows = rows_of(moved, QStringLiteral("broadcast"));
+			CHECK(field_rows.size() == 1 && list_rows.size() == 1
+			          && list_rows.first() == field_rows.first() + 2,
+			      "a list stays under its field when the window is re-laid "
+			      "out with it open -- its frame on the next row, its item "
+			      "on the one after");
+			CHECK(moved_again == moved,
+			      "and a second composition draws the same picture");
+			if (field_rows.size() != 1 || list_rows.size() != 1
+			    || list_rows.first() != field_rows.first() + 2
+			    || moved_again != moved)
+				printf("%s%s", qPrintable(moved), qPrintable(moved_again));
 
 			router.on_key({Qt::Key_Down, QString(), false, false, false});
 			QCoreApplication::processEvents();

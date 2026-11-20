@@ -152,13 +152,31 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 // Recognised by Qt's own marker, the one InputRouter::input_popups() reads:
 // QCompleter::setPopup() points the list's focus proxy at the widget being
 // edited, which is outside the list. Returns the corrected rectangle in
-// Qt's coordinates, or an invalid one when `pop` is not such a list.
+// Qt's coordinates, or an invalid one when `pop` is not such a list or
+// there is nothing to correct.
+//
+// ANCHORED TO THE FIELD, NOT TO WHERE THE LIST LAST WAS, wherever the field
+// says where it is. QLineEdit and QComboBox complete without a rectangle,
+// so their list belongs under the field, and that is recomputed on every
+// frame from the field itself. The first version took Qt's y as the
+// anchor on the frames Qt had just placed the list, and it went stale two
+// ways: a window re-laid-out while the list is open -- a terminal resized,
+// or situ's --snapshot, which resizes after the keys -- moved the field
+// and not the list, and a second Compositor (snapshot_of_screen() makes
+// its own) read the first one's terminal position as Qt's. Measured with
+// situ's editor at 90x12: the list's top border on the row BELOW the one
+// under the field.
+//
+// Any other proxy -- a text editor calling complete(rect) at its caret --
+// can only be placed from Qt's y, so it is fitted when `qt_placed` says
+// Qt has just set it, and left alone otherwise.
 //
 // `screen_dy` maps Qt's y into the terminal's, and `limit_y` is the
 // terminal's height in pixels: the list goes below the field when it fits
 // there, above when there is more room above, and is cut to whole rows of
 // the larger side otherwise -- it scrolls, which a QListView already does.
-QRect completer_fit(QWidget *pop, int screen_dy, int limit_y, int ch) {
+QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
+                    int ch) {
 	auto *view = qobject_cast<QAbstractItemView *>(pop);
 	QWidget *const field = pop->focusProxy();
 	if (!view || !field || pop->isAncestorOf(field) || !view->model())
@@ -172,35 +190,34 @@ QRect completer_fit(QWidget *pop, int screen_dy, int limit_y, int ch) {
 	QCompleter *c = nullptr;
 	if (auto *e = qobject_cast<QLineEdit *>(field)) c = e->completer();
 	else if (auto *b = qobject_cast<QComboBox *>(field)) c = b->completer();
-	if (c && c->popup() == pop) most = qMax(1, c->maxVisibleItems());
+	const bool follows_field = c && c->popup() == pop;
+	if (follows_field) most = qMax(1, c->maxVisibleItems());
+	else if (!qt_placed) return QRect();
 	const int row_h = qMax(ch, view->sizeHintForRow(0));
 
-	// THE FRAME, ASKED OF THE VIEW rather than assumed to be a cell: grow
-	// it until the viewport has room, then read what the frame took. At
-	// Qt's 25 pixels the viewport is clamped to nothing and the difference
-	// would say nothing.
-	const int want = row_h * qMin(most, count);
-	if (pop->height() < want + 4 * ch) pop->resize(pop->width(), want + 4 * ch);
+	// THE FRAME, ASKED OF THE VIEW rather than assumed to be a cell. A
+	// viewport with height is the list less its frame; at Qt's 25 pixels
+	// the viewport is clamped to nothing and the difference says nothing,
+	// so grow it first -- once, since a list this has fitted has a
+	// viewport, which matters now that the fit runs on every frame.
+	if (view->viewport()->height() <= 0)
+		pop->resize(pop->width(), row_h * qMin(most, count) + 4 * ch);
 	const int frame = pop->height() - view->viewport()->height();
 
-	// WHERE THE FIELD ENDS. Qt's y is two pixels above the field's bottom
-	// (or one, for complete(rect)); a y within a few pixels of the field's
-	// bottom edge means "below this field", anything else is complete()
-	// given a rectangle -- a caret in a text editor -- and is taken to the
-	// next row boundary, below the row it points into.
-	const QPoint top_left = field->mapToGlobal(QPoint(0, 0));
-	const int field_bottom = top_left.y() + field->height();
-	int below = pop->y(), above = below - ch;
-	//
 	// The field's edges are taken OUTWARD to whole cells. A delegate editor
 	// is the row's height less the grid line -- 18 pixels in a 19-pixel
 	// cell, measured with situ's table -- so its bottom edge lies inside
 	// its own row, and placed_at() would snap the list back onto it.
-	if (qAbs(below - field_bottom) <= 2) {
-		below = (field_bottom + ch - 1) / ch * ch;
+	const QPoint top_left = field->mapToGlobal(QPoint(0, 0));
+	int x = pop->x(), below, above;
+	if (follows_field) {
+		x = top_left.x();
+		below = (top_left.y() + field->height() + ch - 1) / ch * ch;
 		above = top_left.y() / ch * ch;
 	} else {
-		below = (below + ch - 1) / ch * ch;
+		// complete(rect): Qt's y is the rectangle's bottom edge, inside the
+		// row it points into, so the list goes from the next row boundary.
+		below = (pop->y() + ch - 1) / ch * ch;
 		above = below - ch;
 	}
 	const int room_below = limit_y - (below + screen_dy);
@@ -213,7 +230,7 @@ QRect completer_fit(QWidget *pop, int screen_dy, int limit_y, int ch) {
 	} else {
 		rows = qMin(rows, qMax(1, (room_below - frame) / row_h));
 	}
-	return QRect(pop->x(), y, pop->width(), row_h * rows + frame);
+	return QRect(x, y, pop->width(), row_h * rows + frame);
 }
 
 // Where a dialog goes when nobody has said. Centred in the terminal and
@@ -1215,14 +1232,21 @@ void Compositor::compose(CellBuffer &out) {
 		const PopupPlace known = popup_place_.value(pop);
 		const bool in_root = !pop->parentWidget()
 		    || pop->parentWidget()->window() == base;
-		// A completer's list re-fitted when QT has just placed it -- not on
-		// a frame where it sits where this function put it, which would
-		// read a position already moved for the terminal as Qt's.
-		if (!popup_place_.contains(pop)
-		    || known.placed != pop->geometry().topLeft()) {
-			const QRect fit = completer_fit(pop, in_root ? base_at.y() : 0,
+		// A completer's list re-fitted (completer_fit() says when). Where it
+		// already sits where the last frame put that same fit, nothing is
+		// set: the root is drawn at an offset, so the list's geometry is
+		// the DRAWN position and not the fit, and setting the fit again
+		// would move it twice on every frame for nothing.
+		{
+			const bool qt_placed = !popup_place_.contains(pop)
+			    || known.placed != pop->geometry().topLeft();
+			const QRect fit = completer_fit(pop, qt_placed,
+			                                in_root ? base_at.y() : 0,
 			                                out.rows() * ch, ch);
-			if (fit.isValid() && fit != pop->geometry()) pop->setGeometry(fit);
+			const bool settled = !qt_placed && known.anchor == fit.topLeft()
+			    && pop->size() == fit.size();
+			if (fit.isValid() && !settled && fit != pop->geometry())
+				pop->setGeometry(fit);
 		}
 		const QPoint anchor = known.placed == pop->geometry().topLeft()
 		    ? known.anchor : pop->geometry().topLeft();

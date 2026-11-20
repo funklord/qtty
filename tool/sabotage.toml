@@ -9884,3 +9884,37 @@ find = "\t\t\t\tcell.bg = Color::rgb(blend(over, a, under));   // glyph stays"
 into = "\t\t\t\tcell.bg = Color::rgb(over);   // glyph stays"
 count = 1
 check = "a translucent pixel composites against the terminal's background"
+
+# A COMPLETER'S LIST KEEPS QT'S DESKTOP GEOMETRY. QCompleter sizes its list
+# for a 3-pixel frame and puts its top two pixels inside the field, so with
+# the fit gone a one-match list is 25 pixels with no viewport and snaps onto
+# the field. Keys still reach it, so only a check reading the picture fails.
+[[sabotage]]
+name = "a completer's list is not fitted to the grid"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tconst QRect fit = completer_fit(pop, qt_placed,\n\t\t\t                                in_root ? base_at.y() : 0,\n\t\t\t                                out.rows() * ch, ch);"
+into = "\t\t\tconst QRect fit;"
+count = 1
+check = "and that list is DRAWN, below the field, so the match can be seen before it is chosen"
+
+# A COMPLETER'S LIST FOLLOWS QT'S LAST Y RATHER THAN ITS FIELD. Right until
+# the window is re-laid out with the list open, which leaves it where the
+# old layout put it.
+[[sabotage]]
+name = "a line edit's completer list is not anchored to its field"
+file = "src/runtime/compositor.cpp"
+find = "\tconst bool follows_field = c && c->popup() == pop;"
+into = "\tconst bool follows_field = false && c && c->popup() == pop;"
+count = 1
+check = "a list stays under its field when the window is re-laid out with it open -- its frame on the next row, its item on the one after"
+
+# A ONE-ROW SURFACE ERASES NOTHING. The guard 8.205 kept for want of a
+# fixture: a fill must be two cells each way to erase, so a one-match
+# completer list leaves the text it covers showing through its row.
+[[sabotage]]
+name = "an erasing fill must be two cells each way"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (!thin) dev_->buffer().fill(c, Cell{});"
+into = "\t\tif (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});"
+count = 1
+check = "and the text it is drawn over does not show through the cells its item leaves blank"

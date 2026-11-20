@@ -20,8 +20,8 @@ number rather than restating it.
 
 ## 0a. State
 
-**2026-11-20: a completer's list is drawn now, 8.787** (situ's report;
-2548 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
+**2026-11-20: a completer's list is drawn now, follows its field, and
+erases what it covers, 8.787** (situ's report; 2551 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
 day: the style gate's copies arrived, 8.786, and section 8a's bullet
 about them is struck).
 See section 8a, which carries what the session of 2026-11-13 and 11-18
@@ -30,7 +30,7 @@ frame's cached insets, and the contract that said one event filter where
 there are seven), the sabotage spec at 864 entries, what a full sweep
 costs, and what each blocked thing waits for.
 
-2539 checks, 0 failures. **The duration is 8.54 seconds of user time, taken
+2551 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
 2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
 1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
@@ -38981,6 +38981,12 @@ at `Color::Default`, which is the thing none of today's fixtures have.
 **The sabotage harness found this, and it found it by refusing to
 redden** -- the one outcome that cannot be read as success.
 
+**Settled 2026-11-20 in 8.787: the guard was wrong, and is gone.** The
+fixture this asked for turned up as a one-match completer list -- one row
+tall, ground Base at `Color::Default` -- which let the text under it show
+through. The erase branch now asks only `!thin`, and the sabotage that
+restores the guard reddens the check written for it.
+
 ### 8.204 A copy with no text wiped the user's clipboard (2026-09-17)
 
 A worker put practice 4's question to links and the clipboard and came
@@ -63123,3 +63129,51 @@ wider ask -- an editable combo working as a desktop's does -- is otherwise
 met by what was already measured: the combo's own drop-down draws every
 item (the check above this one in `suite_widgets`), and situ's fifteen
 input cases, validator included, pass through the router.
+
+**situ took `a901586` and re-measured, and found two more** (its commit
+`1be28b22`): the list drew and worked in tmux, but `--snapshot` put it
+one row too low, and showed `|abroadcast (5) |` -- an `a` inside the
+list's left edge. Both reproduced with situ's own binary, and both were
+qtty's.
+
+**One row too low was the anchor going stale.** The first fit placed the
+list from Qt's y on the frames Qt had just set it. situ's `--snapshot`
+resizes the window after its keys, so the table re-laid out and the field
+moved while the list kept Qt's old position, which the fit then honoured;
+a terminal resized with a list open does the same. And
+`snapshot_of_screen()` composes with a fresh Compositor, which has no
+record of the position the last one moved the list to and so reads it as
+Qt's. **A list on a QLineEdit or QComboBox is now anchored to the field on
+every frame** -- those complete without a rectangle, so their list
+belongs under the field whatever Qt last said; a proxy that may have
+called `complete(rect)` is still fitted from Qt's y, and only when Qt has
+just set it. The frame is measured without a resize once the viewport has
+height, since the fit now runs every frame. Checked by moving the field
+with the list open and composing twice.
+
+**The `a` was 8.205's guard, settled at last.** `fill_rectf()` erased a
+`Color::Default` surface only when the fill was more than one cell in
+each direction. 8.205 relaxed it, found nothing in the suite reached the
+branch, and reverted, saying what would settle it: "a fixture whose
+surface role the theme leaves at `Color::Default`". A one-match completer
+list is that fixture -- its viewport is one row and its ground is Base --
+and over a row of `x` it drew `|xbroadcastxxxxxxxxxxxxxxxxxx|`: every cell
+its item did not write showed what was under it. In tmux the row beneath
+happened to be blank there, which is why only the snapshot showed it.
+**Relaxed to `!thin`, as the opaque path has always been**; the whole
+suite stays green, and restoring the guard reddens exactly the new check.
+
+**Three entries in `tool/sabotage.toml`**, each run through the harness
+and each reddening the check it names: the fit removed, the field anchor
+removed, and the two-cell guard restored. 2551 checks, 0 failures.
+
+**`make check`'s `test-tools` fails in a session with no terminal**, and
+not because of this: its example run goes through `script(1)`, which here
+reports `<not executed on terminal>` and gives a 0x0 pty, and the chat
+example then draws nothing. Measured on `5eb8a85`, built from an export in
+scratch: the same 195 bytes and the same three FAILED lines. Every other
+part of the gate passes.
+
+**From Qt, not here, and situ's to work around** (it said so itself): the
+key that opens a delegate editor under `AnyKeyPressed` does not trigger
+the completer, so a one-letter search shows no list until the second.

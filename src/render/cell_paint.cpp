@@ -1516,15 +1516,18 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 
 	const FillCell f = brush_cell();
 	if (f.erase) {
-		// More than one cell in EACH direction, which the opaque fill
-		// below does not ask for -- so the two answers differ on nothing
-		// but whether the theme named the colour. It arrived with a bulk
-		// conventions commit carrying no reason anywhere, and relaxing it
-		// to plain `!thin` was tried and reverted: no check in the suite
-		// changed, because nothing here reaches this branch. It is an
-		// untested difference rather than a known-good one, recorded in
-		// project.md 8.205 with what it would take to settle it.
-		if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+		// ANY FILL THAT IS NOT THIN, as the opaque fill below has always
+		// been. This asked for more than one cell in EACH direction, a guard
+		// that arrived with a bulk conventions commit carrying no reason,
+		// and 8.205 kept it only because nothing in the suite reached this
+		// branch. A completer's list does: a one-match list has a viewport
+		// one row tall, its ground is Base, which the default theme leaves
+		// at Color::Default, and so the list's row erased nothing -- the
+		// text under it showed through every cell its item did not write.
+		// Measured in situ's editor as `|abroadcast (5) |`, the `a` being
+		// the table cell beneath, and in suite_widgets over a row of x.
+		// Settled in 8.787.
+		if (!thin) dev_->buffer().fill(c, Cell{});
 		return;
 	}
 	// A TRANSLUCENT brush drew opaque, which is worse than it sounds: an
