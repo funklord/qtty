@@ -1055,6 +1055,20 @@ void Compositor::compose(CellBuffer &out) {
 	// late.
 	if (base->focusWidget() != focusWidget()) set_focus_widget(base->focusWidget());
 
+	// THE WINDOW DRAWN AT THE ORIGIN IS AT THE ORIGIN, here as well as in
+	// Qtty::exec(). This function draws `base` at base_at whatever its
+	// geometry says, and places every popup from Qt's GLOBAL position plus
+	// that same offset -- so the two agree only while the window's own
+	// global position is (0,0). exec() moves it there; a frame composed any
+	// other way did not, and a window one row down in Qt's coordinates drew
+	// every popup one row below its widget. Reported by situ (8.787): with
+	// the same binary and keys, the completer list sat directly under its
+	// field in tmux and one row lower in snapshot_of_screen(). Moved rather
+	// than offset for the reason the modal branch gives -- the router reads
+	// positions from geometry, so where a window is drawn and where it says
+	// it is must be one answer.
+	if (base->pos() != QPoint()) base->move(0, 0);
+
 	apply_priority(base, root_, out.cols(), out.rows() - strip);
 	follow_focus(base, root_, out.cols(), out.rows() - strip);
 

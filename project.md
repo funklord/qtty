@@ -21,7 +21,8 @@ number rather than restating it.
 ## 0a. State
 
 **2026-11-20: a completer's list is drawn now, follows its field, and
-erases what it covers, 8.787** (situ's report; 2551 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
+erases what it covers, 8.787; the window composed is held at Qt's origin,
+so a snapshot places popups as the frame loop does** (situ's report; 2552 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
 day: the style gate's copies arrived, 8.786, and section 8a's bullet
 about them is struck).
 See section 8a, which carries what the session of 2026-11-13 and 11-18
@@ -30,7 +31,7 @@ frame's cached insets, and the contract that said one event filter where
 there are seven), the sabotage spec at 864 entries, what a full sweep
 costs, and what each blocked thing waits for.
 
-2551 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
+2552 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
 2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
 1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
@@ -63177,3 +63178,21 @@ part of the gate passes.
 **From Qt, not here, and situ's to work around** (it said so itself): the
 key that opens a delegate editor under `AnyKeyPressed` does not trigger
 the completer, so a one-letter search shows no list until the second.
+
+**Still one row low in situ's snapshot after `bda8464`, and not a
+resize.** situ moved its resize before the keys and the difference held:
+same binary, same keys, the list's top border directly under the field in
+tmux and a row lower in `--snapshot`. The cause is the window's own
+position. `Qtty::exec()` moves its window to (0,0); `compose()` draws the
+window at the origin whatever its geometry says and places each popup at
+Qt's global position plus the same offset, so the two agree only at (0,0).
+A frame composed any other way -- `snapshot_of_screen()`, which situ's
+`--snapshot` uses -- left the window where Qt had put it. Reproduced here
+by moving the fixture's window one row down: the list drew exactly one row
+low. **`compose()` now moves the window it draws to the origin**, as
+`exec()` does and as the modal branch already moves a modal to where it is
+drawn, because the router reads positions from geometry. A check composes
+the window off the origin and asks for the same picture; a sabotage entry
+leaving the window where it is reddens exactly that check. 2552 checks, 0
+failures. Nothing in situ's call was wrong, so situ need not change how it
+takes the frame.

@@ -9918,3 +9918,14 @@ find = "\t\tif (!thin) dev_->buffer().fill(c, Cell{});"
 into = "\t\tif (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});"
 count = 1
 check = "and the text it is drawn over does not show through the cells its item leaves blank"
+
+# THE DRAWN WINDOW IS LEFT WHERE QT PUT IT. Right in a frame loop, which
+# Qtty::exec() starts at the origin, and one row off for every popup in a
+# frame composed from a window Qt placed anywhere else.
+[[sabotage]]
+name = "the window drawn at the origin is not moved there"
+file = "src/runtime/compositor.cpp"
+find = "\tif (base->pos() != QPoint()) base->move(0, 0);"
+into = "\tif (false && base->pos() != QPoint()) base->move(0, 0);"
+count = 1
+check = "and a window Qt has placed off the origin draws the list under its field all the same, as a terminal's frame loop does"

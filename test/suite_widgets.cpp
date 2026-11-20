@@ -8777,6 +8777,23 @@ int suite_widgets() {
 			      "on the one after");
 			CHECK(moved_again == moved,
 			      "and a second composition draws the same picture");
+			// A WINDOW THAT IS NOT AT QT'S ORIGIN. Qtty::exec() moves its
+			// window to (0,0); a frame composed any other way -- situ's
+			// --snapshot, through snapshot_of_screen() -- did not, and the
+			// compositor places popups from Qt's global position while it
+			// draws the window at the origin whatever its geometry says.
+			// Measured with the window one row down: the list one row below
+			// where tmux drew it from the same binary and keys.
+			win.move(0, GridMetrics::ch());
+			QCoreApplication::processEvents();
+			const QString shifted =
+			    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+			CHECK(shifted == moved,
+			      "and a window Qt has placed off the origin draws the list "
+			      "under its field all the same, as a terminal's frame loop "
+			      "does");
+			if (shifted != moved)
+				printf("%s%s", qPrintable(moved), qPrintable(shifted));
 			if (field_rows.size() != 1 || list_rows.size() != 1
 			    || list_rows.first() != field_rows.first() + 2
 			    || moved_again != moved)
