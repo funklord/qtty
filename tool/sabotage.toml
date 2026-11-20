@@ -9929,3 +9929,13 @@ find = "\tif (base->pos() != QPoint()) base->move(0, 0);"
 into = "\tif (false && base->pos() != QPoint()) base->move(0, 0);"
 count = 1
 check = "and a window Qt has placed off the origin draws the list under its field all the same, as a terminal's frame loop does"
+
+# A COMBO'S OWN DROP-DOWN IS LEFT WHERE showPopup() PUT IT. Its top at the
+# field's bottom pixel, which a delegate editor's snap lays over the field.
+[[sabotage]]
+name = "a combo's drop-down is not fitted to the grid"
+file = "src/runtime/compositor.cpp"
+find = "\tif (drop_down) { view = owner->view(); field = owner; }"
+into = "\tif (drop_down) return QRect();"
+count = 1
+check = "and it is drawn under the field, the field still in sight and every item inside the list's border"

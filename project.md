@@ -22,7 +22,8 @@ number rather than restating it.
 
 **2026-11-20: a completer's list is drawn now, follows its field, and
 erases what it covers, 8.787; the window composed is held at Qt's origin,
-so a snapshot places popups as the frame loop does** (situ's report; 2552 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
+so a snapshot places popups as the frame loop does; an editable combo's own drop-down
+is placed under its field and sized in rows** (situ's report; 2561 checks, 0 failures). **Last folded 2026-11-19 (second fold the same
 day: the style gate's copies arrived, 8.786, and section 8a's bullet
 about them is struck).
 See section 8a, which carries what the session of 2026-11-13 and 11-18
@@ -31,7 +32,7 @@ frame's cached insets, and the contract that said one event filter where
 there are seven), the sabotage spec at 864 entries, what a full sweep
 costs, and what each blocked thing waits for.
 
-2552 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
+2561 checks, 0 failures (2026-11-20, 8.787). **The duration is 8.54 seconds of user time, taken
 2026-11-18 over 2534 of them** -- `/usr/bin/time
 ./build-test/qtty-tests`, best of three: 8.54, 9.52, 12.58 user, 1.20 to
 1.38 sys, 19.86 to 32.86 wall. **The load was 18.26** one-minute, rising
@@ -63196,3 +63197,28 @@ the window off the origin and asks for the same picture; a sabotage entry
 leaving the window where it is reddens exactly that check. 2552 checks, 0
 failures. Nothing in situ's call was wrong, so situ need not change how it
 takes the frame.
+
+**An editable combo's own drop-down, as a table cell's editor, had the
+completer list's two faults.** The holder's ask was the whole control as
+a desktop has it, so a check now drives one: F2 into a three-row table,
+Alt+Down, Escape, Down Down Return, Return, then Escape on a fresh edit and
+a validator. Two things were wrong, both in `QComboBox::showPopup()`'s
+geometry rather than in routing. In the base style an editable combo's
+list hangs below the field, its top at the field's bottom pixel -- inside
+the row of an 18-pixel delegate editor, so the snap laid the list over the
+field. And the container is sized for `PM_DefaultFrameWidth` on every
+side, a cell across but half a row down, so with three items `broadcast`
+was drawn on the bottom border. **`completer_fit()` fits that container
+too**: recognised as the popup window of its parent combo's view, and
+only where `SH_ComboBox_Popup` says Qt hangs it below the field rather than
+over the current item (a non-editable combo here, which was already
+right). It is anchored to the field like a completer's list, capped by
+`maxVisibleItems()`, and sized for a whole row of frame each way. The
+container keeps the ten-pixel inset it was born with, and its items still
+land under the border because ten of nineteen pixels rounds onto the next
+row. Re-asking the container for a whole-row inset was tried, and a
+sabotage removing it left the suite green, so it is not done. Escape
+(drop-down first, then the editor, leaving the cell unchanged), choosing
+and committing, and `QIntValidator` all worked already; the check holds
+them. One sabotage entry, which removes the fit for the drop-down,
+reddens the placement check. 2561 checks, 0 failures.

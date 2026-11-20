@@ -8915,6 +8915,153 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// ---- an editable combo as a table cell's editor, as on a desktop ----
+	//
+	// The holder's ask after situ's report: an editable combo should be a
+	// full desktop control, in a delegate editor too -- its OWN drop-down
+	// opened and drawn and chosen from, Escape closing the innermost thing
+	// first, the validator honoured.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		const QStringList modes = { QStringLiteral("client"),
+			                        QStringLiteral("server"),
+			                        QStringLiteral("broadcast") };
+		class ComboEditor : public QStyledItemDelegate {
+		public:
+			QStringList items;
+			mutable QPointer<QComboBox> last;
+			bool numeric = false;
+			using QStyledItemDelegate::QStyledItemDelegate;
+			QWidget *createEditor(QWidget *parent,
+			                      const QStyleOptionViewItem &,
+			                      const QModelIndex &) const override {
+				auto *c = new QComboBox(parent);
+				c->setEditable(true);
+				c->setInsertPolicy(QComboBox::NoInsert);
+				c->addItems(items);
+				if (numeric) c->setValidator(new QIntValidator(0, 999, c));
+				last = c;
+				return c;
+			}
+			void setEditorData(QWidget *e, const QModelIndex &i) const override {
+				static_cast<QComboBox *>(e)->setEditText(i.data().toString());
+			}
+			void setModelData(QWidget *e, QAbstractItemModel *m,
+			                  const QModelIndex &i) const override {
+				m->setData(i, static_cast<QComboBox *>(e)->currentText());
+			}
+		};
+		QWidget twin;
+		twin.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tv = new QVBoxLayout(&twin);
+		tv->setContentsMargins(0, 0, 0, 0);
+		auto *table = new QTableWidget(3, 1);
+		table->horizontalHeader()->setStretchLastSection(true);
+		table->setEditTriggers(QAbstractItemView::EditKeyPressed);
+		for (int r = 0; r < 3; ++r)
+			table->setItem(r, 0, new QTableWidgetItem(modes.at(r)));
+		auto *editor = new ComboEditor(table);
+		editor->items = modes;
+		table->setItemDelegate(editor);
+		tv->addWidget(table);
+		twin.resize(GridMetrics::cells(30, 10));
+		twin.show();
+		QCoreApplication::processEvents();
+		{
+			Qtty::InputRouter router(&twin);
+			Qtty::set_current_window(&twin);
+			const auto key = [&](int k, const QString &t = QString(),
+			                     bool alt = false) {
+				router.on_key({k, t, false, alt, false});
+				QCoreApplication::processEvents();
+			};
+			const auto start = [&](int row) {
+				table->setCurrentCell(row, 0);
+				table->setFocus();
+				set_focus_widget(table);
+				QCoreApplication::processEvents();
+				key(Qt::Key_F2);
+			};
+			start(0);
+			QComboBox *c = editor->last;
+			key(Qt::Key_Down, QString(), true);
+			const QString open =
+			    Qtty::test::snapshot_of_screen(twin, router, 30, 10);
+			const bool shown = c && c->view()->isVisible();
+			CHECK(shown, "Alt+Down opens a cell editor combo's own drop-down");
+			// Placed and sized as a desktop places it: the field kept in
+			// sight, the list's border on the row under it, and every item
+			// inside the border. Measured before the fit: the list laid
+			// over the field, and `broadcast` drawn ON the bottom border,
+			// the container sized for a frame half a row tall.
+			const QStringList lines =
+			    open.left(open.indexOf(QStringLiteral("--- "))).split(QLatin1Char('\n'));
+			const auto row_with = [&](const QString &text) {
+				int found = -1;
+				for (int y = 0; y < lines.size(); ++y)
+					if (lines.at(y).contains(text)) {
+						if (found >= 0) return -2;
+						found = y;
+					}
+				return found;
+			};
+			const int field = row_with(QStringLiteral("[client"));
+			const bool placed = field > 0
+			    && row_with(QStringLiteral("\u2502 client")) == field + 2
+			    && row_with(QStringLiteral("\u2502 server")) == field + 3
+			    && row_with(QStringLiteral("\u2502 broadcast")) == field + 4
+			    && field + 5 < lines.size()
+			    && lines.at(field + 1).contains(QChar(0x250c))
+			    && lines.at(field + 5).contains(QChar(0x2514));
+			CHECK(placed,
+			      "and it is drawn under the field, the field still in sight "
+			      "and every item inside the list's border");
+			if (!shown || !placed) printf("%s", qPrintable(open));
+			key(Qt::Key_Escape);
+			CHECK(c && !c->view()->isVisible()
+			          && editor->last && editor->last->isVisible(),
+			      "Escape closes the drop-down and leaves the editor open");
+			key(Qt::Key_Down, QString(), true);
+			key(Qt::Key_Down);
+			key(Qt::Key_Down);
+			key(Qt::Key_Return, QStringLiteral("\r"));
+			CHECK(editor->last && editor->last->currentText() == QStringLiteral("broadcast"),
+			      "Down twice and Return choose an item from the drop-down");
+			key(Qt::Key_Return, QStringLiteral("\r"));
+			CHECK(table->item(0, 0)->text() == QStringLiteral("broadcast"),
+			      "and Return commits it to the cell");
+			printf("info: cell 0 after commit: %s\n",
+			       qPrintable(table->item(0, 0)->text()));
+
+			start(1);
+			key(0, QStringLiteral("z"));
+			key(Qt::Key_Escape);
+			CHECK(!editor->last || !editor->last->isVisible(),
+			      "Escape in a cell editor with nothing open closes it");
+			CHECK(table->item(1, 0)->text() == QStringLiteral("server"),
+			      "and leaves the cell as it was");
+
+			editor->numeric = true;
+			table->item(2, 0)->setText(QStringLiteral("7"));
+			start(2);
+			if (editor->last) editor->last->lineEdit()->selectAll();
+			for (const char *ch : { "1", "a", "2" }) key(0, QString::fromLatin1(ch));
+			CHECK(editor->last && editor->last->currentText() == QStringLiteral("12"),
+			      "a cell editor combo's validator refuses what it does not accept");
+			printf("info: validated text: %s\n",
+			       editor->last ? qPrintable(editor->last->currentText()) : "(none)");
+			key(Qt::Key_Return, QStringLiteral("\r"));
+			CHECK(table->item(2, 0)->text() == QStringLiteral("12"),
+			      "and Return commits what it accepted");
+		}
+		twin.hide();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	{
 		// Partial-line scrolling, which section 7.2 listed as the one thing
 		// text widgets that nothing exercised. It does the right thing, and

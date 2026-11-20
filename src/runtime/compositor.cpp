@@ -178,7 +178,28 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
                     int ch) {
 	auto *view = qobject_cast<QAbstractItemView *>(pop);
-	QWidget *const field = pop->focusProxy();
+	QWidget *field = pop->focusProxy();
+	// A COMBO BOX'S OWN DROP-DOWN, where Qt hangs it below the field rather
+	// than over the current item -- an editable combo, in the base style.
+	// QComboBox::showPopup() has the same two faults as complete(): it puts
+	// the list's top at the field's bottom PIXEL, which in a delegate
+	// editor 18 pixels tall is inside the field's own row, so the snap laid
+	// the list over the field; and it sizes the container for a frame of
+	// PM_DefaultFrameWidth on every side, which is a cell across and half a
+	// row down, so the last item sat on the bottom border. Measured with a
+	// table cell's editable combo and three items: the list on the field's
+	// row, `broadcast` drawn on the bottom border. The container is not the
+	// view -- the view is inside it -- and the field is its parent.
+	auto *owner = view ? nullptr : qobject_cast<QComboBox *>(pop->parentWidget());
+	bool drop_down = false;
+	if (owner && owner->view() && owner->view()->window() == pop) {
+		QStyleOptionComboBox opt;
+		opt.initFrom(owner);
+		opt.editable = owner->isEditable();
+		drop_down = !owner->style()->styleHint(QStyle::SH_ComboBox_Popup,
+		                                       &opt, owner);
+	}
+	if (drop_down) { view = owner->view(); field = owner; }
 	if (!view || !field || pop->isAncestorOf(field) || !view->model())
 		return QRect();
 	const int count = view->model()->rowCount(view->rootIndex());
@@ -192,6 +213,7 @@ QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
 	else if (auto *b = qobject_cast<QComboBox *>(field)) c = b->completer();
 	const bool follows_field = c && c->popup() == pop;
 	if (follows_field) most = qMax(1, c->maxVisibleItems());
+	else if (drop_down) most = qMax(1, owner->maxVisibleItems());
 	else if (!qt_placed) return QRect();
 	const int row_h = qMax(ch, view->sizeHintForRow(0));
 
@@ -200,9 +222,19 @@ QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
 	// the viewport is clamped to nothing and the difference says nothing,
 	// so grow it first -- once, since a list this has fitted has a
 	// viewport, which matters now that the fit runs on every frame.
-	if (view->viewport()->height() <= 0)
+	//
+	// A drop-down's frame is the container's, measured while Qt sized it
+	// unlaid-out and kept: ten pixels each way, so its view begins ten
+	// pixels down. Sizing for a whole row each way is enough -- ten of
+	// nineteen rounds onto the next row, so the items land under the top
+	// border and the bottom border has a row of its own. Re-asking the
+	// container for a whole-row inset after the fit was tried and changed
+	// nothing the suite can see, so it is not done.
+	if (!drop_down && view->viewport()->height() <= 0)
 		pop->resize(pop->width(), row_h * qMin(most, count) + 4 * ch);
-	const int frame = pop->height() - view->viewport()->height();
+	const int frame = drop_down
+	    ? 2 * ch + view->height() - view->viewport()->height()
+	    : pop->height() - view->viewport()->height();
 
 	// The field's edges are taken OUTWARD to whole cells. A delegate editor
 	// is the row's height less the grid line -- 18 pixels in a 19-pixel
@@ -210,7 +242,7 @@ QRect completer_fit(QWidget *pop, bool qt_placed, int screen_dy, int limit_y,
 	// its own row, and placed_at() would snap the list back onto it.
 	const QPoint top_left = field->mapToGlobal(QPoint(0, 0));
 	int x = pop->x(), below, above;
-	if (follows_field) {
+	if (follows_field || drop_down) {
 		x = top_left.x();
 		below = (top_left.y() + field->height() + ch - 1) / ch * ch;
 		above = top_left.y() / ch * ch;
