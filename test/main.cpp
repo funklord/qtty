@@ -6,6 +6,7 @@
 #include <cstring>
 #include <csignal>
 #include <unistd.h>
+#include <fcntl.h>
 
 int suite_cells();
 int suite_theme();
@@ -68,6 +69,30 @@ int main(int argc, char **argv) {
 		sigemptyset(&sa.sa_mask);
 		sigaction(SIGALRM, &sa, nullptr);
 		alarm(limit);
+	}
+
+	// A TERMINAL ON STDIN THAT THE SUITE CANNOT OWN IS TAKEN AWAY FROM IT.
+	// Every AnsiBackend a check builds puts fd 0 into raw mode, and several
+	// checks divert only fd 1 to a pty of their own, so fd 0 is whatever the
+	// suite inherited. Run from a real terminal under timeout(1) -- which
+	// is how `make check` runs it, and timeout puts its child in a process
+	// group of its own -- that tcsetattr() is a background write to the
+	// terminal: SIGTTOU stops the suite, it sits in state T until the
+	// timeout, and count-check reports 2487 of 2562 checks. Measured
+	// 2026-11-23 by running the gate in tmux; from a session with no
+	// terminal every check passed, which is why it went unseen.
+	//
+	// Only where the terminal's foreground group is not ours. test-pty runs
+	// the suite under script(1), as the leader of a session whose pty it
+	// owns, so it keeps that terminal -- that arm exists to exercise one.
+	if (::isatty(0) && ::tcgetpgrp(0) != ::getpgrp()) {
+		const int null_in = ::open("/dev/null", O_RDONLY);
+		if (null_in >= 0) {
+			::dup2(null_in, 0);
+			::close(null_in);
+		}
+		printf("info: stdin was a terminal this run does not own, so it "
+		       "reads /dev/null instead\n");
 	}
 
 	Qtty::prepare_environment();

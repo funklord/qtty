@@ -1207,7 +1207,15 @@ probe-install:
 # which cannot be wrong about a tool set that has changed and cannot be
 # right about one that has.
 test-tools: tools example
-	@fail=0; \
+	@: 'STDIN IS /dev/null FOR THE WHOLE RECIPE, not the terminal it was' ; \
+	: 'typed in. timeout(1) puts each tool in a process group of its own,' ; \
+	: 'so a tool or a script(1) that takes a terminal on stdin is stopped' ; \
+	: 'by SIGTTOU and sits there until the timeout: run from tmux,' ; \
+	: 'qtty-negotiate "no longer ran with no arguments" and script recorded' ; \
+	: 'nothing. Every check here was written in, and passes in, a session' ; \
+	: 'whose stdin is not a terminal; this makes every run that session.' ; \
+	exec < /dev/null; \
+	fail=0; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) < /dev/null 2>/dev/null); \
 	case "$$out" in \
 	*"widget tree"*aligned*"Enable telemetry"*) echo "    inspect: ok";; \
@@ -1455,9 +1463,13 @@ test-tools: tools example
 		   echo "                        can answer from"; fail=1;; \
 		esac; \
 		rm -f $(BUILD_DIR)/neg.out; \
+		: 'The example is told --tui, not left to guess. It autodetects' ; \
+		: 'a GUI wherever DISPLAY or WAYLAND_DISPLAY is set, which is any' ; \
+		: 'terminal on a desktop, so the gate run from one opened an X' ; \
+		: 'window, drew nothing on the pty and failed all three checks.' ; \
 		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \
 		  i=$$((i + 1)); done ) \
-		| timeout $(TEST_TIMEOUT) script -qec "$(EXAMPLE)" \
+		| timeout $(TEST_TIMEOUT) script -qec "$(EXAMPLE) --tui" \
 			$(BUILD_DIR)/chat.out > /dev/null 2>&1; \
 		out="$$(tr -d '\000' < $(BUILD_DIR)/chat.out)"; \
 		case "$$out" in \
@@ -1474,7 +1486,7 @@ test-tools: tools example
 		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \
 		  i=$$((i + 1)); done ) \
 		| timeout $(TEST_TIMEOUT) script -qec \
-			"stty rows 10 cols 40; $(EXAMPLE)" \
+			"stty rows 10 cols 40; $(EXAMPLE) --tui" \
 			$(BUILD_DIR)/chat40.out > /dev/null 2>&1; \
 		narrow="$$(tr -d '\000' < $(BUILD_DIR)/chat40.out)"; \
 		case "$$narrow" in \
@@ -1739,7 +1751,10 @@ check:
 		echo "       runs, and it reads exactly like one that passes." >&2; \
 		exit 1; \
 	fi; \
-	if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
+	: 'Its parts read /dev/null, not the terminal check was typed in: a' ; \
+	: 'part under timeout(1) that touches that terminal is stopped by' ; \
+	: 'SIGTTOU and fails by timing out (2026-11-23, run from tmux).' ; \
+	if $(MAKE) --no-print-directory $(CHECK_PARTS) < /dev/null; then \
 		echo "PASS $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	else \
 		echo "FAIL $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \

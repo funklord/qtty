@@ -63170,12 +63170,47 @@ suite stays green, and restoring the guard reddens exactly the new check.
 and each reddening the check it names: the fit removed, the field anchor
 removed, and the two-cell guard restored. 2551 checks, 0 failures.
 
-**`make check`'s `test-tools` fails in a session with no terminal**, and
-not because of this: its example run goes through `script(1)`, which here
-reports `<not executed on terminal>` and gives a 0x0 pty, and the chat
-example then draws nothing. Measured on `5eb8a85`, built from an export in
-scratch: the same 195 bytes and the same three FAILED lines. Every other
-part of the gate passes.
+**`make check`'s `test-tools` failed on any desktop, not for want of a
+terminal** (corrected 2026-11-23, on the holder's ask to run the gate from
+a real one). The example autodetects its frontend, and any `DISPLAY` or
+`WAYLAND_DISPLAY` means a GUI; a terminal on a desktop has one, so under
+the gate the example opened an X window and drew nothing on the pty --
+an strace shows it talking X11 to `/tmp/.X11-unix/X0`. Run inside tmux
+it failed the same three checks. The first reading blamed `script(1)`'s
+`<not executed on terminal>` and its 0x0 pty, and that was wrong: the
+recipe pipes keys into `script`, so its stdin is never a terminal even in
+one, and a 0x0 size falls back to 80x24 in `AnsiBackend`. **The recipe
+now passes `--tui`**, as `make run` always has, and all three example
+checks pass under the same 0x0 pty.
+
+**And the suite itself hung when the gate was run from a terminal**:
+count-check saw 2487 of 2562 checks, with no FAIL anywhere. Every
+`AnsiBackend` a check builds puts fd 0 into raw mode, several checks
+divert only fd 1 to a pty of their own, and `timeout(1)` runs its child
+in a process group of its own -- so the tcsetattr() was a background write
+to the invoking terminal, SIGTTOU stopped the suite (state T, seen in
+/proc), and it sat there until the timeout. From a session with no
+terminal, stdin is not a tty and every check passes, which is how it went
+unseen. **`test/main.cpp` now gives the suite /dev/null for a stdin that
+is a terminal whose foreground group is not its own**, and says so in an
+`info:` line. It is in the program rather than in a recipe because a
+person runs the binary by hand under `timeout` too. test-pty keeps its
+terminal: under script(1) the suite leads the pty's session, so the
+guard does not fire there, and that arm still passes. No sabotage entry:
+the harness runs with no terminal, where removing the guard changes
+nothing, so the entry would stay green -- the tmux run is the evidence.
+
+**Then two `qtty-negotiate` checks in `test-tools`, for the same reason
+one level up**: the no-argument control ran the tool with the typed-in
+terminal on stdin, and the stdout-only check gave that terminal to
+`script(1)`, which puts its stdin in raw mode -- both under `timeout`,
+both stopped by SIGTTOU, the first failing by timing out and the second
+recording nothing. The tools are right to stop: a background job that
+takes a terminal does, as any terminal program does. **The gate is what
+assumed a stdin that is not a terminal, so the gate now supplies one**:
+`test-tools` opens with `exec < /dev/null`, and `check` runs its parts
+with stdin from /dev/null, which is exactly the session every part was
+written in and passes in. The suite keeps its own guard for runs by hand.
 
 **From Qt, not here, and situ's to work around** (it said so itself): the
 key that opens a delegate editor under `AnyKeyPressed` does not trigger
