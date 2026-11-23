@@ -144,7 +144,10 @@ timeout 300 g++ -o "$dir/consumer" "$dir/consumer.cpp" \
 # And it has to RUN. Linking proves the symbols are there; only running
 # proves setup() finds a font and the backend takes a terminal. `script`
 # gives it a pty, because everything qtty emits is gated on stdout being one.
-timeout 60 script -q -c "timeout 6 $dir/consumer" "$dir/out" >/dev/null 2>&1 || true
+# script itself reads /dev/null: given the terminal this was typed in, it
+# puts that in raw mode from timeout's process group, SIGTTOU stops it, and
+# after 60 seconds there is no output file at all (2026-11-23, from tmux).
+timeout 60 script -q -c "timeout 6 $dir/consumer" "$dir/out" </dev/null >/dev/null 2>&1 || true
 python3 - "$dir/out" <<'PY'
 import sys
 d = open(sys.argv[1], "rb").read()
@@ -251,7 +254,7 @@ timeout 300 g++ -o "$dir/adopter" "$dir/adopter.cpp" \
 	exit 1
 }
 
-timeout 60 script -q -c "timeout 6 $dir/adopter" "$dir/fatal" >/dev/null 2>&1 || true
+timeout 60 script -q -c "timeout 6 $dir/adopter" "$dir/fatal" </dev/null >/dev/null 2>&1 || true
 python3 - "$dir/fatal" <<'PY'
 import sys
 d = open(sys.argv[1], "rb").read()

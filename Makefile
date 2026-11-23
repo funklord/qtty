@@ -552,9 +552,14 @@ test-screen: $(LIB)
 # gate red while the report printed nothing about it. The status was never
 # in doubt (script -e propagates the child's, and the second run supplies
 # it); what was blind is the half a person reads.
+# script(1) READS /dev/null, not the terminal test-pty was typed in. It
+# puts its stdin in raw mode, and under timeout(1) -- a process group of
+# its own -- that is a background write to the typed-in terminal: SIGTTOU
+# stopped it and the arm failed with 124 and no report (2026-11-23, from
+# tmux). The suite still gets a pty: the one script makes for it.
 test-pty: tests-build
 	@command -v script >/dev/null 2>&1 || { 		echo "    pty: SKIPPED -- util-linux script is not installed"; 		./tool/arm-receipt skip test-pty; exit 0; }
-	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null 		| grep -aoE "(FAIL|SKIP): .*|(OK|FAILED) \([0-9]+ failures?\)" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null >/dev/null 2>&1
+	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null < /dev/null 		| grep -aoE "(FAIL|SKIP): .*|(OK|FAILED) \([0-9]+ failures?\)" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null < /dev/null >/dev/null 2>&1
 	@./tool/arm-receipt pass test-pty
 
 # The system tray, which needs a SESSION BUS and therefore cannot live in the

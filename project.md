@@ -63212,6 +63212,36 @@ assumed a stdin that is not a terminal, so the gate now supplies one**:
 with stdin from /dev/null, which is exactly the session every part was
 written in and passes in. The suite keeps its own guard for runs by hand.
 
+**The arms had the same fault, and two are fixed (holder's ask, the same
+day: test-pty from a real terminal too).** `make test-pty` from tmux
+failed with 124 and no report: its `script(1)` was given the typed-in
+terminal under `timeout`, put it in raw mode and was stopped. `script`
+now reads /dev/null, and the suite still runs on the pty script makes
+for it -- the arm's point -- and passes, with its one documented SKIP.
+`make test-consume` failed the same way, its consumer's `script` run
+stopped for 60 seconds and leaving no output file; fixed the same way
+in `tool/consume-check`, and it passes from tmux. Every other arm's
+`timeout` runs a compiler, the suite (which has its own guard), a
+headless binary, or a terminal emulator under Xvfb with a pty of its own.
+Run from tmux, test-negotiate and test-overlay-z pass. **test-screen did
+not, for a different leak: the environment.** The kitty it starts under
+Xvfb inherited the pane's `$TMUX`, so qtty inside it took the
+passthrough path and drew at left=200 width=36 where 220 and 40 were
+predicted; reproduced with no terminal at all by setting `TMUX` alone.
+`tool/screen-check` now unsets the variables that describe the invoking
+terminal (`TMUX`, `TMUX_PANE`, `STY`, `TERM_PROGRAM`,
+`TERM_PROGRAM_VERSION`, `KITTY_WINDOW_ID`, `COLORTERM`) before starting
+any, and passes from tmux.
+
+**The same leak reaches a user, and `inside_tmux()` is left as it is.**
+A GUI terminal started from a tmux pane inherits `$TMUX`, and an
+application in it will wrap its graphics for a tmux that is not there.
+`term_caps.cpp` says yes to tmux on `$TMUX` alone, and `$TERM` cannot
+say no: people set tmux's `default-terminal` to an xterm name. Telling
+the two apart needs the terminal's own answer (XTVERSION, or DA3) rather
+than the environment, so this is recorded rather than patched with a
+`$TERM` heuristic.
+
 **From Qt, not here, and situ's to work around** (it said so itself): the
 key that opens a delegate editor under `AnyKeyPressed` does not trigger
 the completer, so a one-letter search shows no list until the second.

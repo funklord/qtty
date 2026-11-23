@@ -67,6 +67,14 @@ python3 -c "import PIL" 2>/dev/null || {
 
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT INT TERM
+
+# The terminals started below describe themselves; nothing may describe the
+# terminal this was typed in. Run from a tmux pane, $TMUX reached qtty inside
+# kitty, which then took itself to be inside tmux and drew the picture at
+# left=200 width=36 where 220 and 40 were predicted (2026-11-23). The tmux
+# case further down sets $TMUX for its own panes, from its own socket.
+unset TMUX TMUX_PANE STY TERM_PROGRAM TERM_PROGRAM_VERSION KITTY_WINDOW_ID \
+	COLORTERM
 w=120; h=80
 python3 -c "
 from PIL import Image
