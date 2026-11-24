@@ -20,6 +20,24 @@ number rather than restating it.
 
 ## 0a. State
 
+**Folded 2026-11-24.** `make check` and its arms pass when run from a real
+terminal (58df487, b0af596: the gate and the arms no longer hand the typed-in
+terminal to a program under timeout, and test-screen no longer leaks `$TMUX`).
+The holder answered seven 0b rows (53adfbe): Qt-linked builds and Linux only,
+for now; documented means supported; `Qtty::clipboard_limit()` is public; the
+wide-advance check deferred; dual-width fonts accepted, which carry CJK text
+whole; bidi sent in visual order with BDSM explicit. **The next step is the
+one left open there**: a line mixing scripts loses a cell, and laying a line's
+text runs out together, rather than one at a time as Qt hands them over, is
+what fixes it -- see the bidi row in 0b.
+
+**No desktop entry, and none owed** (cc-inbox 20261124T2059Z, the holder's
+rule that every program a person starts from a desktop installs one). qtty
+is a library; what it builds besides is the developer tools `qtty-inspect`,
+`qtty-replay`, `qtty-negotiate` and `qtty-tray-check`, and the `chat`
+example. None is a program a person launches from a menu, so none gets an
+entry or an icon. A product built on qtty carries its own.
+
 **2026-11-20: a completer's list is drawn now, follows its field, and
 erases what it covers, 8.787; the window composed is held at Qt's origin,
 so a snapshot places popups as the frame loop does; an editable combo's own drop-down
