@@ -178,6 +178,9 @@ void release_terminal(ITerminalBackend *owner) {
 	g_backend = g_owners.isEmpty() ? nullptr : g_owners.last();
 }
 
+// The backend's own bound, so the refusal and the answer cannot disagree.
+int clipboard_limit() { return AnsiBackend::clipboard_limit(); }
+
 void flush_deferred_messages() {
 	const QVector<Held> held = g_deferred;
 	const int dropped = g_dropped;

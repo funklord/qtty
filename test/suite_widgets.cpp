@@ -3254,35 +3254,57 @@ int suite_widgets() {
 			      "does not mirror one either");
 		}
 
-		// BIDIRECTIONAL TEXT, PINNED AS MEASURED RATHER THAN AS WANTED.
-		// A string mixing scripts does not survive the trip to the cells:
-		// the runs are reordered and the last letter is lost. That is not
-		// the layout direction and setting it changes nothing -- a
-		// terminal decides for itself whether it reorders what it is
-		// sent, and this library does not yet take a position on which
-		// order to send.
-		//
-		// Recorded so that whoever changes it finds the page that says
-		// so. This check is meant to be UPDATED, not satisfied: it goes
-		// red the day bidi is handled, and `doc/keyboard-first.md` under
-		// "Right to left" is what has to change with it.
+		// BIDIRECTIONAL TEXT reaches the cells in VISUAL order, as the
+		// Unicode bidirectional algorithm (UAX #9) lays it out. Until
+		// 2026-11-24 each right-to-left run was written in its LOGICAL order,
+		// so Hebrew read back to front, and a right-aligned run lost its last
+		// letter off the edge. Qt's text layout resolves the levels; the
+		// paint engine places each right-to-left run reversed, mirrors its
+		// brackets (L4), and asks the terminal not to reorder it again.
 		{
-			const QString want = QString::fromUtf8("\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d abc");
-			QLabel lab(want);
-			lab.setFixedSize(cw * 20, ch);
-			show(lab, 20, 2);
-			CellBuffer b(20, 2);
-			render_once(lab, b);
-			const QString got =
-			    b.to_text().split(QLatin1Char('\n')).value(0).trimmed();
-			printf("info: a bidirectional label asked for %d code point(s) "
-			       "and %d reached the cells\n", int(want.size()),
-			       int(got.size()));
-			CHECK(want.size() == 8 && got.size() == 7
-			      && got.startsWith(QStringLiteral("abc")),
-			      "bidirectional text reaches the cells reordered and one "
-			      "letter short -- pinned as measured, and the page that "
-			      "says so changes when this does");
+			const QString hebrew = QString::fromUtf8("\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d");
+			QString reversed;
+			for (int i = hebrew.size() - 1; i >= 0; --i) reversed += hebrew[i];
+			const auto first_row = [&](const QString &text, Qt::Alignment align) {
+				QLabel lab(text);
+				if (align) lab.setAlignment(align);
+				lab.setFixedSize(cw * 20, ch);
+				show(lab, 20, 2);
+				CellBuffer b(20, 2);
+				render_once(lab, b);
+				return b.to_text().split(QLatin1Char('\n')).value(0);
+			};
+			const QString right = first_row(hebrew, Qt::Alignment());
+			CHECK(right.trimmed() == reversed && right.endsWith(reversed),
+			      "a right-to-left word reaches the cells whole and in visual "
+			      "order, ending at the label's right edge -- its last letter "
+			      "was lost there, Hebrew being narrower in pixels than in cells");
+			const QString left = first_row(hebrew, Qt::AlignLeft | Qt::AlignAbsolute);
+			CHECK(left.startsWith(reversed),
+			      "and whole when it is aligned to the left instead");
+			// L4 measured where no fallback font is involved: an override
+			// makes Latin right-to-left, so every glyph is the grid font's.
+			const QString overridden = first_row(
+			    QString(QChar(0x202E)) + QStringLiteral("(abc)") + QChar(0x202C),
+			    Qt::Alignment());
+			CHECK(overridden.trimmed() == QStringLiteral("(cba)"),
+			      "a bracket in right-to-left text is mirrored, so it still "
+			      "opens towards what it encloses");
+
+			// MIXED SCRIPTS ON ONE LINE, PINNED AS MEASURED RATHER THAN AS
+			// WANTED. The order is right -- "abc", a space, then the Hebrew
+			// reversed -- and one letter is still lost. Qt hands the runs over
+			// out of visual order and shapes the Hebrew from a proportional
+			// font, 31 pixels for four cells, so the space run drawn after it
+			// claims the cell where the Hebrew begins. Placing each run as it
+			// arrives cannot settle that; laying a line's runs out together
+			// can, and is the next step (project.md). Meant to be UPDATED.
+			const QString mixed = first_row(hebrew + QStringLiteral(" abc"),
+			                                 Qt::Alignment()).trimmed();
+			CHECK(mixed.size() == 7 && mixed.startsWith(QStringLiteral("abc "))
+			      && reversed.endsWith(mixed.mid(4)),
+			      "mixed-script text is in visual order and one letter short -- "
+			      "pinned as measured until a line's runs are laid out together");
 		}
 
 		// AND THE HIT TEST AGREES WITH THE PICTURE IN BOTH DIRECTIONS,

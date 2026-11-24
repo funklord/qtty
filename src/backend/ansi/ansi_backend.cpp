@@ -659,8 +659,18 @@ namespace {
 // A terminal that does not implement DECSCUSR consumes it -- measured,
 // see set_cursor() -- and was never going to have a shape of ours to
 // put back anyway.
+//
+// BDSM, ECMA-48 mode 8, set to EXPLICIT on the way in (`8l`) and back to
+// implicit, the default, on the way out (`8h`). qtty sends every row in
+// VISUAL order -- Qt's text layout has already run the Unicode
+// bidirectional algorithm, and drawTextItem() places a right-to-left run
+// reversed -- so a terminal that reorders on its own (VTE does, by default)
+// would reverse it a second time. The terminal-bidi recommendation that VTE
+// implements says exactly this: a full-screen program that does its own
+// ordering asks for explicit mode. A terminal with no bidi support consumes
+// both, which is every other terminal qtty has been measured on.
 const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
-                      "\033[?2004h\033[?1004h\033[22;2t";
+                      "\033[?2004h\033[?1004h\033[22;2t\033[8l";
 // SYNCHRONISED OUTPUT IS CLOSED FIRST, and it is here because nothing else
 // closed it. `?2026h` is written at the head of a frame and `?2026l` at the
 // tail of the SAME byte array, so an early return cannot leave the bracket
@@ -682,7 +692,7 @@ const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
 // invisible on exactly the terminals that implement it. Unconditional, like
 // the three reporting modes beside it: a terminal without the mode consumes
 // the reset, which is the argument `0 q` and the title pop already make.
-const char kLeave[] = "\033[?2026l\033[23;2t\033[?1004l\033[?2004l"
+const char kLeave[] = "\033[?2026l\033[8h\033[23;2t\033[?1004l\033[?2004l"
                       "\033[?1002l\033[?1006l\033[0m\033[?1049l"
                       "\033[?25h\033[0 q";
 

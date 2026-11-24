@@ -1457,11 +1457,13 @@ test-tools: tools example
 	*) echo "    negotiate --probes: FAILED -- no report"; fail=1;; \
 	esac; \
 	if command -v script >/dev/null 2>&1; then \
+		: '19 escapes: the screen taken and given back, 17 until BDSM' ; \
+		: 'explicit and implicit (8l, 8h) joined them on 2026-11-24.' ; \
 		timeout $(TEST_TIMEOUT) script -qec "$(NEGOTIATE) --probes \
 			< /dev/null" $(BUILD_DIR)/neg.out > /dev/null 2>&1; \
 		n=$$(tr -cd '\033' < $(BUILD_DIR)/neg.out | wc -c); \
 		case "$$n:$$(cat $(BUILD_DIR)/neg.out)" in \
-		17:*"stdin is not a terminal"*) \
+		19:*"stdin is not a terminal"*) \
 			echo "    negotiate --probes, stdout only: ok";; \
 		*) echo "    negotiate --probes, stdout only: FAILED -- $$n escape"; \
 		   echo "                        sequence(s) on a terminal nothing"; \

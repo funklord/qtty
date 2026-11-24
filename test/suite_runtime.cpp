@@ -828,6 +828,37 @@ int suite_runtime() {
 			// uncovered deliberately, said here rather than left as a silent gap
 			// for somebody to rediscover.
 		}
+
+		// A DUAL-WIDTH font is accepted although fontconfig does not call it
+		// fixed pitch: its narrow glyphs share one advance and its wide ones
+		// advance exactly twice it, so it is the one kind of font that
+		// carries wide text on the grid. Refused until 2026-11-24.
+		QFont dual;
+		for (const char *family : {"TakaoGothic", "Noto Sans Mono CJK JP",
+		                           "Noto Sans Mono CJK SC", "Sarasa Mono SC"}) {
+			QFont f(QString::fromLatin1(family));
+			f.setPixelSize(20);
+			f.setHintingPreference(QFont::PreferFullHinting);
+			if (QFontInfo(f).family() == f.family()) { dual = f; break; }
+		}
+		if (dual.family().isEmpty()) {
+			printf("SKIP: no dual-width font is installed, so accepting "
+			       "one is untested\n");
+			printf("SKIP: no dual-width font is installed, so its wide "
+			       "advance is unmeasured\n");
+		} else {
+			const QFontMetricsF dm(dual);
+			// The premise: the font really is one the old fixed-pitch test
+			// refused, and its wide glyph really is two narrow ones.
+			CHECK(!QFontInfo(dual).fixedPitch()
+			      && qFuzzyCompare(dm.horizontalAdvance(QChar(u'一')),
+			                       2 * dm.horizontalAdvance(QChar(u'M'))),
+			      "a dual-width font is not fixed pitch to fontconfig, and "
+			      "its wide glyph advances exactly two narrow ones");
+			CHECK(grid_font_problem(dual).isEmpty(),
+			      "and the grid accepts it, being the one kind of font that "
+			      "carries wide text in whole cells");
+		}
 	}
 
 	// Where Qt puts a menu on a terminal WIDER than the offscreen QScreen.

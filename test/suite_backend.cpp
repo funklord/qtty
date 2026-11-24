@@ -6741,6 +6741,7 @@ int suite_backend() {
 				{ "\033[?1004h", "\033[?1004l" },   // focus reporting
 				{ "\033[22;2t",  "\033[23;2t"  },   // the title stack
 				{ "\033[?25l",   "\033[?25h"   },   // the cursor
+				{ "\033[8l",     "\033[8h"     },   // BDSM: explicit, then implicit
 			};
 			QByteArray unpaired;
 			for (const Pair &m : modes) {
@@ -6755,6 +6756,10 @@ int suite_backend() {
 			        : QByteArray("and every mode it set is switched off"
 			                     " again -- left set: " + unpaired)
 			              .constData());
+			// Set as well as paired: the loop above skips a mode never set.
+			CHECK(on_tty.contains("\033[8l") && !on_pipe.contains("\033[8l"),
+			      "and a terminal is asked not to reorder bidirectional text,"
+			      " qtty sending it in visual order already");
 			CHECK(on_tty.contains("\033[?2026l"),
 			      "including synchronised output, which a frame opens and"
 			      " closes itself and which the restore string left to"
@@ -9197,7 +9202,10 @@ int suite_exec() {
 		// five failures and nine checks that were never run print exactly
 		// like nine that were never written.
 		const bool built = cap.ok();
-		const int cap_bytes = AnsiBackend::clipboard_limit();
+		// The PUBLIC answer, so the copies at and one past it below are what
+		// pin it: an application that asks Qtty::clipboard_limit() and stays
+		// within it is written, and one byte more is refused.
+		const int cap_bytes = Qtty::clipboard_limit();
 		const QString one = QStringLiteral("copy me");
 		const QString wide =
 		    QString::fromUtf8("h\xc3\xa9llo \xe4\xb8\x96 \xf0\x9f\x8e\x89");

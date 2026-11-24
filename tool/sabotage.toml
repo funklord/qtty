@@ -26,16 +26,16 @@
 # anchor and is unaffected.
 name = "text runs at the same origin are consecutive"
 file = "src/render/cell_paint.cpp"
-find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
-into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_ && !pushed_off)"
+into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_ && !pushed_off)"
 count = 1
 check = "selecting a field's text does not draw it twice"
 
 [[sabotage]]
 name = "no wide-cluster overlap guard at all"
 file = "src/render/cell_paint.cpp"
-find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
-into = "if (false && row == last_row_ && q.x() > last_x_\n\t    && col < last_end_col_ && clip == last_clip_)"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_ && !pushed_off)"
+into = "if (false && row == last_row_ && q.x() > last_x_\n\t    && col < last_end_col_ && clip == last_clip_ && !pushed_off)"
 count = 1
 check = "a line edit keeps every one of them"
 
@@ -555,8 +555,8 @@ check = "and a title far longer than any titlebar is cut short"
 [[sabotage]]
 name = "the terminal's own title is never pushed"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\\033[?1004h\\033[22;2t\";"
-into = "\\033[?1004h\";"
+find = "\\033[?1004h\\033[22;2t\\033[8l\";"
+into = "\\033[?1004h\\033[8l\";"
 count = 1
 check = "taking the terminal pushes the title it already had"
 
@@ -2686,8 +2686,8 @@ check = "a copy with no text half"
 # 8.205.
 name = "the run guard reaches across widgets"
 file = "src/render/cell_paint.cpp"
-find = "\t    && clip == last_clip_)"
-into = "\t    )"
+find = "\t    && clip == last_clip_ && !pushed_off)"
+into = "\t    && !pushed_off)"
 count = 1
 check = "a widget drawn over another's text lands in its own columns"
 
@@ -7002,8 +7002,8 @@ check = "and a widget carries the new size too, the font enforcer having been to
 # code's own words: a terminal that stops repainting. 8.513.
 name = "the restore string leaves synchronised output open"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "const char kLeave[] = \"\\033[?2026l\\033[23;2t\\033[?1004l\\033[?2004l\""
-into = "const char kLeave[] = \"\\033[23;2t\\033[?1004l\\033[?2004l\""
+find = "const char kLeave[] = \"\\033[?2026l\\033[8h\\033[23;2t\\033[?1004l\\033[?2004l\""
+into = "const char kLeave[] = \"\\033[8h\\033[23;2t\\033[?1004l\\033[?2004l\""
 count = 1
 check = "including synchronised output, which a frame opens and closes itself and which the restore string left to whatever stopped the process mid-flush"
 
@@ -7014,8 +7014,8 @@ check = "including synchronised output, which a frame opens and closes itself an
 # over the user's shell for the rest of the session. 8.513.
 name = "the restore string keeps the pushed title"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\\033[?2026l\\033[23;2t\\033[?1004l\\033[?2004l\""
-into = "\\033[?2026l\\033[?1004l\\033[?2004l\""
+find = "\\033[?2026l\\033[8h\\033[23;2t\\033[?1004l\\033[?2004l\""
+into = "\\033[?2026l\\033[8h\\033[?1004l\\033[?2004l\""
 count = 1
 check = "and every mode it set is switched off again"
 
@@ -9949,3 +9949,56 @@ find = "\t\tbelow = (top_left.y() + field->height() + ch / 2) / ch * ch;"
 into = "\t\tbelow = (top_left.y() + field->height() + ch - 1) / ch * ch;"
 count = 1
 check = "and a field a pixel taller than its row has its list's border on the next row, not the one after"
+
+# The fixed-pitch refusal put back with no exception for a dual-width
+# font, as it stood before 2026-11-24 -- TakaoGothic and Noto Sans Mono
+# CJK, the fonts that carry wide text whole, refused again at startup.
+[[sabotage]]
+name = "a dual-width font is refused as not fixed pitch"
+file = "src/grid/grid_style.cpp"
+find = "\tif (!info.fixedPitch() && !dual)"
+into = "\tif (!info.fixedPitch())"
+count = 1
+check = "and the grid accepts it, being the one kind of font that carries wide text in whole cells"
+
+# Bidirectional text, 2026-11-24: each piece of the standard as qtty
+# follows it, removed alone.
+[[sabotage]]
+name = "a right-to-left run is placed in logical order"
+file = "src/render/cell_paint.cpp"
+find = "\t\tstd::reverse(clusters.begin(), clusters.end());"
+into = ""
+count = 1
+check = "a right-to-left word reaches the cells whole and in visual order, ending at the label's right edge -- its last letter was lost there, Hebrew being narrower in pixels than in cells"
+
+[[sabotage]]
+name = "a bracket in right-to-left text is not mirrored"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tif (!cl.isEmpty()) cl[0] = cl[0].mirroredChar();"
+into = ""
+count = 1
+check = "a bracket in right-to-left text is mirrored, so it still opens towards what it encloses"
+
+[[sabotage]]
+name = "a right-to-left run that spills past its clip is not pulled back"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (col + cells > row_end) col = qMax(row_end - cells, clip ? clip->left() : 0);"
+into = ""
+count = 1
+check = "a right-to-left word reaches the cells whole and in visual order, ending at the label's right edge -- its last letter was lost there, Hebrew being narrower in pixels than in cells"
+
+[[sabotage]]
+name = "the terminal is not asked for explicit bidi mode"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\\033[22;2t\\033[8l\";"
+into = "\\033[22;2t\";"
+count = 1
+check = "and a terminal is asked not to reorder bidirectional text, qtty sending it in visual order already"
+
+[[sabotage]]
+name = "implicit bidi mode is not put back on the way out"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\\033[?2026l\\033[8h\\033[23;2t"
+into = "\\033[?2026l\\033[23;2t"
+count = 1
+check = "and every mode it set is switched off again"

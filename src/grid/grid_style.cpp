@@ -1019,14 +1019,29 @@ QString grid_font_problem(const QFont &font) {
 	// font that was never resolved, so the message accused a font of being
 	// proportional when none had been found.
 	if (info.family().isEmpty()) return no_font_at_all(font);
-	if (!info.fixedPitch())
-		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
-		       .arg(font.family(), info.family());
 
 	// Real-valued metrics, because the integer ones have already rounded and
 	// would report 10 for an advance of 9.6. Integrality is the property the
 	// whole grid rests on, so it is the one to ask about directly.
 	const QFontMetricsF fm(font);
+
+	// A DUAL-WIDTH font is a grid font, and the only kind that carries wide
+	// text. fontconfig calls Noto Sans Mono CJK and TakaoGothic "dual" rather
+	// than "mono", so fixedPitch() is false and they were refused -- yet their
+	// narrow glyphs share one advance and their wide ones advance exactly
+	// twice it, which is the terminal's own model. Any other font's wide
+	// glyphs come from a fallback at one em, never two cells: measured with
+	// a word-wrapped 12-cell CJK label, DejaVu Sans Mono put 31 of 36
+	// characters on the screen. Accepted only when the wide advance is
+	// EXACTLY double; the narrow probe below still refuses a proportional
+	// font, whose 'i' and 'M' differ.
+	const QChar wide(u'一');
+	const bool dual = fm.inFont(wide)
+	               && qFuzzyCompare(fm.horizontalAdvance(wide),
+	                                2 * fm.horizontalAdvance(QChar(u'M')));
+	if (!info.fixedPitch() && !dual)
+		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
+		       .arg(font.family(), info.family());
 	const qreal height = fm.height();
 	if (!qFuzzyCompare(height, qRound(height)))
 		return QStringLiteral("line height is %1 px, which is not a whole number")

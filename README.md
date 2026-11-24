@@ -71,10 +71,20 @@ qtty exists so that neither is the price of running in a terminal.
 **What is not there yet**, said once rather than in every paragraph: the
 library is pre-alpha and its API will still move; widget coverage is a
 declared support matrix rather than every third-party widget ever written;
-and the terminal build rests on a Qt platform plugin that Qt documents as
-fully supported only on X11, so which platforms it is supported on is not
-settled yet -- that constraint bounds where a terminal build runs, never
-where the GUI does.
+the terminal build is supported on Linux, since it rests on a Qt platform
+plugin that Qt documents as fully supported only on X11 -- which bounds
+where a terminal build runs, never where the GUI does; and qtty serves
+programs that link Qt, so a terminal interface that must run where Qt
+cannot be linked is outside what it is for. Both are where things stand
+today rather than limits for ever.
+
+**What is supported is what is documented.** The API a program may rely
+on is every `Qtty::` name this README and `doc/keyboard-first.md` mention,
+each described in its header; `make check` compiles every one of them
+against the installed headers, so none can disappear without failing the
+gate. Anything else the headers declare may still move. A program that
+needs something undocumented should say so, and the answer is to document
+it rather than to depend on it quietly.
 
 ## What an application gets
 
@@ -351,7 +361,9 @@ negotiated; `Qtty::color_scheme()` says whether the terminal is dark,
 light, or has not said, which an application picking its own palette
 needs and which Qt's own `colorScheme()` cannot answer here; and
 `Qtty::flush_deferred_messages()` writes out diagnostics
-held back while the screen was in use.
+held back while the screen was in use; and `Qtty::clipboard_limit()` is
+the largest copy that reaches the terminal's clipboard -- a larger one is
+refused whole, which QClipboard cannot report, so ask before offering it.
 
 Each is documented in its own header, and `doc/keyboard-first.md` is the
 guide to the keyboard half.

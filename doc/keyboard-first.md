@@ -469,23 +469,29 @@ The suite carries a check worded almost the same way and it is about a
 null scope and an empty window, where all nine are correctly empty. One
 sentence, two fixtures. There is a check on the mirrored form now.
 
-### Bidirectional text is not handled
+### Bidirectional text
 
-**A string mixing scripts does not survive.** Measured, a `QLabel`
-holding four Hebrew letters, a space and `abc` -- eight code points:
+**Right-to-left text reaches the terminal in visual order.** Qt's text
+layout runs the Unicode bidirectional algorithm; qtty places each
+right-to-left run reversed, mirrors its brackets, and on taking the
+screen asks the terminal not to reorder anything itself (BDSM explicit
+mode, `CSI 8 l`, put back to the default on the way out). A Hebrew word
+in a label is whole and reads correctly, aligned left or right, and an
+overridden `(abc)` shows as `(cba)`.
+
+**A line mixing scripts can still lose a cell.** Measured, a `QLabel`
+holding four Hebrew letters, a space and `abc`:
 
     asked for   U+05E9 U+05DC U+05D5 U+05DD U+0020 U+0061 U+0062 U+0063
-    reached     U+0061 U+0062 U+0063 U+0020 U+05E9 U+05DC U+05D5
-    the cells   abc שלו
+    the cells   abc ולש
 
-Seven, not eight: the runs are reordered and the last letter is gone.
-
-This is not the layout direction and setting it changes nothing here. A
-terminal decides for itself whether it reorders what it is sent, and
-qtty does not yet take a position on which order to send -- so an
-application whose *text* is bidirectional is not one this library can
-carry today. An application whose text is left-to-right in a mirrored
-layout is fine, and that is the case the section above is about.
+The order is right and one letter is gone. Qt shapes Hebrew from a
+proportional fallback font, so the word is narrower in pixels than the
+four cells it needs, and the runs of one line arrive out of order: the
+space drawn after the Hebrew takes the cell where it begins. Laying a
+line's runs out together rather than one at a time is what fixes it,
+and it is not done yet. A dual-width font does not help here, since the
+fallback is chosen for the script, not the width.
 
 The measurement is pinned by a check, so that whoever changes it finds
 this page rather than leaving it saying something untrue.
@@ -1830,6 +1836,18 @@ Registering a file and choosing the grid's font are separate acts.
 `add_font_file()` does the first and hands you the family; the variable
 does both. Ship the file yourself -- qtty bundles none, a font carrying
 its own licence terms not being this library's to choose for you.
+
+**If your text is Chinese, Japanese or Korean, choose a dual-width font.**
+A terminal gives a wide character two cells, but with an ordinary
+monospace font Qt takes wide glyphs from a fallback one em wide, which is
+never two cells -- and Qt decides where text wraps, and how big a label
+is, in those pixels. Measured on a word-wrapped label twelve cells wide,
+DejaVu Sans Mono put 31 of 36 characters on the screen; a dual-width
+font, whose wide glyphs are exactly twice its narrow ones, put all 36.
+Noto Sans Mono CJK, TakaoGothic and Sarasa Mono are such fonts, and
+`QTTY_FONT=TakaoGothic QTTY_FONT_SIZE=20` gives a ten-pixel cell. Their
+Latin is half an em, so the size that suits them is larger than the
+one that suits DejaVu.
 
 **You can choose how often the screen is repainted.** qtty coalesces a
 burst of damage before it sends a frame -- 16 ms locally, 50 ms where

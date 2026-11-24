@@ -70,6 +70,15 @@ void setup(QApplication &app);
 // application that takes the screen some other way can call it itself.
 void flush_deferred_messages();
 
+// The largest text, in bytes of UTF-8, that a copy will put on the terminal's
+// clipboard. A copy is written whole or refused whole -- a truncated one the
+// user believes went out is worse than none -- and a refusal cannot be seen
+// from QClipboard, so an application that may copy something large asks this
+// first and offers no Copy that cannot work. A bound qtty sets rather than
+// one the terminal reports, so it answers the same before setup() and in a
+// GUI build, where a copy goes to the desktop and this bound does not apply.
+int clipboard_limit();
+
 // Run `win` on `backend` until quit. The backend is L1's seam (section 5.1):
 // a legacy adapter, termpaint, or NullBackend under test all drive the same
 // runtime through it. This overload is what makes the seam real -- until it

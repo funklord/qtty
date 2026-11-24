@@ -942,6 +942,42 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && (clip->isEmpty() || row < clip->top() || row > clip->bottom())) return;
 	QString text = ti.text();
+	int rtl_cells = -1;          // a right-to-left run's cells, once anchored
+	// A RIGHT-TO-LEFT RUN IS PLACED REVERSED, which is the Unicode
+	// bidirectional algorithm's last step (UAX #9, L2) done at the one place
+	// that knows the run's direction. Qt's text layout has already resolved
+	// levels and split the line into runs, and it hands them over left to
+	// right at their visual positions -- but each run's text() is in LOGICAL
+	// order, and laying it out left to right drew "abc " then the Hebrew of
+	// "shalom" as written, back to front on screen. Reversed by cluster, so
+	// a combining mark stays on its base, and each paired character
+	// mirrored (L4), so an opening bracket inside Hebrew still faces its
+	// text. The terminal is asked not to reorder again: kEnter's BDSM.
+	if (ti.renderFlags() & QTextItem::RightToLeft) {
+		auto clusters = to_clusters(text);
+		std::reverse(clusters.begin(), clusters.end());
+		text.clear();
+		// Every character with a mirror is in the BMP, so the cluster's
+		// first QChar is the whole of what L4 can change; a surrogate
+		// mirrors to itself.
+		int cells = 0;
+		for (QString cl : clusters) {
+			if (!cl.isEmpty()) cl[0] = cl[0].mirroredChar();
+			cells += cluster_width(cl);
+			text += cl;
+		}
+		// PULLED BACK INSIDE ITS CLIP when it would spill past the right.
+		// Hebrew is shaped from a proportional fallback font -- "shalom" is
+		// 31 pixels and needs 40 -- so a right-aligned run, placed by its
+		// left pixel, ended a cell past the label and the trim below cut
+		// its last letter: three letters of four. A right-to-left text
+		// begins at the right, so that is the edge it keeps. Only when it
+		// would spill: a left-aligned run placed by its left pixel fits,
+		// and moving it would push it off the left instead.
+		const int row_end = clip ? clip->right() + 1 : dev_->buffer().cols();
+		if (col + cells > row_end) col = qMax(row_end - cells, clip ? clip->left() : 0);
+		rtl_cells = cells;
+	}
 	if (clip) {
 		// Trimmed by CLUSTER, and from the left as well as the right: a string
 		// that starts before the clip loses its leading clusters and its
@@ -1018,8 +1054,15 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// The system clip is the boundary, because Qt sets one on every child
 	// when it renders a window -- the same fact clip_cells() already rests
 	// on. Two runs of one text layout share it; two widgets do not.
+	//
+	// EXCEPT where it would push a right-to-left run, pulled back inside
+	// its clip above, out past the right again; the letters are worth more
+	// than the cell of the run before them that they overwrite instead.
+	const int row_end = clip ? clip->right() + 1 : dev_->buffer().cols();
+	const bool pushed_off = rtl_cells >= 0
+	                     && last_end_col_ + rtl_cells > row_end;
 	if (row == last_row_ && q.x() > last_x_ && col < last_end_col_
-	    && clip == last_clip_)
+	    && clip == last_clip_ && !pushed_off)
 		col = last_end_col_;
 	// The pen carries the state as well as the colour. Qt paints a disabled
 	// widget with the palette's Disabled group, and text_style_for() now
