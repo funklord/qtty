@@ -31,6 +31,41 @@ one left open there**: a line mixing scripts loses a cell, and laying a line's
 text runs out together, rather than one at a time as Qt hands them over, is
 what fixes it -- see the bidi row in 0b.
 
+**Bidi is for Arabic, not Hebrew** (holder, 2026-11-25: "focus on arabic
+etc, we do not support hebrew"). The right-to-left code is generic, but the
+checks, the guide and the 0b row still speak of Hebrew and are to be moved
+to Arabic. **Measured 2026-11-25, before any change**: an Arabic label
+reaches the cells whole and in visual order -- `مرحبا` right-aligned, left-aligned, and mixed as
+`abc ابحرم` all whole, unlike Hebrew, whose fallback font is narrower than
+the cells. **What is missing is SHAPING**: every letter goes out as its
+bare base form, so a terminal that does not shape (xterm, kitty, alacritty)
+shows the word as disconnected letters. **The planned fix, not yet
+written**: in `drawTextItem()`'s right-to-left block, before the reversal,
+replace each letter by its presentation form. Take the form from Unicode
+joining types (`QChar::joiningType()`): a letter joins the previous
+non-transparent one when it is Dual/Right/Causing and that one is
+Dual/Left/Causing, and joins the next when it is Dual/Left/Causing and the
+next is Dual/Right/Causing. Both joins give Medial, the previous only Final,
+the next only Initial, and neither Isolated. Lam followed by an alef
+(U+0622/0623/0625/0627) becomes one lam-alef ligature, Final if the lam
+joins the letter before it and Isolated otherwise. Build the table at first
+use from Qt rather than by hand: walk U+FE70..U+FEFC, then U+FB50..U+FDFF
+for what is still missing, and key each character by `decompositionTag()`
+(Initial/Medial/Final/Isolated) and `decomposition()` (one base letter, or
+lam plus alef). A letter with no such form keeps its base, which covers
+Syriac and N'Ko. Shaping is the terminal's job in the terminal-bidi
+recommendation, but presentation forms are right on both kinds of terminal:
+a terminal that shapes leaves them as they are. The expected cells, from
+the Unicode charts: `مرحبا` -> logical FEE3 FEAE FEA3 FE92 FE8E, so visual
+FE8E FE92 FEA3 FEAE FEE3; `سلام` -> logical FEB3 FEFC FEE1 (3 cells, the
+lam-alef final), so visual FEE1 FEFC FEB3. Then: move the bidi checks and
+the sabotage entries that name them from Hebrew to Arabic. A mixed Arabic
+line is already whole, so the mixed-script check pinned as measured
+becomes a check that it is whole. Add a sabotage entry for the shaping.
+Update doc/keyboard-first.md's bidi section and the 0b row. The probe used
+is a small program linked against build/lib/libqtty.a that prints
+`Qtty::test::snapshot_of()` of a QLabel as code points.
+
 **No desktop entry, and none owed** (cc-inbox 20261124T2059Z, the holder's
 rule that every program a person starts from a desktop installs one). qtty
 is a library; what it builds besides is the developer tools `qtty-inspect`,
